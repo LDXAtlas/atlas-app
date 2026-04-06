@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { signUp } from "@/app/actions/auth";
 
@@ -35,6 +35,46 @@ const plans = [
   },
 ] as const;
 
+/** Wrapper that fades content in whenever `stepKey` changes. */
+function StepTransition({
+  stepKey,
+  children,
+}: {
+  stepKey: string;
+  children: React.ReactNode;
+}) {
+  const [visible, setVisible] = useState(false);
+  const [displayKey, setDisplayKey] = useState(stepKey);
+
+  useEffect(() => {
+    if (stepKey !== displayKey) {
+      // New step — fade out, swap, fade in
+      setVisible(false);
+      const t = setTimeout(() => {
+        setDisplayKey(stepKey);
+        setVisible(true);
+      }, 200);
+      return () => clearTimeout(t);
+    } else {
+      // Initial mount
+      const t = setTimeout(() => setVisible(true), 30);
+      return () => clearTimeout(t);
+    }
+  }, [stepKey, displayKey]);
+
+  return (
+    <div
+      className="transition-all duration-300 ease-out"
+      style={{
+        opacity: visible ? 1 : 0,
+        transform: visible ? "translateY(0)" : "translateY(12px)",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
 export function SignupFlow() {
   const [flow, setFlow] = useState<Flow>("choose");
   const [createStep, setCreateStep] = useState<CreateStep>("plan");
@@ -53,7 +93,15 @@ export function SignupFlow() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  function handleBack() {
+  // Build a composite key for the transition wrapper
+  const stepKey =
+    flow === "choose"
+      ? "choose"
+      : flow === "create"
+        ? `create-${createStep}`
+        : `join-${joinStep}`;
+
+  const handleBack = useCallback(() => {
     setError(null);
     if (flow === "create") {
       if (createStep === "account") setCreateStep("org-name");
@@ -63,7 +111,7 @@ export function SignupFlow() {
       if (joinStep === "account") setJoinStep("org-id");
       else setFlow("choose");
     }
-  }
+  }, [flow, createStep, joinStep]);
 
   async function handleSubmit() {
     if (password !== confirmPassword) {
@@ -92,328 +140,351 @@ export function SignupFlow() {
       setError(result.error);
       setSubmitting(false);
     }
-    // If no error, signUp redirects — we won't reach here
   }
 
-  // ── Choose flow ──
-  if (flow === "choose") {
-    return (
-      <div className="w-full max-w-2xl">
-        <h1
-          className="mb-8 text-center text-2xl font-bold text-foreground"
-          style={{ fontFamily: "var(--font-poppins), system-ui, sans-serif" }}
-        >
-          Get Started with Atlas
-        </h1>
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <ChoiceCard
-            title="Create a New Organization"
-            description="Set up a fresh workspace for your church or ministry."
-            onClick={() => {
-              setFlow("create");
-              setCreateStep("plan");
-            }}
-          />
-          <ChoiceCard
-            title="Join an Existing Organization"
-            description="You have an Organization ID from your admin."
-            onClick={() => {
-              setFlow("join");
-              setJoinStep("org-id");
-            }}
-          />
-        </div>
-
-        <p
-          className="mt-6 text-center text-sm text-gray-500"
-          style={{
-            fontFamily: "var(--font-source-sans), system-ui, sans-serif",
-          }}
-        >
-          Already have an account?{" "}
-          <Link
-            href="/login"
-            className="font-semibold text-[#5CE1A5] hover:text-[#A0F1C8]"
-          >
-            Sign in
-          </Link>
-        </p>
-      </div>
-    );
-  }
-
-  // ── Create org flow ──
-  if (flow === "create") {
-    if (createStep === "plan") {
+  // ── Render current step ──
+  function renderStep() {
+    // ── Choose flow ──
+    if (flow === "choose") {
       return (
-        <div className="w-full max-w-4xl">
-          <BackButton onClick={handleBack} />
-          <h2
-            className="mb-2 text-center text-2xl font-bold text-foreground"
-            style={{ fontFamily: "var(--font-poppins), system-ui, sans-serif" }}
+        <div className="w-full max-w-2xl">
+          <h1
+            className="mb-8 text-center text-2xl font-bold text-foreground"
+            style={{
+              fontFamily: "var(--font-poppins), system-ui, sans-serif",
+            }}
           >
-            Choose Your Plan
-          </h2>
+            Get Started with Atlas
+          </h1>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <ChoiceCard
+              title="Create a New Organization"
+              description="Set up a fresh workspace for your church or ministry."
+              onClick={() => {
+                setFlow("create");
+                setCreateStep("plan");
+              }}
+            />
+            <ChoiceCard
+              title="Join an Existing Organization"
+              description="You have an Organization ID from your admin."
+              onClick={() => {
+                setFlow("join");
+                setJoinStep("org-id");
+              }}
+            />
+          </div>
+
           <p
-            className="mb-8 text-center text-sm text-gray-500"
+            className="mt-6 text-center text-sm text-gray-500"
             style={{
               fontFamily: "var(--font-source-sans), system-ui, sans-serif",
             }}
           >
-            You can always change your plan later.
+            Already have an account?{" "}
+            <Link
+              href="/login"
+              className="font-semibold text-[#5CE1A5] transition-colors duration-200 hover:text-[#A0F1C8]"
+            >
+              Sign in
+            </Link>
           </p>
+        </div>
+      );
+    }
 
-          <div className="grid gap-6 sm:grid-cols-3">
-            {plans.map((plan) => (
-              <div
-                key={plan.id}
-                onClick={() => setSelectedPlan(plan.id)}
-                className={`relative cursor-pointer rounded-2xl border-2 p-6 transition-all ${
-                  selectedPlan === plan.id
-                    ? "border-[#5CE1A5] shadow-md"
-                    : "border-gray-200 hover:border-gray-300"
-                }`}
+    // ── Create org flow ──
+    if (flow === "create") {
+      if (createStep === "plan") {
+        return (
+          <div className="w-full max-w-4xl">
+            <BackButton onClick={handleBack} />
+            <h2
+              className="mb-2 text-center text-2xl font-bold text-foreground"
+              style={{
+                fontFamily: "var(--font-poppins), system-ui, sans-serif",
+              }}
+            >
+              Choose Your Plan
+            </h2>
+            <p
+              className="mb-8 text-center text-sm text-gray-500"
+              style={{
+                fontFamily: "var(--font-source-sans), system-ui, sans-serif",
+              }}
+            >
+              You can always change your plan later.
+            </p>
+
+            <div className="grid gap-6 sm:grid-cols-3">
+              {plans.map((plan) => (
+                <div
+                  key={plan.id}
+                  onClick={() => setSelectedPlan(plan.id)}
+                  className={`relative cursor-pointer rounded-2xl border-2 p-6 transition-all duration-200 ${
+                    selectedPlan === plan.id
+                      ? "border-[#5CE1A5] shadow-md shadow-[#5CE1A5]/10"
+                      : "border-gray-200 hover:border-gray-300 hover:shadow-sm"
+                  }`}
+                >
+                  {plan.badge && (
+                    <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-[#5CE1A5] px-3 py-0.5 text-xs font-semibold text-[#060C09]">
+                      {plan.badge}
+                    </span>
+                  )}
+                  <h3
+                    className="text-lg font-bold text-foreground"
+                    style={{
+                      fontFamily: "var(--font-poppins), system-ui, sans-serif",
+                    }}
+                  >
+                    {plan.name}
+                  </h3>
+                  <p
+                    className="mt-2 text-3xl font-bold text-foreground"
+                    style={{
+                      fontFamily: "var(--font-poppins), system-ui, sans-serif",
+                    }}
+                  >
+                    ${plan.price}
+                    <span className="text-sm font-normal text-gray-400">
+                      /mo
+                    </span>
+                  </p>
+                  <ul
+                    className="mt-4 space-y-2 text-sm text-gray-600"
+                    style={{
+                      fontFamily:
+                        "var(--font-source-sans), system-ui, sans-serif",
+                    }}
+                  >
+                    <li>{plan.seats} team seats</li>
+                    <li>{plan.members} members</li>
+                  </ul>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-8 flex justify-center">
+              <PrimaryButton onClick={() => setCreateStep("org-name")}>
+                Continue
+              </PrimaryButton>
+            </div>
+          </div>
+        );
+      }
+
+      if (createStep === "org-name") {
+        return (
+          <div className="w-full max-w-md">
+            <BackButton onClick={handleBack} />
+            <h2
+              className="mb-2 text-center text-2xl font-bold text-foreground"
+              style={{
+                fontFamily: "var(--font-poppins), system-ui, sans-serif",
+              }}
+            >
+              Name Your Organization
+            </h2>
+            <p
+              className="mb-8 text-center text-sm text-gray-500"
+              style={{
+                fontFamily: "var(--font-source-sans), system-ui, sans-serif",
+              }}
+            >
+              This is how your church or ministry will appear in Atlas.
+            </p>
+
+            <label
+              className="flex flex-col gap-1.5"
+              style={{
+                fontFamily: "var(--font-source-sans), system-ui, sans-serif",
+              }}
+            >
+              <span className="text-sm font-semibold text-foreground">
+                Organization Name
+              </span>
+              <input
+                type="text"
+                value={organizationName}
+                onChange={(e) => setOrganizationName(e.target.value)}
+                placeholder="e.g. Grace Community Church"
+                className="rounded-full border border-gray-300 px-4 py-3 text-foreground outline-none transition-shadow duration-200 focus:border-[#5CE1A5] focus:ring-1 focus:ring-[#5CE1A5] focus:shadow-md focus:shadow-[#5CE1A5]/10"
+              />
+            </label>
+
+            <div className="mt-8 flex justify-center">
+              <PrimaryButton
+                onClick={() => {
+                  if (!organizationName.trim()) {
+                    setError("Organization name is required.");
+                    return;
+                  }
+                  setError(null);
+                  setCreateStep("account");
+                }}
               >
-                {plan.badge && (
-                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-[#5CE1A5] px-3 py-0.5 text-xs font-semibold text-[#060C09]">
-                    {plan.badge}
-                  </span>
-                )}
-                <h3
-                  className="text-lg font-bold text-foreground"
-                  style={{
-                    fontFamily: "var(--font-poppins), system-ui, sans-serif",
-                  }}
-                >
-                  {plan.name}
-                </h3>
-                <p
-                  className="mt-2 text-3xl font-bold text-foreground"
-                  style={{
-                    fontFamily: "var(--font-poppins), system-ui, sans-serif",
-                  }}
-                >
-                  ${plan.price}
-                  <span className="text-sm font-normal text-gray-400">
-                    /mo
-                  </span>
-                </p>
-                <ul
-                  className="mt-4 space-y-2 text-sm text-gray-600"
-                  style={{
-                    fontFamily:
-                      "var(--font-source-sans), system-ui, sans-serif",
-                  }}
-                >
-                  <li>{plan.seats} team seats</li>
-                  <li>{plan.members} members</li>
-                </ul>
-              </div>
-            ))}
-          </div>
+                Continue
+              </PrimaryButton>
+            </div>
 
-          <div className="mt-8 flex justify-center">
-            <button
-              onClick={() => setCreateStep("org-name")}
-              className="h-12 w-full max-w-xs rounded-full bg-[#5CE1A5] font-semibold text-[#060C09] transition-colors hover:bg-[#A0F1C8]"
-              style={{
-                fontFamily: "var(--font-poppins), system-ui, sans-serif",
-              }}
-            >
-              Continue
-            </button>
+            {error && <ErrorMessage message={error} />}
           </div>
-        </div>
-      );
-    }
+        );
+      }
 
-    if (createStep === "org-name") {
+      // createStep === "account"
       return (
         <div className="w-full max-w-md">
           <BackButton onClick={handleBack} />
           <h2
-            className="mb-2 text-center text-2xl font-bold text-foreground"
-            style={{ fontFamily: "var(--font-poppins), system-ui, sans-serif" }}
+            className="mb-8 text-center text-2xl font-bold text-foreground"
+            style={{
+              fontFamily: "var(--font-poppins), system-ui, sans-serif",
+            }}
           >
-            Name Your Organization
+            Create Your Account
           </h2>
-          <p
-            className="mb-8 text-center text-sm text-gray-500"
-            style={{
-              fontFamily: "var(--font-source-sans), system-ui, sans-serif",
-            }}
-          >
-            This is how your church or ministry will appear in Atlas.
-          </p>
-
-          <label
-            className="flex flex-col gap-1.5"
-            style={{
-              fontFamily: "var(--font-source-sans), system-ui, sans-serif",
-            }}
-          >
-            <span className="text-sm font-semibold text-foreground">
-              Organization Name
-            </span>
-            <input
-              type="text"
-              value={organizationName}
-              onChange={(e) => setOrganizationName(e.target.value)}
-              placeholder="e.g. Grace Community Church"
-              className="rounded-full border border-gray-300 px-4 py-3 text-foreground outline-none focus:border-[#5CE1A5] focus:ring-1 focus:ring-[#5CE1A5]"
-            />
-          </label>
-
-          <div className="mt-8 flex justify-center">
-            <button
-              onClick={() => {
-                if (!organizationName.trim()) {
-                  setError("Organization name is required.");
-                  return;
-                }
-                setError(null);
-                setCreateStep("account");
-              }}
-              className="h-12 w-full rounded-full bg-[#5CE1A5] font-semibold text-[#060C09] transition-colors hover:bg-[#A0F1C8]"
-              style={{
-                fontFamily: "var(--font-poppins), system-ui, sans-serif",
-              }}
-            >
-              Continue
-            </button>
-          </div>
-
-          {error && <ErrorMessage message={error} />}
+          <AccountFields
+            firstName={firstName}
+            setFirstName={setFirstName}
+            lastName={lastName}
+            setLastName={setLastName}
+            email={email}
+            setEmail={setEmail}
+            password={password}
+            setPassword={setPassword}
+            confirmPassword={confirmPassword}
+            setConfirmPassword={setConfirmPassword}
+            error={error}
+            submitting={submitting}
+            onSubmit={handleSubmit}
+          />
         </div>
       );
     }
 
-    // createStep === "account"
-    return (
-      <div className="w-full max-w-md">
-        <BackButton onClick={handleBack} />
-        <h2
-          className="mb-8 text-center text-2xl font-bold text-foreground"
-          style={{ fontFamily: "var(--font-poppins), system-ui, sans-serif" }}
-        >
-          Create Your Account
-        </h2>
-        <AccountFields
-          firstName={firstName}
-          setFirstName={setFirstName}
-          lastName={lastName}
-          setLastName={setLastName}
-          email={email}
-          setEmail={setEmail}
-          password={password}
-          setPassword={setPassword}
-          confirmPassword={confirmPassword}
-          setConfirmPassword={setConfirmPassword}
-          error={error}
-          submitting={submitting}
-          onSubmit={handleSubmit}
-        />
-      </div>
-    );
-  }
+    // ── Join org flow ──
+    if (flow === "join") {
+      if (joinStep === "org-id") {
+        return (
+          <div className="w-full max-w-md">
+            <BackButton onClick={handleBack} />
+            <h2
+              className="mb-2 text-center text-2xl font-bold text-foreground"
+              style={{
+                fontFamily: "var(--font-poppins), system-ui, sans-serif",
+              }}
+            >
+              Join an Organization
+            </h2>
+            <p
+              className="mb-8 text-center text-sm text-gray-500"
+              style={{
+                fontFamily: "var(--font-source-sans), system-ui, sans-serif",
+              }}
+            >
+              Enter the Organization ID shared by your admin.
+            </p>
 
-  // ── Join org flow ──
-  if (flow === "join") {
-    if (joinStep === "org-id") {
+            <label
+              className="flex flex-col gap-1.5"
+              style={{
+                fontFamily: "var(--font-source-sans), system-ui, sans-serif",
+              }}
+            >
+              <span className="text-sm font-semibold text-foreground">
+                Organization ID
+              </span>
+              <input
+                type="text"
+                value={organizationId}
+                onChange={(e) => setOrganizationId(e.target.value)}
+                placeholder="e.g. org_abc123"
+                className="rounded-full border border-gray-300 px-4 py-3 text-foreground outline-none transition-shadow duration-200 focus:border-[#5CE1A5] focus:ring-1 focus:ring-[#5CE1A5] focus:shadow-md focus:shadow-[#5CE1A5]/10"
+              />
+            </label>
+
+            <div className="mt-8 flex justify-center">
+              <PrimaryButton
+                onClick={() => {
+                  if (!organizationId.trim()) {
+                    setError("Organization ID is required.");
+                    return;
+                  }
+                  setError(null);
+                  setJoinStep("account");
+                }}
+              >
+                Continue
+              </PrimaryButton>
+            </div>
+
+            {error && <ErrorMessage message={error} />}
+          </div>
+        );
+      }
+
+      // joinStep === "account"
       return (
         <div className="w-full max-w-md">
           <BackButton onClick={handleBack} />
           <h2
-            className="mb-2 text-center text-2xl font-bold text-foreground"
-            style={{ fontFamily: "var(--font-poppins), system-ui, sans-serif" }}
+            className="mb-8 text-center text-2xl font-bold text-foreground"
+            style={{
+              fontFamily: "var(--font-poppins), system-ui, sans-serif",
+            }}
           >
-            Join an Organization
+            Create Your Account
           </h2>
-          <p
-            className="mb-8 text-center text-sm text-gray-500"
-            style={{
-              fontFamily: "var(--font-source-sans), system-ui, sans-serif",
-            }}
-          >
-            Enter the Organization ID shared by your admin.
-          </p>
-
-          <label
-            className="flex flex-col gap-1.5"
-            style={{
-              fontFamily: "var(--font-source-sans), system-ui, sans-serif",
-            }}
-          >
-            <span className="text-sm font-semibold text-foreground">
-              Organization ID
-            </span>
-            <input
-              type="text"
-              value={organizationId}
-              onChange={(e) => setOrganizationId(e.target.value)}
-              placeholder="e.g. org_abc123"
-              className="rounded-full border border-gray-300 px-4 py-3 text-foreground outline-none focus:border-[#5CE1A5] focus:ring-1 focus:ring-[#5CE1A5]"
-            />
-          </label>
-
-          <div className="mt-8 flex justify-center">
-            <button
-              onClick={() => {
-                if (!organizationId.trim()) {
-                  setError("Organization ID is required.");
-                  return;
-                }
-                setError(null);
-                setJoinStep("account");
-              }}
-              className="h-12 w-full rounded-full bg-[#5CE1A5] font-semibold text-[#060C09] transition-colors hover:bg-[#A0F1C8]"
-              style={{
-                fontFamily: "var(--font-poppins), system-ui, sans-serif",
-              }}
-            >
-              Continue
-            </button>
-          </div>
-
-          {error && <ErrorMessage message={error} />}
+          <AccountFields
+            firstName={firstName}
+            setFirstName={setFirstName}
+            lastName={lastName}
+            setLastName={setLastName}
+            email={email}
+            setEmail={setEmail}
+            password={password}
+            setPassword={setPassword}
+            confirmPassword={confirmPassword}
+            setConfirmPassword={setConfirmPassword}
+            error={error}
+            submitting={submitting}
+            onSubmit={handleSubmit}
+          />
         </div>
       );
     }
 
-    // joinStep === "account"
-    return (
-      <div className="w-full max-w-md">
-        <BackButton onClick={handleBack} />
-        <h2
-          className="mb-8 text-center text-2xl font-bold text-foreground"
-          style={{ fontFamily: "var(--font-poppins), system-ui, sans-serif" }}
-        >
-          Create Your Account
-        </h2>
-        <AccountFields
-          firstName={firstName}
-          setFirstName={setFirstName}
-          lastName={lastName}
-          setLastName={setLastName}
-          email={email}
-          setEmail={setEmail}
-          password={password}
-          setPassword={setPassword}
-          confirmPassword={confirmPassword}
-          setConfirmPassword={setConfirmPassword}
-          error={error}
-          submitting={submitting}
-          onSubmit={handleSubmit}
-        />
-      </div>
-    );
+    return null;
   }
 
-  return null;
+  return <StepTransition stepKey={stepKey}>{renderStep()}</StepTransition>;
 }
 
 // ── Shared sub-components ──
+
+function PrimaryButton({
+  onClick,
+  disabled,
+  children,
+}: {
+  onClick: () => void;
+  disabled?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className="h-12 w-full max-w-xs rounded-full bg-[#5CE1A5] font-semibold text-[#060C09] transition-all duration-200 hover:bg-[#A0F1C8] hover:shadow-lg hover:shadow-[#5CE1A5]/20 active:scale-[0.97] disabled:opacity-50"
+      style={{ fontFamily: "var(--font-poppins), system-ui, sans-serif" }}
+    >
+      {children}
+    </button>
+  );
+}
 
 function ChoiceCard({
   title,
@@ -427,7 +498,7 @@ function ChoiceCard({
   return (
     <button
       onClick={onClick}
-      className="flex flex-col items-start rounded-2xl border-2 border-gray-200 p-6 text-left transition-all hover:border-[#5CE1A5] hover:shadow-md"
+      className="flex flex-col items-start rounded-2xl border-2 border-gray-200 p-6 text-left transition-all duration-200 hover:border-[#5CE1A5] hover:shadow-lg hover:shadow-[#5CE1A5]/10 active:scale-[0.98]"
     >
       <h3
         className="text-lg font-bold text-foreground"
@@ -451,7 +522,7 @@ function BackButton({ onClick }: { onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      className="mb-6 flex items-center gap-1 text-sm text-gray-500 transition-colors hover:text-foreground"
+      className="mb-6 flex items-center gap-1 text-sm text-gray-500 transition-all duration-200 hover:text-foreground hover:-translate-x-0.5"
       style={{ fontFamily: "var(--font-source-sans), system-ui, sans-serif" }}
     >
       <svg
@@ -476,7 +547,7 @@ function BackButton({ onClick }: { onClick: () => void }) {
 
 function ErrorMessage({ message }: { message: string }) {
   return (
-    <div className="mt-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">
+    <div className="mt-4 animate-fade-in rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">
       {message}
     </div>
   );
@@ -515,7 +586,7 @@ function AccountFields({
     fontFamily: "var(--font-source-sans), system-ui, sans-serif",
   };
   const inputClasses =
-    "rounded-full border border-gray-300 px-4 py-3 text-foreground outline-none focus:border-[#5CE1A5] focus:ring-1 focus:ring-[#5CE1A5]";
+    "rounded-full border border-gray-300 px-4 py-3 text-foreground outline-none transition-shadow duration-200 focus:border-[#5CE1A5] focus:ring-1 focus:ring-[#5CE1A5] focus:shadow-md focus:shadow-[#5CE1A5]/10";
 
   return (
     <div className="flex flex-col gap-5">
@@ -583,14 +654,9 @@ function AccountFields({
         />
       </label>
 
-      <button
-        onClick={onSubmit}
-        disabled={submitting}
-        className="h-12 rounded-full bg-[#5CE1A5] font-semibold text-[#060C09] transition-colors hover:bg-[#A0F1C8] disabled:opacity-50"
-        style={{ fontFamily: "var(--font-poppins), system-ui, sans-serif" }}
-      >
+      <PrimaryButton onClick={onSubmit} disabled={submitting}>
         {submitting ? "Creating account..." : "Create Account"}
-      </button>
+      </PrimaryButton>
     </div>
   );
 }
