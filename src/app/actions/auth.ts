@@ -37,22 +37,24 @@ export async function signUp(data: {
   password: string;
   firstName: string;
   lastName: string;
-  organizationName?: string;
-  organizationId?: string;
-  plan?: string;
+  organizationName: string;
 }): Promise<AuthState> {
   const supabase = await createClient();
+
+  const fullName = `${data.firstName} ${data.lastName}`;
+  const organizationSlug = data.organizationName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
 
   const { error } = await supabase.auth.signUp({
     email: data.email,
     password: data.password,
     options: {
       data: {
-        first_name: data.firstName,
-        last_name: data.lastName,
+        full_name: fullName,
         organization_name: data.organizationName,
-        organization_id: data.organizationId,
-        plan: data.plan,
+        organization_slug: organizationSlug,
       },
     },
   });
@@ -62,4 +64,10 @@ export async function signUp(data: {
   }
 
   redirect("/dashboard");
+}
+
+export async function signOut(): Promise<void> {
+  const supabase = await createClient();
+  await supabase.auth.signOut();
+  redirect("/login");
 }

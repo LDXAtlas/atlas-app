@@ -5,6 +5,8 @@
   --foreground: #333333;
   --mint: #5CE1A5;
   --mint-light: #A0F1C8;
+  --dark: #060C09;
+  --light-text: #EEF9F3;
 }
 
 @theme inline {
@@ -12,6 +14,8 @@
   --color-foreground: var(--foreground);
   --color-mint: var(--mint);
   --color-mint-light: var(--mint-light);
+  --color-dark: var(--dark);
+  --color-light-text: var(--light-text);
   --font-poppins: var(--font-poppins);
   --font-source-sans: var(--font-source-sans);
 }

@@ -4,7 +4,7 @@ import { createServerClient } from "@supabase/ssr";
 const authPages = ["/login", "/signup"];
 const publicPaths = ["/", "/login", "/signup", "/auth/callback"];
 
-export async function proxy(request: NextRequest) {
+export default async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   let response = NextResponse.next({

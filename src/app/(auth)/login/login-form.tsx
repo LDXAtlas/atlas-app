@@ -15,7 +15,9 @@ export function LoginForm() {
         className="text-center text-2xl font-bold text-foreground"
         style={{ fontFamily: "var(--font-poppins), system-ui, sans-serif" }}
       >
-        Welcome Back
+        Welcome back.{" "}
+        <br />
+        Your ministry <span className="text-mint">is waiting.</span>
       </h1>
 
       {state.error && (
@@ -34,7 +36,7 @@ export function LoginForm() {
           name="email"
           required
           placeholder="you@example.com"
-          className="rounded-full border border-gray-300 px-4 py-3 text-foreground outline-none transition-shadow duration-200 focus:border-[#5CE1A5] focus:ring-1 focus:ring-[#5CE1A5] focus:shadow-md focus:shadow-[#5CE1A5]/10"
+          className="rounded-full border border-gray-300 px-4 py-3 text-foreground outline-none transition-shadow duration-200 focus:border-mint focus:ring-1 focus:ring-mint focus:shadow-md focus:shadow-mint/10"
         />
       </label>
 
@@ -48,14 +50,14 @@ export function LoginForm() {
           name="password"
           required
           placeholder="Your password"
-          className="rounded-full border border-gray-300 px-4 py-3 text-foreground outline-none transition-shadow duration-200 focus:border-[#5CE1A5] focus:ring-1 focus:ring-[#5CE1A5] focus:shadow-md focus:shadow-[#5CE1A5]/10"
+          className="rounded-full border border-gray-300 px-4 py-3 text-foreground outline-none transition-shadow duration-200 focus:border-mint focus:ring-1 focus:ring-mint focus:shadow-md focus:shadow-mint/10"
         />
       </label>
 
       <button
         type="submit"
         disabled={pending}
-        className="h-12 rounded-full bg-[#5CE1A5] font-semibold text-[#060C09] transition-all duration-200 hover:bg-[#A0F1C8] hover:shadow-lg hover:shadow-[#5CE1A5]/20 active:scale-[0.97] disabled:opacity-50"
+        className="h-12 rounded-full bg-mint font-semibold text-dark transition-all duration-200 hover:bg-mint-light hover:shadow-lg hover:shadow-mint/20 active:scale-[0.97] disabled:opacity-50"
         style={{ fontFamily: "var(--font-poppins), system-ui, sans-serif" }}
       >
         {pending ? "Signing in..." : "Sign In"}
@@ -68,7 +70,7 @@ export function LoginForm() {
         Don&apos;t have an account?{" "}
         <Link
           href="/signup"
-          className="font-semibold text-[#5CE1A5] transition-colors duration-200 hover:text-[#A0F1C8]"
+          className="font-semibold text-mint transition-colors duration-200 hover:text-mint-light"
         >
           Create one
         </Link>
