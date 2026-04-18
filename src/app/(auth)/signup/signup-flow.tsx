@@ -199,11 +199,11 @@ export function SignupFlow() {
       {/* Terms and Privacy Policy Text */}
       <p className="text-xs text-gray-500" style={fontBody}>
         By creating an account you agree to our{" "}
-        <Link href="/terms" className="font-semibold text-mint transition-colors hover:underline">
+        <Link href="https://www.atlaschurchsolutions.com/legal.html#tos" className="font-semibold text-mint transition-colors hover:underline">
           Terms of Service
         </Link>{" "}
         and{" "}
-        <Link href="/privacy" className="font-semibold text-mint transition-colors hover:underline">
+        <Link href="https://www.atlaschurchsolutions.com/legal.html#privacy-policy" className="font-semibold text-mint transition-colors hover:underline">
           Privacy Policy
         </Link>.
       </p>
