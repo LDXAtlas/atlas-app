@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { getAllocationsForTier } from "@/lib/tier-allocations";
 
 export async function completeOnboarding(tier: string, customerId: string) {
   console.log("=== ONBOARDING SUCCESS DEBUG ===");
@@ -44,6 +45,7 @@ export async function completeOnboarding(tier: string, customerId: string) {
       .update({
         subscription_tier: tier,
         stripe_customer_id: customerId,
+        ...getAllocationsForTier(tier),
       })
       .eq("slug", organizationSlug)
       .select();
@@ -59,6 +61,7 @@ export async function completeOnboarding(tier: string, customerId: string) {
         .update({
           subscription_tier: tier,
           stripe_customer_id: customerId,
+          ...getAllocationsForTier(tier),
         })
         .eq("owner_id", user.id)
         .select();
@@ -74,6 +77,7 @@ export async function completeOnboarding(tier: string, customerId: string) {
       .update({
         subscription_tier: tier,
         stripe_customer_id: customerId,
+        ...getAllocationsForTier(tier),
       })
       .eq("owner_id", user.id)
       .select();

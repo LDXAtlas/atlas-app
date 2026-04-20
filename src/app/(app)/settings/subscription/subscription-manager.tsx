@@ -48,9 +48,11 @@ const TIERS: Record<string, TierInfo> = {
 interface SubscriptionManagerProps {
   currentTier: string | null;
   hasStripeCustomer: boolean;
+  seatLimit?: number;
+  aiCreditsLimit?: number;
 }
 
-export function SubscriptionManager({ currentTier, hasStripeCustomer }: SubscriptionManagerProps) {
+export function SubscriptionManager({ currentTier, hasStripeCustomer, seatLimit = 5, aiCreditsLimit = 500 }: SubscriptionManagerProps) {
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
@@ -152,7 +154,7 @@ export function SubscriptionManager({ currentTier, hasStripeCustomer }: Subscrip
                 Seats
               </div>
               <p className="text-[#2D333A] text-[18px] font-semibold" style={{ fontFamily: "var(--font-poppins)" }}>
-                1 <span className="text-[#6B7280] text-[13px] font-normal">/ {tierInfo.seats}</span>
+                1 <span className="text-[#6B7280] text-[13px] font-normal">/ {seatLimit}</span>
               </p>
             </div>
             <div className="bg-[#F4F5F7] rounded-xl p-4">
@@ -161,7 +163,7 @@ export function SubscriptionManager({ currentTier, hasStripeCustomer }: Subscrip
                 AI Credits
               </div>
               <p className="text-[#2D333A] text-[18px] font-semibold" style={{ fontFamily: "var(--font-poppins)" }}>
-                0 <span className="text-[#6B7280] text-[13px] font-normal">/ {tierInfo.credits}</span>
+                0 <span className="text-[#6B7280] text-[13px] font-normal">/ {aiCreditsLimit.toLocaleString()}</span>
               </p>
             </div>
             <div className="bg-[#F4F5F7] rounded-xl p-4">

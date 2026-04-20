@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe";
+import { getAllocationsForTier } from "@/lib/tier-allocations";
 
 function getTierFromPriceId(priceId: string): string | null {
   if (priceId === process.env.STRIPE_PRICE_WORKSPACE) return "workspace";
@@ -74,18 +75,22 @@ export async function syncWithStripe(): Promise<{ success: boolean; tier: string
     return { success: false, tier: null, error: `Unknown price ID: ${priceId}` };
   }
 
-  // Update organizations table
+  // Update organizations table with tier and allocations
+  const allocations = getAllocationsForTier(tier);
+  const updateData = { subscription_tier: tier, ...allocations };
+  console.log("Update data:", updateData);
+
   if (orgSlug) {
     const { error: orgError } = await supabaseAdmin
       .from("organizations")
-      .update({ subscription_tier: tier })
+      .update(updateData)
       .eq("slug", orgSlug);
 
     console.log("Org update by slug:", orgError ? `ERROR: ${orgError.message}` : "SUCCESS");
   } else {
     const { error: orgError } = await supabaseAdmin
       .from("organizations")
-      .update({ subscription_tier: tier })
+      .update(updateData)
       .eq("owner_id", user.id);
 
     console.log("Org update by owner_id:", orgError ? `ERROR: ${orgError.message}` : "SUCCESS");

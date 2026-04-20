@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export default async function ServeLayout({
   children,
@@ -18,13 +19,16 @@ export default async function ServeLayout({
   const organizationSlug = user.user_metadata?.organization_slug;
 
   if (organizationSlug) {
-    const { data: org } = await supabase
+    // Use admin client to bypass RLS
+    const { data: org } = await supabaseAdmin
       .from("organizations")
       .select("subscription_tier")
       .eq("slug", organizationSlug)
       .single();
 
-    if (org?.subscription_tier === "workspace") {
+    const tier = org?.subscription_tier?.trim().toLowerCase();
+
+    if (!tier || tier === "workspace") {
       redirect("/upgrade/serve");
     }
   }

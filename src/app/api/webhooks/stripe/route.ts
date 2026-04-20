@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { stripe } from "@/lib/stripe";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { getAllocationsForTier } from "@/lib/tier-allocations";
 import type Stripe from "stripe";
 
 export async function POST(request: Request) {
@@ -55,7 +56,8 @@ export async function POST(request: Request) {
           },
         });
 
-        // Update organizations table
+        // Update organizations table with tier + allocations
+        const allocations = getAllocationsForTier(tier);
         if (organizationId) {
           // Try by slug first
           const { data } = await supabaseAdmin
@@ -63,6 +65,7 @@ export async function POST(request: Request) {
             .update({
               subscription_tier: tier,
               stripe_customer_id: customerId,
+              ...allocations,
             })
             .eq("slug", organizationId)
             .select();
@@ -74,6 +77,7 @@ export async function POST(request: Request) {
               .update({
                 subscription_tier: tier,
                 stripe_customer_id: customerId,
+                ...allocations,
               })
               .eq("owner_id", userId);
           }
@@ -98,10 +102,11 @@ export async function POST(request: Request) {
         console.log("SUBSCRIPTION UPDATED — priceId:", priceId, "→ tier:", tier);
 
         if (tier) {
-          // Update organizations table by stripe_customer_id
+          // Update organizations table by stripe_customer_id with allocations
+          const allocations = getAllocationsForTier(tier);
           const { data: orgData, error: orgError } = await supabaseAdmin
             .from("organizations")
-            .update({ subscription_tier: tier })
+            .update({ subscription_tier: tier, ...allocations })
             .eq("stripe_customer_id", customerId)
             .select();
 
