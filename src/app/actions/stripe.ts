@@ -25,6 +25,13 @@ export async function createCheckoutSession(tier: StripeTier) {
   const organizationId =
     user.user_metadata?.organization_slug || user.id;
 
+  // Check for existing Stripe customer to avoid duplicates
+  const existingCustomers = await stripe.customers.list({
+    email: user.email!,
+    limit: 1,
+  });
+  const existingCustomer = existingCustomers.data[0];
+
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
     line_items: [
@@ -36,7 +43,9 @@ export async function createCheckoutSession(tier: StripeTier) {
     subscription_data: {
       trial_period_days: 30,
     },
-    customer_email: user.email,
+    ...(existingCustomer
+      ? { customer: existingCustomer.id }
+      : { customer_email: user.email! }),
     success_url: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/onboarding/success?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/onboarding/select-plan`,
     metadata: {
@@ -67,9 +76,49 @@ export async function createBillingPortalSession() {
     redirect("/settings");
   }
 
+  const returnUrl = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/settings/subscription`;
+
+  // Create a portal configuration with plan switching enabled
+  const configuration = await stripe.billingPortal.configurations.create({
+    business_profile: {
+      headline: "Manage your Atlas subscription",
+    },
+    features: {
+      subscription_update: {
+        enabled: true,
+        default_allowed_updates: ["price"],
+        products: [
+          {
+            product: process.env.STRIPE_PRODUCT_WORKSPACE || "",
+            prices: [process.env.STRIPE_PRICE_WORKSPACE!],
+          },
+          {
+            product: process.env.STRIPE_PRODUCT_SUITE || "",
+            prices: [process.env.STRIPE_PRICE_SUITE!],
+          },
+          {
+            product: process.env.STRIPE_PRODUCT_ULTIMATE || "",
+            prices: [process.env.STRIPE_PRICE_ULTIMATE!],
+          },
+        ],
+      },
+      subscription_cancel: {
+        enabled: true,
+        mode: "at_period_end",
+      },
+      payment_method_update: {
+        enabled: true,
+      },
+      invoice_history: {
+        enabled: true,
+      },
+    },
+  });
+
   const session = await stripe.billingPortal.sessions.create({
     customer: stripeCustomerId,
-    return_url: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/settings`,
+    configuration: configuration.id,
+    return_url: returnUrl,
   });
 
   redirect(session.url);

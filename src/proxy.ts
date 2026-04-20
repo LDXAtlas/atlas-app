@@ -7,6 +7,11 @@ const publicPaths = ["/", "/login", "/signup", "/auth/callback"];
 export default async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // Let API routes through without auth — webhooks have no session
+  if (pathname.startsWith("/api/")) {
+    return NextResponse.next();
+  }
+
   let response = NextResponse.next({
     request: { headers: request.headers },
   });

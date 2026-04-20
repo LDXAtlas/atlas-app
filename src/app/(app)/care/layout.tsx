@@ -1,11 +1,8 @@
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { AppShell } from "./_components/shell";
 
-export type SubscriptionTier = "workspace" | "suite" | "ultimate";
-
-export default async function AppLayout({
+export default async function CareLayout({
   children,
 }: {
   children: React.ReactNode;
@@ -16,15 +13,8 @@ export default async function AppLayout({
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) {
-    redirect("/login");
-  }
+  if (!user) redirect("/login");
 
-  const userName =
-    user.user_metadata?.full_name || user.email || "User";
-
-  // Fetch organization subscription tier
-  let tier: SubscriptionTier | null = null;
   const organizationSlug = user.user_metadata?.organization_slug;
 
   if (organizationSlug) {
@@ -34,14 +24,10 @@ export default async function AppLayout({
       .eq("slug", organizationSlug)
       .single();
 
-    if (org?.subscription_tier) {
-      tier = org.subscription_tier as SubscriptionTier;
+    if (org?.subscription_tier === "workspace") {
+      redirect("/upgrade/care");
     }
   }
 
-  return (
-    <AppShell userName={userName} tier={tier}>
-      {children}
-    </AppShell>
-  );
+  return <>{children}</>;
 }

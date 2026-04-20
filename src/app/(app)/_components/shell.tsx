@@ -30,12 +30,22 @@ import {
   UserPlus,
   ClipboardCheck,
   FileText,
+  Crown,
+  Rocket,
 } from "lucide-react";
 
 // ─── Atlas AI Gradient Constants ─────────────────────────
 const AI_GRADIENT = "linear-gradient(135deg, #5CE1A5, #8B5CF6)";
 const AI_FROM = "#5CE1A5";
 const AI_TO = "#8B5CF6";
+
+// ─── Tier Icons & Colors ─────────────────────────────────
+// Workspace = Zap (lightning) in mint, Suite = Rocket in blue, Ultimate = Crown in orange
+const TIER_CONFIG = {
+  workspace: { icon: Zap, color: "#5CE1A5", label: "Workspace" },
+  suite: { icon: Rocket, color: "#3B82F6", label: "Suite" },
+  ultimate: { icon: Crown, color: "#F97316", label: "Ultimate" },
+} as const;
 
 // ─── Types ───────────────────────────────────────────────
 interface NavItem {
@@ -138,6 +148,9 @@ const pageTitles: Record<string, string> = {
   "/directory": "Directory",
   "/settings": "Settings",
   "/settings/subscription": "Subscription",
+  "/upgrade/serve": "Upgrade to Suite",
+  "/upgrade/care": "Upgrade to Suite",
+  "/upgrade/workflows": "Upgrade to Ultimate",
 };
 
 // ─── Helpers ─────────────────────────────────────────────
@@ -167,13 +180,43 @@ function getBreadcrumbs(pathname: string): { label: string; href: string }[] {
   return [{ label: "Dashboard", href: "/dashboard" }];
 }
 
+// ─── Tier Gating ────────────────────────────────────────
+type SubscriptionTier = "workspace" | "suite" | "ultimate" | null;
+
+function isModuleLocked(moduleId: string, tier: SubscriptionTier): boolean {
+  if (tier === "ultimate") return false;
+  if (tier === "suite") return false; // suite unlocks serve + care
+  // workspace or null: serve and care are locked
+  if (moduleId === "serve" || moduleId === "care") return true;
+  return false;
+}
+
+function isItemLocked(itemHref: string, tier: SubscriptionTier): boolean {
+  if (tier === "ultimate") return false;
+  // Workflows locked for workspace, suite, and null
+  if (itemHref === "/atlas-ai/workflows") return true;
+  return false;
+}
+
+function getRequiredTier(moduleId: string, itemHref?: string): "suite" | "ultimate" {
+  if (itemHref === "/atlas-ai/workflows") return "ultimate";
+  if (moduleId === "serve" || moduleId === "care") return "suite";
+  return "suite";
+}
+
+function getUpgradePath(moduleId: string, itemHref?: string): string {
+  if (itemHref === "/atlas-ai/workflows") return "/upgrade/workflows";
+  return `/upgrade/${moduleId}`;
+}
+
 // ─── Shell ───────────────────────────────────────────────
 interface AppShellProps {
   userName: string;
+  tier: SubscriptionTier;
   children: React.ReactNode;
 }
 
-export function AppShell({ userName, children }: AppShellProps) {
+export function AppShell({ userName, tier, children }: AppShellProps) {
   const [collapsed, setCollapsed] = useState(false);
   const pathname = usePathname();
   const breadcrumbs = getBreadcrumbs(pathname);
@@ -255,6 +298,7 @@ export function AppShell({ userName, children }: AppShellProps) {
               onToggle={() => toggleModule(mod.id)}
               pathname={pathname}
               collapsed={collapsed}
+              tier={tier}
             />
           ))}
 
@@ -383,19 +427,22 @@ function ModuleSection({
   onToggle,
   pathname,
   collapsed,
+  tier,
 }: {
   module: ModuleGroup;
   isOpen: boolean;
   onToggle: () => void;
   pathname: string;
   collapsed: boolean;
+  tier: SubscriptionTier;
 }) {
   const hasActivePage = mod.items.some(
     (item) => pathname === item.href || pathname.startsWith(item.href + "/")
   );
   const isAI = mod.isAI;
+  const locked = isModuleLocked(mod.id, tier);
   // Highlight the module header when it's open OR has an active sub-page
-  const isHighlighted = isOpen || hasActivePage;
+  const isHighlighted = !locked && (isOpen || hasActivePage);
 
   return (
     <div className="relative">
@@ -408,74 +455,118 @@ function ModuleSection({
       )}
 
       {/* Module header */}
-      <button
-        onClick={onToggle}
-        className={`flex items-center w-full px-4 py-3 gap-3 rounded-xl transition-all duration-200 group ${
-          collapsed ? "justify-center px-2" : ""
-        } ${isHighlighted ? "" : "text-[#6B7280] hover:bg-gray-50"}`}
-        style={
-          isHighlighted
-            ? { backgroundColor: isAI ? `${AI_FROM}06` : `${mod.color}0A` }
-            : undefined
-        }
-      >
-        <div
-          className="size-7 shrink-0 rounded-lg flex items-center justify-center transition-all duration-200"
+      {locked ? (() => {
+        const required = getRequiredTier(mod.id);
+        const tierConf = TIER_CONFIG[required];
+        const TierIcon = tierConf.icon;
+        return (
+          <Link
+            href={getUpgradePath(mod.id)}
+            className={`flex items-center w-full px-4 py-3 gap-3 rounded-xl transition-all duration-200 group ${
+              collapsed ? "justify-center px-2" : ""
+            } text-[#9CA3AF] hover:bg-gray-50`}
+            style={{ opacity: 0.55 }}
+          >
+            <div className="size-7 shrink-0 rounded-lg flex items-center justify-center" style={{ color: "#9CA3AF" }}>
+              <div className="size-5">
+                {mod.icon}
+              </div>
+            </div>
+            {!collapsed && (
+              <>
+                <span
+                  className="text-[13px] flex-1 text-left whitespace-nowrap overflow-hidden"
+                  style={{ fontFamily: "var(--font-poppins)", fontWeight: 500 }}
+                >
+                  {mod.label}
+                </span>
+                <div className="flex items-center gap-1">
+                  <TierIcon className="size-3" style={{ color: tierConf.color }} />
+                  <span
+                    className="text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-md"
+                    style={{
+                      fontFamily: "var(--font-poppins)",
+                      color: tierConf.color,
+                      backgroundColor: `${tierConf.color}10`,
+                    }}
+                  >
+                    {tierConf.label}
+                  </span>
+                </div>
+              </>
+            )}
+          </Link>
+        );
+      })() : (
+        <button
+          onClick={onToggle}
+          className={`flex items-center w-full px-4 py-3 gap-3 rounded-xl transition-all duration-200 group ${
+            collapsed ? "justify-center px-2" : ""
+          } ${isHighlighted ? "" : "text-[#6B7280] hover:bg-gray-50"}`}
           style={
             isHighlighted
-              ? isAI
-                ? { background: `linear-gradient(135deg, ${AI_FROM}14, ${AI_TO}14)` }
-                : { backgroundColor: `${mod.color}14`, color: mod.color }
-              : { color: "#6B7280" }
+              ? { backgroundColor: isAI ? `${AI_FROM}06` : `${mod.color}0A` }
+              : undefined
           }
         >
           <div
-            className="size-5"
+            className="size-7 shrink-0 rounded-lg flex items-center justify-center transition-all duration-200"
             style={
-              isHighlighted && isAI
-                ? { background: AI_GRADIENT, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" } as React.CSSProperties
-                : isHighlighted
-                ? { color: mod.color }
-                : undefined
+              isHighlighted
+                ? isAI
+                  ? { background: `linear-gradient(135deg, ${AI_FROM}14, ${AI_TO}14)` }
+                  : { backgroundColor: `${mod.color}14`, color: mod.color }
+                : { color: "#6B7280" }
             }
           >
-            {mod.icon}
-          </div>
-        </div>
-        {!collapsed && (
-          <>
-            <span
-              className="text-[13px] flex-1 text-left whitespace-nowrap overflow-hidden"
-              style={{
-                fontFamily: "var(--font-poppins)",
-                fontWeight: isHighlighted ? 600 : 500,
-                ...(isHighlighted && isAI
+            <div
+              className="size-5"
+              style={
+                isHighlighted && isAI
                   ? { background: AI_GRADIENT, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" } as React.CSSProperties
                   : isHighlighted
                   ? { color: mod.color }
-                  : {}),
-              }}
+                  : undefined
+              }
             >
-              {mod.label}
-            </span>
-            <motion.div
-              animate={{ rotate: isOpen ? 90 : 0 }}
-              transition={{ duration: 0.3, ease: [0.23, 1, 0.32, 1] }}
-            >
-              <ChevronRight
-                className="size-4"
+              {mod.icon}
+            </div>
+          </div>
+          {!collapsed && (
+            <>
+              <span
+                className="text-[13px] flex-1 text-left whitespace-nowrap overflow-hidden"
                 style={{
-                  color: isOpen && isAI ? AI_TO : isOpen ? mod.color : "#D1D5DB",
+                  fontFamily: "var(--font-poppins)",
+                  fontWeight: isHighlighted ? 600 : 500,
+                  ...(isHighlighted && isAI
+                    ? { background: AI_GRADIENT, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" } as React.CSSProperties
+                    : isHighlighted
+                    ? { color: mod.color }
+                    : {}),
                 }}
-              />
-            </motion.div>
-          </>
-        )}
-      </button>
+              >
+                {mod.label}
+              </span>
+              <motion.div
+                animate={{ rotate: isOpen ? 90 : 0 }}
+                transition={{ duration: 0.3, ease: [0.23, 1, 0.32, 1] }}
+              >
+                <ChevronRight
+                  className="size-4"
+                  style={{
+                    color: isOpen && isAI ? AI_TO : isOpen ? mod.color : "#D1D5DB",
+                  }}
+                />
+              </motion.div>
+            </>
+          )}
+        </button>
+      )}
 
       {/* Sub-items with smooth height animation */}
       <AnimatePresence initial={false}>
-        {!collapsed && isOpen && (
+        {!collapsed && !locked && isOpen && (
           <motion.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
@@ -489,6 +580,45 @@ function ModuleSection({
             >
               {mod.items.map((item) => {
                 const active = pathname === item.href || pathname.startsWith(item.href + "/");
+                const itemLocked = isItemLocked(item.href, tier);
+
+                if (itemLocked) {
+                  const required = getRequiredTier(mod.id, item.href);
+                  const tierConf = TIER_CONFIG[required];
+                  const TierIcon = tierConf.icon;
+                  return (
+                    <Link
+                      key={item.href}
+                      href={getUpgradePath(mod.id, item.href)}
+                      className="relative flex items-center w-full px-3 py-2 gap-3 rounded-lg text-[13px] overflow-hidden"
+                      style={{ opacity: 0.55 }}
+                    >
+                      <div className="relative size-4 shrink-0 text-[#9CA3AF]">
+                        {item.icon}
+                      </div>
+                      <span
+                        className="relative whitespace-nowrap overflow-hidden flex-1 text-[#9CA3AF]"
+                        style={{ fontFamily: "var(--font-poppins)", fontWeight: 400 }}
+                      >
+                        {item.label}
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <TierIcon className="size-3" style={{ color: tierConf.color }} />
+                        <span
+                          className="text-[9px] font-semibold uppercase tracking-wide px-1 py-0.5 rounded"
+                          style={{
+                            fontFamily: "var(--font-poppins)",
+                            color: tierConf.color,
+                            backgroundColor: `${tierConf.color}10`,
+                          }}
+                        >
+                          {tierConf.label}
+                        </span>
+                      </div>
+                    </Link>
+                  );
+                }
+
                 return (
                   <Link
                     key={item.href}

@@ -15,11 +15,6 @@ export default async function OnboardingLayout({
     redirect("/login");
   }
 
-  // If user already has a subscription tier, send them to dashboard
-  if (user.user_metadata?.subscription_tier) {
-    redirect("/dashboard");
-  }
-
   return (
     <div className="min-h-screen bg-white">
       {children}
