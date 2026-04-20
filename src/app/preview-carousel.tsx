@@ -108,8 +108,8 @@ export function PreviewCarousel() {
       </div>
 
       {/* Gradient fades at top and bottom edges */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-[18%] bg-gradient-to-b from-[#f9fafb] to-transparent" />
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[18%] bg-gradient-to-t from-[#f9fafb] to-transparent" />
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-[18%] bg-gradient-to-b from-surface to-transparent" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[18%] bg-gradient-to-t from-surface to-transparent" />
 
       {/* Dot indicators — anchored to the bottom */}
       <div className="absolute inset-x-0 bottom-6 z-20 flex items-center justify-center gap-2">
@@ -119,7 +119,7 @@ export function PreviewCarousel() {
             className={`h-2 rounded-full transition-all duration-300 ${
               i === current
                 ? "w-6 bg-[#5CE1A5]"
-                : "w-2 bg-gray-300"
+                : "w-2 bg-border"
             }`}
           />
         ))}

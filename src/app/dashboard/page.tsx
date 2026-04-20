@@ -1,37 +1,18 @@
-import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
-import { SignOutButton } from "./sign-out-button";
-
-export default async function DashboardPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/login");
-  }
-
-  const fullName =
-    user.user_metadata?.full_name || user.email || "there";
-
+export default function DashboardPage() {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-white px-4">
-      <h1
-        className="text-3xl font-bold text-foreground"
-        style={{ fontFamily: "var(--font-poppins), system-ui, sans-serif" }}
+    <div>
+      <h2
+        className="text-2xl font-semibold text-foreground"
+        style={{ fontFamily: "var(--font-poppins)" }}
       >
-        Welcome, <span className="text-mint">{fullName}</span>
-      </h1>
+        Dashboard
+      </h2>
       <p
-        className="mt-3 text-gray-500"
-        style={{
-          fontFamily: "var(--font-source-sans), system-ui, sans-serif",
-        }}
+        className="mt-2 text-muted text-[15px]"
+        style={{ fontFamily: "var(--font-source-sans)" }}
       >
-        Your Atlas dashboard is coming soon.
+        Coming soon
       </p>
-      <SignOutButton />
     </div>
   );
 }
