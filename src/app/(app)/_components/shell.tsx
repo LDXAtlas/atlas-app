@@ -137,6 +137,7 @@ const pageTitles: Record<string, string> = {
   "/messages": "Messages",
   "/directory": "Directory",
   "/settings": "Settings",
+  "/settings/subscription": "Subscription",
 };
 
 // ─── Helpers ─────────────────────────────────────────────

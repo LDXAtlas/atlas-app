@@ -63,7 +63,7 @@ export async function signUp(data: {
     return { error: error.message };
   }
 
-  redirect("/dashboard");
+  redirect("/onboarding/select-plan");
 }
 
 export async function signOut(): Promise<void> {
