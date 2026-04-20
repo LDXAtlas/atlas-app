@@ -6,7 +6,7 @@ export default function AuthLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex min-h-screen flex-col items-center bg-background px-4 py-12">
+    <div className="flex min-h-screen flex-col items-center bg-white px-4 py-12">
       <Image
         src="/atlas-logo.png"
         alt="Atlas Church Solutions"
