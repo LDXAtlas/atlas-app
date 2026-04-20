@@ -78,48 +78,83 @@ export async function createBillingPortalSession() {
 
   const returnUrl = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/settings/subscription`;
 
-  // Create a portal configuration with plan switching enabled
-  const configuration = await stripe.billingPortal.configurations.create({
-    business_profile: {
-      headline: "Manage your Atlas subscription",
-    },
-    features: {
-      subscription_update: {
-        enabled: true,
-        default_allowed_updates: ["price"],
-        products: [
-          {
-            product: process.env.STRIPE_PRODUCT_WORKSPACE || "",
-            prices: [process.env.STRIPE_PRICE_WORKSPACE!],
-          },
-          {
-            product: process.env.STRIPE_PRODUCT_SUITE || "",
-            prices: [process.env.STRIPE_PRICE_SUITE!],
-          },
-          {
-            product: process.env.STRIPE_PRODUCT_ULTIMATE || "",
-            prices: [process.env.STRIPE_PRICE_ULTIMATE!],
-          },
-        ],
-      },
-      subscription_cancel: {
-        enabled: true,
-        mode: "at_period_end",
-      },
-      payment_method_update: {
-        enabled: true,
-      },
-      invoice_history: {
-        enabled: true,
-      },
-    },
-  });
+  // Try creating a portal with full plan switching, fall back to basic portal
+  let sessionUrl: string;
 
-  const session = await stripe.billingPortal.sessions.create({
-    customer: stripeCustomerId,
-    configuration: configuration.id,
-    return_url: returnUrl,
-  });
+  try {
+    console.log("=== BILLING PORTAL DEBUG ===");
+    console.log("Customer ID:", stripeCustomerId);
+    console.log("STRIPE_PRODUCT_WORKSPACE:", process.env.STRIPE_PRODUCT_WORKSPACE);
+    console.log("STRIPE_PRODUCT_SUITE:", process.env.STRIPE_PRODUCT_SUITE);
+    console.log("STRIPE_PRODUCT_ULTIMATE:", process.env.STRIPE_PRODUCT_ULTIMATE);
+    console.log("STRIPE_PRICE_WORKSPACE:", process.env.STRIPE_PRICE_WORKSPACE);
+    console.log("STRIPE_PRICE_SUITE:", process.env.STRIPE_PRICE_SUITE);
+    console.log("STRIPE_PRICE_ULTIMATE:", process.env.STRIPE_PRICE_ULTIMATE);
 
-  redirect(session.url);
+    const configuration = await stripe.billingPortal.configurations.create({
+      business_profile: {
+        headline: "Manage your Atlas subscription",
+      },
+      features: {
+        subscription_update: {
+          enabled: true,
+          default_allowed_updates: ["price"],
+          products: [
+            {
+              product: process.env.STRIPE_PRODUCT_WORKSPACE!,
+              prices: [process.env.STRIPE_PRICE_WORKSPACE!],
+            },
+            {
+              product: process.env.STRIPE_PRODUCT_SUITE!,
+              prices: [process.env.STRIPE_PRICE_SUITE!],
+            },
+            {
+              product: process.env.STRIPE_PRODUCT_ULTIMATE!,
+              prices: [process.env.STRIPE_PRICE_ULTIMATE!],
+            },
+          ],
+        },
+        subscription_cancel: {
+          enabled: true,
+          mode: "at_period_end",
+        },
+        payment_method_update: {
+          enabled: true,
+        },
+        invoice_history: {
+          enabled: true,
+        },
+      },
+    });
+
+    console.log("Portal configuration created:", configuration.id);
+
+    const session = await stripe.billingPortal.sessions.create({
+      customer: stripeCustomerId,
+      configuration: configuration.id,
+      return_url: returnUrl,
+    });
+
+    sessionUrl = session.url;
+  } catch (err) {
+    console.error("=== BILLING PORTAL ERROR ===");
+    console.error("Full error:", err);
+    if (err && typeof err === "object" && "message" in err) {
+      console.error("Error message:", (err as { message: string }).message);
+    }
+    if (err && typeof err === "object" && "raw" in err) {
+      console.error("Raw error:", (err as { raw: unknown }).raw);
+    }
+
+    // Fallback: create a basic portal session without custom configuration
+    console.log("Falling back to basic portal session (no plan switching)");
+    const session = await stripe.billingPortal.sessions.create({
+      customer: stripeCustomerId,
+      return_url: returnUrl,
+    });
+
+    sessionUrl = session.url;
+  }
+
+  redirect(sessionUrl);
 }
