@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { createBillingPortalSession } from "@/app/actions/stripe";
-import { Check, CreditCard, Users, Sparkles, Zap, Rocket, Crown } from "lucide-react";
+import { syncWithStripe } from "@/app/actions/sync-stripe";
+import { Check, CreditCard, Users, Sparkles, Zap, Rocket, Crown, RefreshCw } from "lucide-react";
 
 interface TierInfo {
   name: string;
@@ -51,6 +52,8 @@ interface SubscriptionManagerProps {
 
 export function SubscriptionManager({ currentTier, hasStripeCustomer }: SubscriptionManagerProps) {
   const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const tierInfo = currentTier ? TIERS[currentTier] : null;
   const TierIcon = tierInfo?.icon || Zap;
   const tierColor = tierInfo?.color || "#5CE1A5";
@@ -58,6 +61,20 @@ export function SubscriptionManager({ currentTier, hasStripeCustomer }: Subscrip
   async function handleManageSubscription() {
     setLoading(true);
     await createBillingPortalSession();
+  }
+
+  async function handleSync() {
+    setSyncing(true);
+    setSyncMessage(null);
+    const result = await syncWithStripe();
+    setSyncing(false);
+    if (result.success) {
+      setSyncMessage(`Synced — ${result.tier}`);
+      setTimeout(() => setSyncMessage(null), 3000);
+    } else {
+      setSyncMessage(result.error || "Sync failed");
+      setTimeout(() => setSyncMessage(null), 5000);
+    }
   }
 
   return (
@@ -96,15 +113,34 @@ export function SubscriptionManager({ currentTier, hasStripeCustomer }: Subscrip
             </div>
           </div>
           {hasStripeCustomer && (
-            <button
-              onClick={handleManageSubscription}
-              disabled={loading}
-              className="h-10 px-5 rounded-xl text-white text-[13px] font-semibold hover:opacity-90 transition-all disabled:opacity-50"
-              style={{ fontFamily: "var(--font-poppins)", backgroundColor: tierColor }}
-            >
-              <CreditCard className="size-4 inline mr-2" />
-              {loading ? "Loading..." : "Manage Subscription"}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleManageSubscription}
+                disabled={loading}
+                className="h-10 px-5 rounded-xl text-white text-[13px] font-semibold hover:opacity-90 transition-all disabled:opacity-50"
+                style={{ fontFamily: "var(--font-poppins)", backgroundColor: tierColor }}
+              >
+                <CreditCard className="size-4 inline mr-2" />
+                {loading ? "Loading..." : "Manage Subscription"}
+              </button>
+              <button
+                onClick={handleSync}
+                disabled={syncing}
+                className="h-10 px-3 rounded-xl bg-[#F4F5F7] border border-[#E5E7EB] text-[#6B7280] text-[12px] font-medium hover:border-[#5CE1A5] hover:text-[#5CE1A5] transition-all disabled:opacity-50"
+                style={{ fontFamily: "var(--font-poppins)" }}
+                title="Sync subscription tier with Stripe"
+              >
+                <RefreshCw className={`size-4 ${syncing ? "animate-spin" : ""}`} />
+              </button>
+              {syncMessage && (
+                <span
+                  className="text-[12px] font-medium text-[#5CE1A5]"
+                  style={{ fontFamily: "var(--font-source-sans)" }}
+                >
+                  {syncMessage}
+                </span>
+              )}
+            </div>
           )}
         </div>
 
