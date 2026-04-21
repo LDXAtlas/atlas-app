@@ -146,6 +146,8 @@ const pageTitles: Record<string, string> = {
   "/atlas-ai/workflows": "Workflows",
   "/messages": "Messages",
   "/directory": "Directory",
+  "/directory/staff-management": "Directory",
+  "/directory/analytics": "Directory",
   "/settings": "Settings",
   "/settings/subscription": "Subscription",
   "/upgrade/serve": "Upgrade to Suite",

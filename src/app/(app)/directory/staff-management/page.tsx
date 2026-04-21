@@ -1,17 +1,26 @@
 import { connection } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { DirectoryView } from "./directory-view";
-import type { Member } from "./types";
+import { StaffManagementView } from "./staff-view";
 
-export default async function DirectoryPage() {
+export interface Department {
+  id: string;
+  name: string;
+  color: string;
+  description: string | null;
+  icon: string;
+  leader_id: string | null;
+  member_count: number;
+  hub_enabled: boolean;
+  created_at: string;
+}
+
+export default async function StaffManagementPage() {
   await connection();
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { data: { user } } = await supabase.auth.getUser();
 
-  let members: Member[] = [];
+  let departments: Department[] = [];
 
   if (user) {
     const slug = user.user_metadata?.organization_slug;
@@ -24,17 +33,17 @@ export default async function DirectoryPage() {
 
       if (org?.id) {
         const { data, error } = await supabaseAdmin
-          .from("members")
+          .from("departments")
           .select("*")
           .eq("organization_id", org.id)
-          .order("last_name", { ascending: true });
+          .order("name", { ascending: true });
 
         if (!error && data) {
-          members = data as Member[];
+          departments = data as Department[];
         }
       }
     }
   }
 
-  return <DirectoryView members={members} />;
+  return <StaffManagementView departments={departments} />;
 }
