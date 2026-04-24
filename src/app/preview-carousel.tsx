@@ -107,19 +107,24 @@ export function PreviewCarousel() {
         })}
       </div>
 
-      {/* Gradient fades at top and bottom edges */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-[18%] bg-gradient-to-b from-surface to-transparent" />
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[18%] bg-gradient-to-t from-surface to-transparent" />
+      {/* Gradient fades at top and bottom edges - updated to gray-50 to match the background! */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-[18%] bg-gradient-to-b from-gray-50 to-transparent" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[18%] bg-gradient-to-t from-gray-50 to-transparent" />
 
       {/* Dot indicators — anchored to the bottom */}
       <div className="absolute inset-x-0 bottom-6 z-20 flex items-center justify-center gap-2">
         {slides.map((_, i) => (
-          <span
+          <button
             key={i}
+            onClick={() => {
+              // Prevent clicking while an animation is actively happening
+              if (!isScrolling) setCurrent(i);
+            }}
+            aria-label={`Go to slide ${i + 1}`}
             className={`h-2 rounded-full transition-all duration-300 ${
               i === current
-                ? "w-6 bg-[#5CE1A5]"
-                : "w-2 bg-border"
+                ? "w-6 bg-mint"
+                : "w-2 bg-gray-300 hover:bg-gray-400"
             }`}
           />
         ))}
