@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { can, getRoleFromProfile } from "@/lib/permissions";
 
 // ─── Types ──────────────────────────────────────────────
 
@@ -85,6 +86,17 @@ export async function createEvent(data: EventInput): Promise<ActionResult> {
       error: "Not authenticated or no organization found.",
     };
 
+  const { data: profile } = await supabaseAdmin
+    .from("profiles")
+    .select("role")
+    .eq("id", ctx.userId)
+    .single();
+  const role = getRoleFromProfile(profile);
+
+  if (!can.createEvent(role)) {
+    return { success: false, error: "You don't have permission to do this." };
+  }
+
   if (!data.title?.trim()) {
     return { success: false, error: "Title is required." };
   }
@@ -152,6 +164,17 @@ export async function updateEvent(
       error: "Not authenticated or no organization found.",
     };
 
+  const { data: profile } = await supabaseAdmin
+    .from("profiles")
+    .select("role")
+    .eq("id", ctx.userId)
+    .single();
+  const role = getRoleFromProfile(profile);
+
+  if (!can.editAnyEvent(role)) {
+    return { success: false, error: "You don't have permission to do this." };
+  }
+
   const updates: Record<string, unknown> = {
     updated_at: new Date().toISOString(),
   };
@@ -213,6 +236,17 @@ export async function deleteEvent(id: string): Promise<ActionResult> {
       error: "Not authenticated or no organization found.",
     };
 
+  const { data: profile } = await supabaseAdmin
+    .from("profiles")
+    .select("role")
+    .eq("id", ctx.userId)
+    .single();
+  const role = getRoleFromProfile(profile);
+
+  if (!can.deleteAnyEvent(role)) {
+    return { success: false, error: "You don't have permission to do this." };
+  }
+
   const { error } = await supabaseAdmin
     .from("events")
     .delete()
@@ -273,6 +307,17 @@ export async function createCustomEventType(
       error: "Not authenticated or no organization found.",
     };
 
+  const { data: profile } = await supabaseAdmin
+    .from("profiles")
+    .select("role")
+    .eq("id", ctx.userId)
+    .single();
+  const role = getRoleFromProfile(profile);
+
+  if (!can.createCustomEventType(role)) {
+    return { success: false, error: "You don't have permission to do this." };
+  }
+
   if (!name?.trim()) {
     return { success: false, error: "Name is required." };
   }
@@ -307,6 +352,17 @@ export async function updateCustomEventType(
   const ctx = await getAuthContext();
   if (!ctx) return { success: false, error: "Not authenticated." };
 
+  const { data: profile } = await supabaseAdmin
+    .from("profiles")
+    .select("role")
+    .eq("id", ctx.userId)
+    .single();
+  const role = getRoleFromProfile(profile);
+
+  if (!can.editCustomEventType(role)) {
+    return { success: false, error: "You don't have permission to do this." };
+  }
+
   const { error } = await supabaseAdmin
     .from("custom_event_types")
     .update({ name: name.trim(), color })
@@ -324,6 +380,17 @@ export async function updateCustomEventType(
 export async function deleteCustomEventType(id: string): Promise<ActionResult> {
   const ctx = await getAuthContext();
   if (!ctx) return { success: false, error: "Not authenticated." };
+
+  const { data: profile } = await supabaseAdmin
+    .from("profiles")
+    .select("role")
+    .eq("id", ctx.userId)
+    .single();
+  const role = getRoleFromProfile(profile);
+
+  if (!can.deleteCustomEventType(role)) {
+    return { success: false, error: "You don't have permission to do this." };
+  }
 
   // Events using this type will have custom_event_type_id set to null (ON DELETE SET NULL)
   const { error } = await supabaseAdmin

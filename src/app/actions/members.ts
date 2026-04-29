@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { can, getRoleFromProfile } from "@/lib/permissions";
 
 // ─── Types ──────────────────────────────────────────────
 export type MemberInput = {
@@ -32,7 +33,10 @@ export type ActionResult = {
 };
 
 // ─── Helpers ────────────────────────────────────────────
-async function getOrganizationId(): Promise<string | null> {
+async function getAuthContext(): Promise<{
+  userId: string;
+  organizationId: string;
+} | null> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -49,16 +53,30 @@ async function getOrganizationId(): Promise<string | null> {
     .eq("slug", slug)
     .single();
 
-  return org?.id ?? null;
+  if (!org?.id) return null;
+
+  return { userId: user.id, organizationId: org.id };
 }
 
 // ─── Add Member ─────────────────────────────────────────
 export async function addMember(data: MemberInput): Promise<ActionResult> {
   console.log("[addMember] Starting with:", data.first_name, data.last_name);
 
-  const orgId = await getOrganizationId();
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated or no organization found." };
+  const orgId = ctx.organizationId;
   console.log("[addMember] Org ID:", orgId);
-  if (!orgId) return { success: false, error: "Not authenticated or no organization found." };
+
+  const { data: profile } = await supabaseAdmin
+    .from("profiles")
+    .select("role")
+    .eq("id", ctx.userId)
+    .single();
+  const role = getRoleFromProfile(profile);
+
+  if (!can.createMember(role)) {
+    return { success: false, error: "You don't have permission to do this." };
+  }
 
   if (!data.first_name?.trim() || !data.last_name?.trim()) {
     return { success: false, error: "First name and last name are required." };
@@ -119,8 +137,20 @@ export async function updateMember(
   id: string,
   data: MemberInput,
 ): Promise<ActionResult> {
-  const orgId = await getOrganizationId();
-  if (!orgId) return { success: false, error: "Not authenticated or no organization found." };
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated or no organization found." };
+  const orgId = ctx.organizationId;
+
+  const { data: profile } = await supabaseAdmin
+    .from("profiles")
+    .select("role")
+    .eq("id", ctx.userId)
+    .single();
+  const role = getRoleFromProfile(profile);
+
+  if (!can.editMember(role)) {
+    return { success: false, error: "You don't have permission to do this." };
+  }
 
   if (!data.first_name?.trim() || !data.last_name?.trim()) {
     return { success: false, error: "First name and last name are required." };
@@ -177,8 +207,20 @@ export async function updateMember(
 
 // ─── Delete Member ──────────────────────────────────────
 export async function deleteMember(id: string): Promise<ActionResult> {
-  const orgId = await getOrganizationId();
-  if (!orgId) return { success: false, error: "Not authenticated or no organization found." };
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated or no organization found." };
+  const orgId = ctx.organizationId;
+
+  const { data: profile } = await supabaseAdmin
+    .from("profiles")
+    .select("role")
+    .eq("id", ctx.userId)
+    .single();
+  const role = getRoleFromProfile(profile);
+
+  if (!can.deleteMember(role)) {
+    return { success: false, error: "You don't have permission to do this." };
+  }
 
   const { error } = await supabaseAdmin
     .from("members")
@@ -199,8 +241,20 @@ export async function deleteMember(id: string): Promise<ActionResult> {
 export async function importMembers(
   members: MemberInput[],
 ): Promise<ActionResult> {
-  const orgId = await getOrganizationId();
-  if (!orgId) return { success: false, error: "Not authenticated or no organization found." };
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated or no organization found." };
+  const orgId = ctx.organizationId;
+
+  const { data: profile } = await supabaseAdmin
+    .from("profiles")
+    .select("role")
+    .eq("id", ctx.userId)
+    .single();
+  const role = getRoleFromProfile(profile);
+
+  if (!can.importMembers(role)) {
+    return { success: false, error: "You don't have permission to do this." };
+  }
 
   if (!members.length) {
     return { success: false, error: "No members to import." };

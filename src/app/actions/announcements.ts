@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { can, getRoleFromProfile } from "@/lib/permissions";
 
 // ─── Types ──────────────────────────────────────────────
 export type AnnouncementInput = {
@@ -60,6 +61,17 @@ export async function createAnnouncement(
   const ctx = await getAuthContext();
   if (!ctx) return { success: false, error: "Not authenticated or no organization found." };
 
+  const { data: profile } = await supabaseAdmin
+    .from("profiles")
+    .select("role")
+    .eq("id", ctx.userId)
+    .single();
+  const role = getRoleFromProfile(profile);
+
+  if (!can.createAnnouncement(role)) {
+    return { success: false, error: "You don't have permission to do this." };
+  }
+
   if (!data.title?.trim()) {
     return { success: false, error: "Title is required." };
   }
@@ -98,6 +110,17 @@ export async function deleteAnnouncement(id: string): Promise<ActionResult> {
   const ctx = await getAuthContext();
   if (!ctx) return { success: false, error: "Not authenticated or no organization found." };
 
+  const { data: profile } = await supabaseAdmin
+    .from("profiles")
+    .select("role")
+    .eq("id", ctx.userId)
+    .single();
+  const role = getRoleFromProfile(profile);
+
+  if (!can.deleteAnyAnnouncement(role)) {
+    return { success: false, error: "You don't have permission to do this." };
+  }
+
   const { error } = await supabaseAdmin
     .from("announcements")
     .delete()
@@ -117,6 +140,17 @@ export async function deleteAnnouncement(id: string): Promise<ActionResult> {
 export async function togglePin(id: string): Promise<ActionResult> {
   const ctx = await getAuthContext();
   if (!ctx) return { success: false, error: "Not authenticated or no organization found." };
+
+  const { data: profile } = await supabaseAdmin
+    .from("profiles")
+    .select("role")
+    .eq("id", ctx.userId)
+    .single();
+  const role = getRoleFromProfile(profile);
+
+  if (!can.pinAnnouncement(role)) {
+    return { success: false, error: "You don't have permission to do this." };
+  }
 
   // Fetch current pin status
   const { data: current, error: fetchError } = await supabaseAdmin

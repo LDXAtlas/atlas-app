@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { sendInvitationEmail } from "@/lib/email/send-invitation";
+import { can, getRoleFromProfile } from "@/lib/permissions";
 
 export type InvitationActionState = {
   error: string | null;
@@ -37,8 +38,10 @@ export async function inviteTeamMember(
       return { error: "Could not find your organization." };
     }
 
-    if (inviterProfile.role !== "admin") {
-      return { error: "Only admins can invite team members." };
+    const role = getRoleFromProfile(inviterProfile);
+
+    if (!can.inviteTeam(role)) {
+      return { error: "You don't have permission to do this." };
     }
 
     const organizationId = inviterProfile.organization_id;
@@ -184,8 +187,14 @@ export async function revokeInvitation(
       .eq("id", user.id)
       .single();
 
-    if (!inviterProfile || inviterProfile.role !== "admin") {
-      return { error: "Only admins can revoke invitations." };
+    if (!inviterProfile) {
+      return { error: "Could not find your profile." };
+    }
+
+    const role = getRoleFromProfile(inviterProfile);
+
+    if (!can.inviteTeam(role)) {
+      return { error: "You don't have permission to do this." };
     }
 
     const { data: invitation } = await supabaseAdmin
@@ -244,8 +253,14 @@ export async function resendInvitation(
       .eq("id", user.id)
       .single();
 
-    if (!inviterProfile || inviterProfile.role !== "admin") {
-      return { error: "Only admins can resend invitations." };
+    if (!inviterProfile) {
+      return { error: "Could not find your profile." };
+    }
+
+    const role = getRoleFromProfile(inviterProfile);
+
+    if (!can.inviteTeam(role)) {
+      return { error: "You don't have permission to do this." };
     }
 
     const { data: invitation } = await supabaseAdmin
@@ -394,5 +409,130 @@ export async function acceptInvitation(
   } catch (err) {
     console.error("[acceptInvitation] Unexpected error:", err);
     return { error: "An unexpected error occurred. Please try again." };
+  }
+}
+
+// ─── Update Member Role ────────────────────────────────
+export async function updateMemberRole(
+  memberId: string,
+  newRole: string,
+): Promise<InvitationActionState> {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return { error: "You must be logged in." };
+    }
+
+    const { data: adminProfile } = await supabaseAdmin
+      .from("profiles")
+      .select("organization_id, role")
+      .eq("id", user.id)
+      .single();
+
+    if (!adminProfile) {
+      return { error: "Could not find your profile." };
+    }
+
+    const role = getRoleFromProfile(adminProfile);
+
+    if (!can.changeUserRole(role)) {
+      return { error: "You don't have permission to do this." };
+    }
+
+    // Verify the target member belongs to the same organization
+    const { data: targetProfile } = await supabaseAdmin
+      .from("profiles")
+      .select("organization_id")
+      .eq("id", memberId)
+      .single();
+
+    if (!targetProfile || targetProfile.organization_id !== adminProfile.organization_id) {
+      return { error: "Member not found in your organization." };
+    }
+
+    const { error: updateError } = await supabaseAdmin
+      .from("profiles")
+      .update({ role: newRole })
+      .eq("id", memberId);
+
+    if (updateError) {
+      console.error("[updateMemberRole] Update error:", updateError);
+      return { error: "Failed to update role." };
+    }
+
+    revalidatePath("/settings/organization");
+    return { error: null, success: true };
+  } catch (err) {
+    console.error("[updateMemberRole] Unexpected error:", err);
+    return { error: "An unexpected error occurred." };
+  }
+}
+
+// ─── Remove Member ─────────────────────────────────────
+export async function removeMember(
+  memberId: string,
+): Promise<InvitationActionState> {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return { error: "You must be logged in." };
+    }
+
+    const { data: adminProfile } = await supabaseAdmin
+      .from("profiles")
+      .select("organization_id, role")
+      .eq("id", user.id)
+      .single();
+
+    if (!adminProfile) {
+      return { error: "Could not find your profile." };
+    }
+
+    const role = getRoleFromProfile(adminProfile);
+
+    if (!can.removeTeamMember(role)) {
+      return { error: "You don't have permission to do this." };
+    }
+
+    // Can't remove yourself
+    if (memberId === user.id) {
+      return { error: "You cannot remove yourself from the organization." };
+    }
+
+    // Verify the target member belongs to the same organization
+    const { data: targetProfile } = await supabaseAdmin
+      .from("profiles")
+      .select("organization_id")
+      .eq("id", memberId)
+      .single();
+
+    if (!targetProfile || targetProfile.organization_id !== adminProfile.organization_id) {
+      return { error: "Member not found in your organization." };
+    }
+
+    // Remove the profile (disassociate from org)
+    const { error: updateError } = await supabaseAdmin
+      .from("profiles")
+      .update({ organization_id: null, role: "member" })
+      .eq("id", memberId);
+
+    if (updateError) {
+      console.error("[removeMember] Update error:", updateError);
+      return { error: "Failed to remove member." };
+    }
+
+    revalidatePath("/settings/organization");
+    return { error: null, success: true };
+  } catch (err) {
+    console.error("[removeMember] Unexpected error:", err);
+    return { error: "An unexpected error occurred." };
   }
 }

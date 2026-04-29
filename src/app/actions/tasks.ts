@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { can, getRoleFromProfile } from "@/lib/permissions";
 
 // ─── Types ──────────────────────────────────────────────
 export type TaskInput = {
@@ -62,6 +63,17 @@ export async function createTask(data: TaskInput): Promise<ActionResult> {
       success: false,
       error: "Not authenticated or no organization found.",
     };
+
+  const { data: profile } = await supabaseAdmin
+    .from("profiles")
+    .select("role")
+    .eq("id", ctx.userId)
+    .single();
+  const role = getRoleFromProfile(profile);
+
+  if (!can.createTask(role)) {
+    return { success: false, error: "You don't have permission to do this." };
+  }
 
   if (!data.title?.trim()) {
     return { success: false, error: "Title is required." };
@@ -156,6 +168,17 @@ export async function deleteTask(id: string): Promise<ActionResult> {
       success: false,
       error: "Not authenticated or no organization found.",
     };
+
+  const { data: profile } = await supabaseAdmin
+    .from("profiles")
+    .select("role")
+    .eq("id", ctx.userId)
+    .single();
+  const role = getRoleFromProfile(profile);
+
+  if (!can.deleteAnyTask(role)) {
+    return { success: false, error: "You don't have permission to do this." };
+  }
 
   const { error } = await supabaseAdmin
     .from("tasks")

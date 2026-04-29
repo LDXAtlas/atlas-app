@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { can, getRoleFromProfile } from "@/lib/permissions";
 
 export interface DepartmentInput {
   name: string;
@@ -33,6 +34,17 @@ export async function addDepartment(data: DepartmentInput) {
   console.log("[addDepartment] Org lookup:", org ? `found id=${org.id}` : `error=${orgError?.message}`);
   if (!org) return { error: `Organization not found: ${orgError?.message}` };
 
+  const { data: profile } = await supabaseAdmin
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+  const role = getRoleFromProfile(profile);
+
+  if (!can.createDepartment(role)) {
+    return { error: "You don't have permission to do this." };
+  }
+
   const insertData = {
     organization_id: org.id,
     name: data.name,
@@ -62,6 +74,17 @@ export async function updateDepartment(id: string, data: DepartmentInput) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Not authenticated" };
 
+  const { data: profile } = await supabaseAdmin
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+  const role = getRoleFromProfile(profile);
+
+  if (!can.editDepartment(role)) {
+    return { error: "You don't have permission to do this." };
+  }
+
   const { error } = await supabaseAdmin
     .from("departments")
     .update({
@@ -84,6 +107,17 @@ export async function deleteDepartment(id: string) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Not authenticated" };
+
+  const { data: profile } = await supabaseAdmin
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+  const role = getRoleFromProfile(profile);
+
+  if (!can.deleteDepartment(role)) {
+    return { error: "You don't have permission to do this." };
+  }
 
   const { error } = await supabaseAdmin
     .from("departments")
