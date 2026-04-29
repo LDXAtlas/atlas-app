@@ -357,6 +357,8 @@ export async function acceptInvitation(
       .single();
 
     // Create the user via admin API (no email confirmation needed)
+    // Setting 'invited_to_org' in metadata tells the handle_new_user trigger
+    // to skip auto-creating an organization — we link to the existing one instead.
     const { data: newUser, error: createError } =
       await supabaseAdmin.auth.admin.createUser({
         email: invitation.email,
@@ -366,6 +368,7 @@ export async function acceptInvitation(
           full_name: fullName,
           organization_name: org?.name,
           organization_slug: org?.slug,
+          invited_to_org: invitation.organization_id,
         },
       });
 
