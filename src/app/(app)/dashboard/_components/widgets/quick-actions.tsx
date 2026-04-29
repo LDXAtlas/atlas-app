@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { motion } from "motion/react";
 import {
   Target,
   Calendar,
@@ -55,46 +56,91 @@ const actions = [
   },
 ];
 
+const containerVariants = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.05,
+      delayChildren: 0.2,
+    },
+  },
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, scale: 0.8 },
+  show: { 
+    opacity: 1, 
+    scale: 1,
+    transition: {
+      type: "spring" as const,
+      stiffness: 400,
+      damping: 25,
+    }
+  },
+};
+
 export function QuickActions() {
   return (
-    <div
-      className="bg-white rounded-3xl p-2.5 h-full flex flex-col border border-[#E5E7EB]/50 transition-all duration-300 hover:border-[#D1D5DB] hover:shadow-[0_12px_30px_-8px_rgba(0,0,0,0.08)]"
-      style={{
-        boxShadow:
-          "0 4px 20px -2px rgba(0,0,0,0.02), 0 1px 4px -1px rgba(0,0,0,0.02)",
-      }}
-    >
-      <div className="flex justify-between items-center gap-1.5 flex-1">
+    // Removed the background, borders, padding, and shadows from this wrapper
+    // Added a slight py-1 to ensure hover animations don't clip
+    <div className="h-full flex flex-col w-full py-1">
+      <motion.div 
+        variants={containerVariants}
+        initial="hidden"
+        animate="show"
+        // Increased gap from 2.5 to gap-4 (mobile) and gap-5 (larger screens) to spread them out
+        className="flex justify-between items-stretch gap-4 sm:gap-5 flex-1"
+      >
         {actions.map((action) => {
           const Icon = action.icon;
           return (
-            <Link
+            <motion.div
               key={action.id}
-              href={action.href}
-              className="flex-1 flex flex-col items-center justify-center gap-1 p-2 rounded-xl transition-all group h-full no-underline"
-              style={{ backgroundColor: `${action.color}15` }}
+              variants={itemVariants}
+              whileHover={{ y: -4 }}
+              whileTap={{ scale: 0.92, y: 0 }}
+              className="flex-1 min-w-0"
             >
-              <div className="size-[50px] rounded-md flex items-center justify-center transition-all group-hover:-translate-y-1 group-hover:shadow-md">
-                <Icon
-                  className="size-8"
-                  style={{ color: action.color }}
-                  strokeWidth={2.5}
-                />
-              </div>
-              <span
-                className="text-[15px] truncate max-w-full px-1 text-center"
-                style={{
-                  fontFamily: "var(--font-poppins)",
-                  fontWeight: 500,
-                  color: action.color,
-                }}
+              <Link
+                href={action.href}
+                className="flex flex-col items-center justify-center gap-2 p-3 rounded-2xl transition-all group h-full no-underline relative overflow-hidden"
               >
-                {action.label}
-              </span>
-            </Link>
+                {/* Background active state */}
+                <div 
+                  className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+                  style={{ backgroundColor: `${action.color}0C` }}
+                />
+
+                <div 
+                  className="size-[46px] rounded-xl flex items-center justify-center relative z-10 transition-all duration-300 group-hover:shadow-md"
+                  style={{ 
+                    backgroundColor: `${action.color}15`,
+                    border: `1px solid ${action.color}25`
+                  }}
+                >
+                  <Icon
+                    className="size-6 transition-transform duration-300 group-hover:scale-110"
+                    style={{ color: action.color }}
+                    strokeWidth={2}
+                  />
+                </div>
+                <div className="text-center w-full relative z-10 mt-1">
+                  <span
+                    className="text-[13px] truncate w-full block transition-colors duration-300 font-medium"
+                    style={{
+                      fontFamily: "var(--font-source-sans)",
+                      color: "#6B7280",
+                    }}
+                  >
+                    <span className="group-hover:text-[#2D333A] transition-colors">{action.label}</span>
+                  </span>
+                </div>
+              </Link>
+            </motion.div>
           );
         })}
-      </div>
+      </motion.div>
     </div>
   );
 }

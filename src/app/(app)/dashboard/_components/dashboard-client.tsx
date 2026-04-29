@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence, motion, Reorder, useDragControls } from "motion/react";
 import {
   Settings,
   GripVertical,
@@ -23,9 +23,9 @@ import { WidgetLibrary } from "./widget-library";
 
 // ─── Types ──────────────────────────────────────────────
 
+// Removed "quick-actions" since it is now permanently pinned
 export type WidgetId =
   | "stats-overview"
-  | "quick-actions"
   | "recent-members"
   | "subscription-overview"
   | "announcements-feed"
@@ -72,14 +72,13 @@ export interface DashboardProps {
 
 // ─── Widget Layout Config ───────────────────────────────
 
-interface WidgetLayoutItem {
+export interface WidgetLayoutItem {
   id: WidgetId;
   colSpan: number; // out of 12
 }
 
 const DEFAULT_LAYOUT: WidgetLayoutItem[] = [
-  { id: "stats-overview", colSpan: 12 },
-  { id: "quick-actions", colSpan: 12 },
+  { id: "stats-overview", colSpan: 6 },
   { id: "recent-members", colSpan: 8 },
   { id: "subscription-overview", colSpan: 4 },
   { id: "announcements-feed", colSpan: 6 },
@@ -96,7 +95,8 @@ function loadLayout(): WidgetLayoutItem[] {
     if (stored) {
       const parsed = JSON.parse(stored);
       if (Array.isArray(parsed) && parsed.length > 0 && parsed[0]?.id) {
-        return parsed;
+        // Filter out quick-actions in case the user had it saved in an older session
+        return parsed.filter((w: any) => w.id !== "quick-actions");
       }
     }
   } catch {
@@ -137,6 +137,132 @@ function formatDate(): string {
     "July", "August", "September", "October", "November", "December",
   ];
   return `${days[now.getDay()]}, ${months[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}`;
+}
+
+// ─── Sortable Widget Wrapper ────────────────────────────
+
+interface SortableWidgetProps {
+  item: WidgetLayoutItem;
+  index: number;
+  isEditing: boolean;
+  onRemove: (id: WidgetId) => void;
+  onMoveUp: (index: number) => void;
+  onMoveDown: (index: number) => void;
+  isFirst: boolean;
+  isLast: boolean;
+  children: React.ReactNode;
+}
+
+function SortableWidget({
+  item,
+  index,
+  isEditing,
+  onRemove,
+  onMoveUp,
+  onMoveDown,
+  isFirst,
+  isLast,
+  children,
+}: SortableWidgetProps) {
+  const controls = useDragControls();
+
+  // Responsive: on smaller screens force full width
+  const responsiveClass =
+    item.colSpan === 12
+      ? "col-span-12"
+      : item.colSpan === 8
+      ? "col-span-8 max-lg:col-span-12"
+      : item.colSpan === 4
+      ? "col-span-4 max-lg:col-span-12"
+      : "col-span-6 max-lg:col-span-12";
+
+  return (
+    <Reorder.Item
+      as="div"
+      value={item}
+      id={item.id}
+      drag // OVERRIDE: Forces full 360 degree (X and Y) dragging
+      layout="position" // FIX: Prevents the "half-off" bug by only animating position, not CSS Grid cell width
+      dragListener={false} // Prevents dragging by clicking the widget body
+      dragControls={controls} // Binds drag solely to the handle
+      whileDrag={{
+        scale: 1.02,
+        boxShadow: "0 25px 50px -12px rgba(0,0,0,0.15)",
+        zIndex: 100,
+      }}
+      className={`${responsiveClass} relative rounded-3xl will-change-transform bg-white ${isEditing ? "select-none" : ""}`}
+    >
+      {/* Edit mode overlay - Blocks clicks to the widget internals and adds a subtle glass effect */}
+      {isEditing && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="absolute inset-0 z-10 rounded-3xl border-2 border-dashed border-[#5CE1A5]/60 bg-white/10 backdrop-blur-[1.5px]"
+        />
+      )}
+
+      {/* Edit mode controls */}
+      <AnimatePresence>
+        {isEditing && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="absolute top-3 left-3 z-20 flex items-center gap-1"
+          >
+            {/* The Drag Handle */}
+            <div
+              onPointerDown={(e) => controls.start(e)}
+              style={{ touchAction: "none" }} // Prevents mobile scrolling when trying to drag
+              className="p-1.5 bg-white/95 backdrop-blur-sm rounded-lg border border-[#E5E7EB] text-[#9CA3AF] cursor-grab active:cursor-grabbing hover:bg-[#F4F5F7] transition-colors shadow-sm"
+              title="Drag to move"
+            >
+              <GripVertical className="size-4" />
+            </div>
+            
+            {/* Fallback explicit move buttons */}
+            <button
+              onClick={() => onMoveUp(index)}
+              disabled={isFirst}
+              className="p-1.5 bg-white/95 backdrop-blur-sm rounded-lg border border-[#E5E7EB] text-[#6B7280] hover:bg-[#F4F5F7] disabled:opacity-30 disabled:cursor-not-allowed transition-colors shadow-sm"
+              title="Move Up"
+            >
+              <ChevronUp className="size-4" />
+            </button>
+            <button
+              onClick={() => onMoveDown(index)}
+              disabled={isLast}
+              className="p-1.5 bg-white/95 backdrop-blur-sm rounded-lg border border-[#E5E7EB] text-[#6B7280] hover:bg-[#F4F5F7] disabled:opacity-30 disabled:cursor-not-allowed transition-colors shadow-sm"
+              title="Move Down"
+            >
+              <ChevronDown className="size-4" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Delete button */}
+      <AnimatePresence>
+        {isEditing && (
+          <motion.button
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            onClick={() => onRemove(item.id)}
+            className="absolute top-3 right-3 z-20 p-1.5 bg-white/95 backdrop-blur-sm rounded-lg border border-[#E5E7EB] text-[#EF4444] hover:bg-red-50 transition-colors shadow-sm"
+            title="Remove Widget"
+          >
+            <X className="size-4" />
+          </motion.button>
+        )}
+      </AnimatePresence>
+
+      <div className="h-full pointer-events-auto">
+        {children}
+      </div>
+    </Reorder.Item>
+  );
 }
 
 // ─── Component ──────────────────────────────────────────
@@ -185,7 +311,7 @@ export function DashboardClient({
     setIsEditing(false);
   }, [layout]);
 
-  // ── Widget reordering ──
+  // ── Explicit Widget reordering (Fallback to drag) ──
   const moveWidget = useCallback(
     (index: number, direction: "up" | "down") => {
       const newLayout = [...layout];
@@ -215,7 +341,6 @@ export function DashboardClient({
       if (exists) {
         setLayout(layout.filter((w) => w.id !== id));
       } else {
-        // Find default colSpan
         const defaultItem = DEFAULT_LAYOUT.find((w) => w.id === id);
         const colSpan = defaultItem?.colSpan ?? 6;
         setLayout([...layout, { id, colSpan }]);
@@ -236,8 +361,6 @@ export function DashboardClient({
             seatLimit={seatLimit}
           />
         );
-      case "quick-actions":
-        return <QuickActions />;
       case "recent-members":
         return <RecentMembers members={recentMembers} />;
       case "subscription-overview":
@@ -351,91 +474,77 @@ export function DashboardClient({
         </div>
       </div>
 
-      {/* ── Widget Grid ── */}
-      <div
+      {/* ── Pinned Top Widget (Quick Actions) ── */}
+      {/* We use an identical 12-column grid and place it centrally to mirror the dimensions of a 6-col widget below */}
+      <div className="grid gap-5 mb-5" style={{ gridTemplateColumns: "repeat(12, minmax(0, 1fr))" }}>
+        <div className="col-span-12 lg:col-span-6 lg:col-start-4">
+          <QuickActions />
+        </div>
+      </div>
+
+      {/* ── Widget Grid via Framer Motion Reorder ── */}
+      <Reorder.Group
+        as="div"
+        axis="y"
+        values={layout}
+        onReorder={setLayout}
         className="grid gap-5"
         style={{
           gridTemplateColumns: "repeat(12, minmax(0, 1fr))",
+          gridAutoFlow: "row dense", // FIX: "Dense" packing ensures widgets smartly fill empty spaces around them
         }}
       >
-        {layout.map((item, index) => {
-          // Responsive: on smaller screens force full width
-          const responsiveClass =
-            item.colSpan === 12
-              ? "col-span-12"
-              : item.colSpan === 8
-                ? "col-span-8 max-lg:col-span-12"
-                : item.colSpan === 4
-                  ? "col-span-4 max-lg:col-span-12"
-                  : "col-span-6 max-lg:col-span-12";
+        {layout.map((item, index) => (
+          <SortableWidget
+            key={item.id}
+            item={item}
+            index={index}
+            isEditing={isEditing}
+            onRemove={removeWidget}
+            onMoveUp={(idx) => moveWidget(idx, "up")}
+            onMoveDown={(idx) => moveWidget(idx, "down")}
+            isFirst={index === 0}
+            isLast={index === layout.length - 1}
+          >
+            {renderWidget(item.id)}
+          </SortableWidget>
+        ))}
+      </Reorder.Group>
 
-          return (
-            <div key={item.id} className={`${responsiveClass} relative`}>
-              {/* Edit mode overlay */}
-              {isEditing && (
-                <div className="absolute inset-0 z-10 rounded-3xl border-2 border-dashed border-[#5CE1A5]/40 pointer-events-none" />
-              )}
-
-              {/* Edit mode controls */}
-              {isEditing && (
-                <div className="absolute top-3 left-3 z-20 flex items-center gap-1">
-                  <div className="p-1.5 bg-white/90 backdrop-blur-sm rounded-lg border border-[#E5E7EB] text-[#9CA3AF]">
-                    <GripVertical className="size-4" />
-                  </div>
-                  <button
-                    onClick={() => moveWidget(index, "up")}
-                    disabled={index === 0}
-                    className="p-1.5 bg-white/90 backdrop-blur-sm rounded-lg border border-[#E5E7EB] text-[#6B7280] hover:bg-[#F4F5F7] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <ChevronUp className="size-4" />
-                  </button>
-                  <button
-                    onClick={() => moveWidget(index, "down")}
-                    disabled={index === layout.length - 1}
-                    className="p-1.5 bg-white/90 backdrop-blur-sm rounded-lg border border-[#E5E7EB] text-[#6B7280] hover:bg-[#F4F5F7] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <ChevronDown className="size-4" />
-                  </button>
-                </div>
-              )}
-
-              {isEditing && (
-                <button
-                  onClick={() => removeWidget(item.id)}
-                  className="absolute top-3 right-3 z-20 p-1.5 bg-white/90 backdrop-blur-sm rounded-lg border border-[#E5E7EB] text-[#EF4444] hover:bg-red-50 transition-colors"
-                >
-                  <X className="size-4" />
-                </button>
-              )}
-
-              {renderWidget(item.id)}
-            </div>
-          );
-        })}
-
-        {/* Add Widget placeholder (edit mode only) */}
+      {/* Add Widget placeholder - kept in a separate grid block so it doesn't break drag physics */}
+      <AnimatePresence>
         {isEditing && (
-          <div className="col-span-12">
-            <button
-              onClick={() => setCatalogOpen(true)}
-              className="w-full py-10 rounded-3xl border-2 border-dashed border-[#E5E7EB] hover:border-[#5CE1A5] bg-[#F4F5F7]/50 hover:bg-[#5CE1A5]/5 transition-all flex flex-col items-center justify-center gap-2 group"
-            >
-              <div className="size-10 rounded-full bg-[#E5E7EB] group-hover:bg-[#5CE1A5]/20 flex items-center justify-center transition-colors">
-                <Plus className="size-5 text-[#9CA3AF] group-hover:text-[#5CE1A5] transition-colors" />
-              </div>
-              <span
-                className="text-[14px] text-[#9CA3AF] group-hover:text-[#5CE1A5] transition-colors"
-                style={{
-                  fontFamily: "var(--font-poppins)",
-                  fontWeight: 500,
-                }}
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            className="grid mt-5"
+            style={{
+              gridTemplateColumns: "repeat(12, minmax(0, 1fr))",
+            }}
+          >
+            <div className="col-span-12">
+              <button
+                onClick={() => setCatalogOpen(true)}
+                className="w-full py-10 rounded-3xl border-2 border-dashed border-[#E5E7EB] hover:border-[#5CE1A5] bg-[#F4F5F7]/50 hover:bg-[#5CE1A5]/5 transition-all flex flex-col items-center justify-center gap-2 group"
               >
-                Add Widget
-              </span>
-            </button>
-          </div>
+                <div className="size-10 rounded-full bg-[#E5E7EB] group-hover:bg-[#5CE1A5]/20 flex items-center justify-center transition-colors">
+                  <Plus className="size-5 text-[#9CA3AF] group-hover:text-[#5CE1A5] transition-colors" />
+                </div>
+                <span
+                  className="text-[14px] text-[#9CA3AF] group-hover:text-[#5CE1A5] transition-colors"
+                  style={{
+                    fontFamily: "var(--font-poppins)",
+                    fontWeight: 500,
+                  }}
+                >
+                  Add Widget
+                </span>
+              </button>
+            </div>
+          </motion.div>
         )}
-      </div>
+      </AnimatePresence>
 
       {/* ── Widget Library Modal ── */}
       <WidgetLibrary

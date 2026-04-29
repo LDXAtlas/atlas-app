@@ -32,6 +32,8 @@ interface WidgetCatalogEntry {
   icon: React.ElementType;
 }
 
+// "quick-actions" was removed from this catalog array so users don't 
+// accidentally add a second, draggable version since it is now permanently pinned!
 const WIDGET_CATALOG: WidgetCatalogEntry[] = [
   {
     id: "stats-overview",
@@ -40,14 +42,6 @@ const WIDGET_CATALOG: WidgetCatalogEntry[] = [
     module: "overview",
     moduleColor: "#5CE1A5",
     icon: BarChart3,
-  },
-  {
-    id: "quick-actions",
-    label: "Quick Actions",
-    description: "Fast access to common tasks",
-    module: "overview",
-    moduleColor: "#5CE1A5",
-    icon: Sparkles,
   },
   {
     id: "recent-members",
