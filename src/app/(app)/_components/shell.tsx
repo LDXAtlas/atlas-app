@@ -150,6 +150,7 @@ const pageTitles: Record<string, string> = {
   "/directory/analytics": "Directory",
   "/settings": "Settings",
   "/settings/subscription": "Subscription",
+  "/settings/organization": "Organization",
   "/upgrade/serve": "Upgrade to Suite",
   "/upgrade/care": "Upgrade to Suite",
   "/upgrade/workflows": "Upgrade to Ultimate",
