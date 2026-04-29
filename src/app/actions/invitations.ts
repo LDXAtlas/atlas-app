@@ -322,12 +322,24 @@ export async function acceptInvitation(
   password: string,
 ): Promise<InvitationActionState> {
   try {
-    // Look up the invitation
-    const { data: invitation } = await supabaseAdmin
+    console.log("=== ACCEPT INVITATION START ===");
+    console.log("Token:", token);
+
+    // Step 1: Look up the invitation
+    const { data: invitation, error: invError } = await supabaseAdmin
       .from("invitations")
       .select("*")
       .eq("token", token)
       .single();
+
+    console.log("[Step 1] Invitation lookup:", invitation ? {
+      id: invitation.id,
+      email: invitation.email,
+      role: invitation.role,
+      status: invitation.status,
+      organization_id: invitation.organization_id,
+      expires_at: invitation.expires_at,
+    } : `NOT FOUND (${invError?.message})`);
 
     if (!invitation) {
       return { error: "Invalid invitation link." };
@@ -342,23 +354,25 @@ export async function acceptInvitation(
       };
     }
 
-    // Check expiry
     if (new Date(invitation.expires_at) < new Date()) {
       return { error: "This invitation has expired. Please ask your admin to send a new one." };
     }
 
     const fullName = `${firstName} ${lastName}`;
 
-    // Fetch the organization details for user metadata
+    // Step 2: Fetch org details
     const { data: org } = await supabaseAdmin
       .from("organizations")
       .select("name, slug")
       .eq("id", invitation.organization_id)
       .single();
 
-    // Create the user via admin API (no email confirmation needed)
-    // Setting 'invited_to_org' in metadata tells the handle_new_user trigger
-    // to skip auto-creating an organization — we link to the existing one instead.
+    console.log("[Step 2] Organization:", org ? { name: org.name, slug: org.slug } : "NOT FOUND");
+
+    // Step 3: Create the auth user
+    // 'invited_to_org' in metadata tells the handle_new_user trigger to skip org creation
+    console.log("[Step 3] Creating auth user for:", invitation.email);
+
     const { data: newUser, error: createError } =
       await supabaseAdmin.auth.admin.createUser({
         email: invitation.email,
@@ -373,7 +387,7 @@ export async function acceptInvitation(
       });
 
     if (createError) {
-      console.error("[acceptInvitation] Create user error:", JSON.stringify({
+      console.error("[Step 3] FAILED — Create user error:", JSON.stringify({
         message: createError.message,
         status: createError.status,
         name: createError.name,
@@ -399,23 +413,41 @@ export async function acceptInvitation(
       return { error: createError.message || "Failed to create your account." };
     }
 
-    // Create profile linked to the org
-    const { error: profileError } = await supabaseAdmin
+    const userId = newUser.user.id;
+    console.log("[Step 3] SUCCESS — User created with ID:", userId);
+
+    // Step 4: Create profile linking the user to the existing organization
+    // This is critical — the trigger skips this, so we must do it here
+    const profileData = {
+      id: userId,
+      email: invitation.email,
+      organization_id: invitation.organization_id,
+      full_name: fullName,
+      role: invitation.role,
+    };
+    console.log("[Step 4] Inserting profile:", JSON.stringify(profileData));
+
+    const { data: profileResult, error: profileError } = await supabaseAdmin
       .from("profiles")
-      .upsert({
-        id: newUser.user.id,
-        organization_id: invitation.organization_id,
-        full_name: fullName,
-        role: invitation.role,
-      });
+      .insert(profileData)
+      .select()
+      .single();
 
     if (profileError) {
-      console.error("[acceptInvitation] Profile error:", profileError);
-      // User was created but profile failed — try to continue
+      console.error("[Step 4] FAILED — Profile insert error:", JSON.stringify({
+        message: profileError.message,
+        code: profileError.code,
+        details: profileError.details,
+        hint: profileError.hint,
+      }));
+      // Don't return error — the user was created, we should still mark invitation accepted
+      // and let the user sign in (they can contact admin if profile is missing)
+    } else {
+      console.log("[Step 4] SUCCESS — Profile created:", profileResult?.id);
     }
 
-    // Mark invitation as accepted
-    await supabaseAdmin
+    // Step 5: Mark invitation as accepted
+    const { error: updateError } = await supabaseAdmin
       .from("invitations")
       .update({
         status: "accepted",
@@ -423,11 +455,23 @@ export async function acceptInvitation(
       })
       .eq("id", invitation.id);
 
+    console.log("[Step 5] Invitation marked accepted:", updateError ? `ERROR: ${updateError.message}` : "SUCCESS");
+
+    // Step 6: Verify — read back the profile to confirm it exists
+    const { data: verifyProfile } = await supabaseAdmin
+      .from("profiles")
+      .select("id, organization_id, role, email")
+      .eq("id", userId)
+      .single();
+
+    console.log("[Step 6] Verify profile exists:", verifyProfile ? JSON.stringify(verifyProfile) : "NOT FOUND — PROBLEM!");
+    console.log("=== ACCEPT INVITATION COMPLETE ===");
+
     revalidatePath("/settings/organization");
     return { error: null, success: true };
   } catch (err) {
     console.error("[acceptInvitation] Unexpected error:", err);
-    return { error: "An unexpected error occurred. Please try again." };
+    return { error: `An unexpected error occurred: ${err instanceof Error ? err.message : String(err)}` };
   }
 }
 
