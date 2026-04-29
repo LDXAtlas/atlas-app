@@ -187,11 +187,12 @@ function InviteModal({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 8 }}
             transition={{ duration: 0.25, ease: [0.23, 1, 0.32, 1] }}
-            className="w-full max-w-md mx-4 bg-white rounded-2xl shadow-xl overflow-hidden"
+            className="w-full max-w-lg mx-4 bg-white rounded-2xl shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="flex items-center justify-between px-6 py-5 border-b border-[#E5E7EB]">
+            <div className="px-6 py-5 border-b border-[#E5E7EB]">
+            <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div
                   className="size-10 rounded-xl flex items-center justify-center"
@@ -212,6 +213,13 @@ function InviteModal({
               >
                 <X className="size-4" />
               </button>
+            </div>
+            <p
+              className="text-[13px] text-[#6B7280] mt-2"
+              style={{ fontFamily: "var(--font-source-sans)" }}
+            >
+              They&apos;ll receive an email with a link to join your organization.
+            </p>
             </div>
 
             {/* Body */}
@@ -280,81 +288,61 @@ function InviteModal({
                     </div>
                   </label>
 
-                  {/* Role selector */}
-                  <label className="flex flex-col gap-1.5">
+                  {/* Role selector — card-style toggle */}
+                  <div className="flex flex-col gap-1.5">
                     <span
                       className="text-[13px] font-semibold text-[#2D333A]"
                       style={{ fontFamily: "var(--font-source-sans)" }}
                     >
                       Role
                     </span>
-                    <div className="relative">
-                      <button
-                        type="button"
-                        onClick={() => setRoleOpen(!roleOpen)}
-                        className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl border border-[#E5E7EB] bg-[#F4F5F7] text-[14px] text-[#2D333A] outline-none transition-all hover:border-[#E5E7EB] focus:border-[#5CE1A5] focus:ring-1 focus:ring-[#5CE1A5]"
-                        style={{ fontFamily: "var(--font-source-sans)" }}
-                      >
-                        <span className="flex items-center gap-2">
-                          <Shield className="size-4 text-[#6B7280]" />
-                          {roles.find((r) => r.value === role)?.label}
-                        </span>
-                        <ChevronDown
-                          className={`size-4 text-[#9CA3AF] transition-transform ${
-                            roleOpen ? "rotate-180" : ""
-                          }`}
-                        />
-                      </button>
-
-                      <AnimatePresence>
-                        {roleOpen && (
-                          <motion.div
-                            initial={{ opacity: 0, y: -4 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -4 }}
-                            transition={{ duration: 0.15 }}
-                            className="absolute z-10 mt-1 w-full bg-white border border-[#E5E7EB] rounded-xl shadow-lg overflow-hidden"
+                    <div className="grid grid-cols-2 gap-3">
+                      {roles.map((r) => {
+                        const isSelected = role === r.value;
+                        const isAdmin = r.value === "admin";
+                        const accentColor = isAdmin ? "#5CE1A5" : "#3B82F6";
+                        return (
+                          <button
+                            key={r.value}
+                            type="button"
+                            onClick={() => setRole(r.value)}
+                            className="text-left p-4 rounded-xl border-2 transition-all"
+                            style={{
+                              borderColor: isSelected ? accentColor : "#E5E7EB",
+                              backgroundColor: isSelected ? `${accentColor}06` : "white",
+                            }}
                           >
-                            {roles.map((r) => (
-                              <button
-                                key={r.value}
-                                type="button"
-                                onClick={() => {
-                                  setRole(r.value);
-                                  setRoleOpen(false);
+                            <div className="flex items-center justify-between mb-1.5">
+                              <span
+                                className="text-[14px] font-semibold"
+                                style={{
+                                  fontFamily: "var(--font-poppins)",
+                                  color: isSelected ? accentColor : "#2D333A",
                                 }}
-                                className={`w-full text-left px-4 py-3 hover:bg-[#F4F5F7] transition-colors ${
-                                  role === r.value ? "bg-[#F4F5F7]" : ""
-                                }`}
                               >
-                                <div className="flex items-center gap-2">
-                                  <span
-                                    className="text-[14px] font-medium text-[#2D333A]"
-                                    style={{
-                                      fontFamily: "var(--font-poppins)",
-                                    }}
-                                  >
-                                    {r.label}
-                                  </span>
-                                  {role === r.value && (
-                                    <Check className="size-3.5 text-[#5CE1A5]" />
-                                  )}
-                                </div>
-                                <p
-                                  className="text-[12px] text-[#6B7280] mt-0.5"
-                                  style={{
-                                    fontFamily: "var(--font-source-sans)",
-                                  }}
-                                >
-                                  {r.description}
-                                </p>
-                              </button>
-                            ))}
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
+                                {r.label}
+                              </span>
+                              <div
+                                className="size-5 rounded-full border-2 flex items-center justify-center transition-all"
+                                style={{
+                                  borderColor: isSelected ? accentColor : "#D1D5DB",
+                                  backgroundColor: isSelected ? accentColor : "transparent",
+                                }}
+                              >
+                                {isSelected && <Check className="size-3 text-white" strokeWidth={3} />}
+                              </div>
+                            </div>
+                            <p
+                              className="text-[12px] text-[#6B7280] leading-snug"
+                              style={{ fontFamily: "var(--font-source-sans)" }}
+                            >
+                              {r.description}
+                            </p>
+                          </button>
+                        );
+                      })}
                     </div>
-                  </label>
+                  </div>
 
                   {/* Submit */}
                   <div className="flex gap-3 pt-2">
