@@ -46,8 +46,8 @@ export async function createCheckoutSession(tier: StripeTier) {
     ...(existingCustomer
       ? { customer: existingCustomer.id }
       : { customer_email: user.email! }),
-    success_url: `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/onboarding/success?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/onboarding/select-plan`,
+    success_url: `${process.env.NEXT_PUBLIC_SITE_URL || "https://app.atlaschurchsolutions.com"}/onboarding/success?session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${process.env.NEXT_PUBLIC_SITE_URL || "https://app.atlaschurchsolutions.com"}/onboarding/select-plan`,
     metadata: {
       organization_id: organizationId,
       tier,
@@ -76,7 +76,7 @@ export async function createBillingPortalSession() {
     redirect("/settings");
   }
 
-  const returnUrl = `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/settings/subscription`;
+  const returnUrl = `${process.env.NEXT_PUBLIC_SITE_URL || "https://app.atlaschurchsolutions.com"}/settings/subscription`;
 
   // Try creating a portal with full plan switching, fall back to basic portal
   let sessionUrl: string;

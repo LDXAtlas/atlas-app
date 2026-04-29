@@ -16,7 +16,7 @@ import { QuickActions } from "./widgets/quick-actions";
 import { RecentMembers } from "./widgets/recent-members";
 import { SubscriptionOverview } from "./widgets/subscription-overview";
 import { AnnouncementsFeed } from "./widgets/announcements-feed";
-import { UpcomingEvents } from "./widgets/upcoming-events";
+import { UpcomingEvents, type UpcomingEventData } from "./widgets/upcoming-events";
 import { MyTasks } from "./widgets/my-tasks";
 import { RecentDepartments } from "./widgets/recent-departments";
 import { WidgetLibrary } from "./widget-library";
@@ -68,6 +68,7 @@ export interface DashboardProps {
     target_department_name: string | null;
     target_department_color: string | null;
   }[];
+  upcomingEvents?: UpcomingEventData[];
 }
 
 // ─── Widget Layout Config ───────────────────────────────
@@ -279,6 +280,7 @@ export function DashboardClient({
   departments,
   recentMembers,
   recentAnnouncements,
+  upcomingEvents = [],
 }: DashboardProps) {
   const firstName = getFirstName(userName);
   const greeting = getGreeting();
@@ -375,7 +377,7 @@ export function DashboardClient({
       case "announcements-feed":
         return <AnnouncementsFeed announcements={recentAnnouncements} />;
       case "upcoming-events":
-        return <UpcomingEvents />;
+        return <UpcomingEvents events={upcomingEvents} />;
       case "my-tasks":
         return <MyTasks />;
       case "recent-departments":

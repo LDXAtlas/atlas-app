@@ -17,9 +17,15 @@ export async function sendInvitationEmail({
   token,
   role,
 }: SendInvitationEmailParams) {
+  // Use NEXT_PUBLIC_SITE_URL if set, otherwise fall back to production domain
+  // In local dev, .env.local has NEXT_PUBLIC_SITE_URL=http://localhost:3000
+  // In production (Vercel), set NEXT_PUBLIC_SITE_URL=https://app.atlaschurchsolutions.com
   const baseUrl =
-    process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+    process.env.NEXT_PUBLIC_SITE_URL || "https://app.atlaschurchsolutions.com";
   const joinUrl = `${baseUrl}/join?token=${token}`;
+
+  console.log("[sendInvitationEmail] Base URL:", baseUrl);
+  console.log("[sendInvitationEmail] Join URL:", joinUrl);
 
   const html = `
 <!DOCTYPE html>

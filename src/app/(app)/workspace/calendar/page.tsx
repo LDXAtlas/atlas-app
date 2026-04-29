@@ -1,32 +1,137 @@
-import { Calendar } from "lucide-react";
+import { redirect } from "next/navigation";
+import { connection } from "next/server";
+import { createClient } from "@/lib/supabase/server";
+import { supabaseAdmin } from "@/lib/supabase/admin";
+import { CalendarView, type CalendarEvent } from "./calendar-view";
 
-export default function CalendarPage() {
+export default async function CalendarPage() {
+  await connection();
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const organizationSlug = user.user_metadata?.organization_slug;
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth();
+
+  let events: CalendarEvent[] = [];
+  let departments: { id: string; name: string; color: string }[] = [];
+  let customEventTypes: { id: string; name: string; color: string }[] = [];
+
+  if (organizationSlug) {
+    const { data: org } = await supabaseAdmin
+      .from("organizations")
+      .select("id")
+      .eq("slug", organizationSlug)
+      .single();
+
+    if (org) {
+      // Fetch events for a wide range around the current month (prev 2 + current + next 2)
+      const rangeStart = new Date(currentYear, currentMonth - 2, 1).toISOString();
+      const rangeEnd = new Date(currentYear, currentMonth + 3, 0).toISOString();
+
+      const [eventsRes, departmentsRes, customTypesRes] = await Promise.all([
+        supabaseAdmin
+          .from("events")
+          .select(
+            "id, title, description, event_type, starts_at, ends_at, is_all_day, location, location_type, virtual_url, color, status, department_id, recurrence_rule",
+          )
+          .eq("organization_id", org.id)
+          .gte("starts_at", rangeStart)
+          .lte("starts_at", rangeEnd)
+          .order("starts_at", { ascending: true }),
+        supabaseAdmin
+          .from("departments")
+          .select("id, name, color")
+          .eq("organization_id", org.id)
+          .order("name", { ascending: true }),
+        supabaseAdmin
+          .from("custom_event_types")
+          .select("id, name, color")
+          .eq("organization_id", org.id)
+          .order("name", { ascending: true }),
+      ]);
+
+      departments = (departmentsRes.data ?? []).map((d) => ({
+        id: d.id,
+        name: d.name,
+        color: d.color || "#5CE1A5",
+      }));
+
+      customEventTypes = (customTypesRes.data ?? []).map((ct) => ({
+        id: ct.id,
+        name: ct.name,
+        color: ct.color,
+      }));
+
+      // Build department lookup
+      const deptMap = new Map(
+        departments.map((d) => [d.id, { name: d.name, color: d.color }]),
+      );
+
+      // Fetch event_departments for all events
+      const eventIds = (eventsRes.data ?? []).map((e) => e.id);
+      let eventDeptMap = new Map<string, { id: string; name: string; color: string }[]>();
+
+      if (eventIds.length > 0) {
+        const { data: edRows } = await supabaseAdmin
+          .from("event_departments")
+          .select("event_id, department_id")
+          .in("event_id", eventIds);
+
+        for (const row of edRows ?? []) {
+          const dept = deptMap.get(row.department_id);
+          if (!dept) continue;
+          const list = eventDeptMap.get(row.event_id) ?? [];
+          list.push({ id: row.department_id, name: dept.name, color: dept.color });
+          eventDeptMap.set(row.event_id, list);
+        }
+      }
+
+      events = (eventsRes.data ?? []).map((e) => {
+        const primaryDept = e.department_id ? deptMap.get(e.department_id) : null;
+        const multiDepts = eventDeptMap.get(e.id) ?? [];
+        // Merge primary + multi, dedup by id
+        const allDepts = primaryDept
+          ? [{ id: e.department_id!, name: primaryDept.name, color: primaryDept.color }, ...multiDepts]
+          : multiDepts;
+        const uniqueDepts = Array.from(new Map(allDepts.map((d) => [d.id, d])).values());
+
+        return {
+          id: e.id,
+          title: e.title,
+          description: e.description ?? null,
+          event_type: e.event_type,
+          starts_at: e.starts_at,
+          ends_at: e.ends_at,
+          is_all_day: e.is_all_day,
+          location: e.location,
+          location_type: e.location_type ?? "in_person",
+          virtual_url: e.virtual_url ?? null,
+          color: e.color,
+          status: e.status,
+          department_id: e.department_id ?? null,
+          departments: uniqueDepts,
+          recurrence_rule: e.recurrence_rule ?? null,
+        };
+      });
+    }
+  }
+
   return (
-    <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4">
-      <div
-        className="size-16 rounded-2xl flex items-center justify-center mb-5"
-        style={{ backgroundColor: "rgba(92, 225, 165, 0.08)" }}
-      >
-        <Calendar className="size-8 text-[#5CE1A5]" />
-      </div>
-      <h2
-        className="text-2xl font-semibold text-[#2D333A] mb-2"
-        style={{ fontFamily: "var(--font-poppins)" }}
-      >
-        Calendar
-      </h2>
-      <p
-        className="text-[#6B7280] text-[15px] max-w-md mb-4"
-        style={{ fontFamily: "var(--font-source-sans)" }}
-      >
-        See everything happening across your church. A unified calendar view of events, meetings, and deadlines.
-      </p>
-      <span
-        className="inline-flex items-center px-3 py-1 rounded-full text-[12px] font-medium text-[#5CE1A5] bg-[#5CE1A5]/8"
-        style={{ fontFamily: "var(--font-poppins)" }}
-      >
-        Coming Soon
-      </span>
-    </div>
+    <CalendarView
+      events={events}
+      departments={departments}
+      customEventTypes={customEventTypes}
+      initialYear={currentYear}
+      initialMonth={currentMonth}
+    />
   );
 }

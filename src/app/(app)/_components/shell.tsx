@@ -80,9 +80,8 @@ const modules: ModuleGroup[] = [
       { label: "My Tasks", href: "/workspace/tasks", icon: <CheckSquare className="size-4" /> },
       { label: "Team Huddles", href: "/workspace/huddles", icon: <Users className="size-4" /> },
       { label: "Project Boards", href: "/workspace/projects", icon: <Folder className="size-4" /> },
-      { label: "Events", href: "/workspace/events", icon: <Calendar className="size-4" /> },
-      { label: "Library", href: "/workspace/library", icon: <BookOpen className="size-4" /> },
       { label: "Calendar", href: "/workspace/calendar", icon: <Calendar className="size-4" /> },
+      { label: "Library", href: "/workspace/library", icon: <BookOpen className="size-4" /> },
     ],
   },
   {
@@ -133,7 +132,6 @@ const pageTitles: Record<string, string> = {
   "/workspace/tasks": "My Tasks",
   "/workspace/huddles": "Team Huddles",
   "/workspace/projects": "Project Boards",
-  "/workspace/events": "Events",
   "/workspace/library": "Library",
   "/workspace/calendar": "Calendar",
   "/serve/onboarding": "Onboarding",

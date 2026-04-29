@@ -50,6 +50,15 @@ export default async function DashboardPage() {
     target_department_name: string | null;
     target_department_color: string | null;
   }[] = [];
+  let upcomingEvents: {
+    id: string;
+    title: string;
+    event_type: string;
+    starts_at: string;
+    is_all_day: boolean;
+    location: string | null;
+    color: string;
+  }[] = [];
 
   if (organizationSlug) {
     // Fetch org first to get ID
@@ -76,6 +85,7 @@ export default async function DashboardPage() {
         departmentsRes,
         recentMembersRes,
         announcementsRes,
+        eventsRes,
       ] = await Promise.all([
         supabaseAdmin
           .from("members")
@@ -105,6 +115,14 @@ export default async function DashboardPage() {
           .eq("is_published", true)
           .order("is_pinned", { ascending: false })
           .order("published_at", { ascending: false })
+          .limit(3),
+        supabaseAdmin
+          .from("events")
+          .select("id, title, event_type, starts_at, is_all_day, location, color, status")
+          .eq("organization_id", org.id)
+          .neq("status", "cancelled")
+          .gte("starts_at", new Date().toISOString())
+          .order("starts_at", { ascending: true })
           .limit(3),
       ]);
 
@@ -181,6 +199,17 @@ export default async function DashboardPage() {
           target_department_color: deptColor,
         });
       }
+
+      // Process upcoming events
+      upcomingEvents = (eventsRes.data ?? []).map((e) => ({
+        id: e.id,
+        title: e.title,
+        event_type: e.event_type,
+        starts_at: e.starts_at,
+        is_all_day: e.is_all_day,
+        location: e.location,
+        color: e.color,
+      }));
     }
   }
 
@@ -197,6 +226,7 @@ export default async function DashboardPage() {
       departments={departments}
       recentMembers={recentMembers}
       recentAnnouncements={recentAnnouncements}
+      upcomingEvents={upcomingEvents}
     />
   );
 }
