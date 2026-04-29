@@ -370,14 +370,30 @@ export async function acceptInvitation(
       });
 
     if (createError) {
-      console.error("[acceptInvitation] Create user error:", createError);
-      if (createError.message?.includes("already been registered")) {
+      console.error("[acceptInvitation] Create user error:", JSON.stringify({
+        message: createError.message,
+        status: createError.status,
+        name: createError.name,
+        code: (createError as unknown as { code?: string }).code,
+      }));
+
+      const msg = createError.message?.toLowerCase() || "";
+      if (
+        msg.includes("already been registered") ||
+        msg.includes("already exists") ||
+        msg.includes("user_already_exists") ||
+        (createError as unknown as { code?: string }).code === "user_already_exists"
+      ) {
         return {
-          error:
-            "An account with this email already exists. Please log in instead.",
+          error: "An account with this email already exists. Sign in instead, then check your invitations.",
         };
       }
-      return { error: "Failed to create your account. Please try again." };
+
+      if (msg.includes("password")) {
+        return { error: `Password error: ${createError.message}` };
+      }
+
+      return { error: createError.message || "Failed to create your account." };
     }
 
     // Create profile linked to the org
