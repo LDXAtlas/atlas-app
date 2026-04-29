@@ -67,6 +67,14 @@ async function getAuthContext(): Promise<{
   return { userId: profile.id, organizationId: org.id };
 }
 
+// ─── Sanitize helpers ──────────────────────────────────
+// Convert empty strings, undefined, and "none" to null for optional DB columns
+const clean = (v: unknown): string | null =>
+  v === "" || v === undefined || v === null || v === "none" ? null : String(v);
+
+const cleanArray = (v: unknown[] | undefined | null): unknown[] | null =>
+  Array.isArray(v) && v.length > 0 ? v : null;
+
 // ─── Create Event ──────────────────────────────────────
 
 export async function createEvent(data: EventInput): Promise<ActionResult> {
@@ -91,21 +99,20 @@ export async function createEvent(data: EventInput): Promise<ActionResult> {
       organization_id: ctx.organizationId,
       title: data.title.trim(),
       description: data.description?.trim() || null,
-      event_type: data.event_type || "general",
-      visibility: data.visibility || "public",
+      event_type: clean(data.event_type) || "general",
+      visibility: clean(data.visibility) || "organization",
       starts_at: data.starts_at,
-      ends_at: data.ends_at || null,
+      ends_at: clean(data.ends_at),
       is_all_day: data.is_all_day || false,
       timezone: data.timezone || "America/New_York",
-      location: data.location?.trim() || null,
-      location_type: data.location_type || "in_person",
-      virtual_url: data.virtual_url?.trim() || null,
+      location: clean(data.location?.trim()),
+      location_type: clean(data.location_type) || "in_person",
+      virtual_url: clean(data.virtual_url?.trim()),
       color: data.color || "#5CE1A5",
-      department_id: data.department_id || null,
+      department_id: clean(data.department_id),
       owner_user_id: ctx.userId,
-      recurrence_frequency: data.recurrence_frequency || "none",
-      recurrence_rule: data.recurrence_rule?.trim() || null,
-      status: data.status || "confirmed",
+      recurrence_rule: clean(data.recurrence_rule?.trim()),
+      status: clean(data.status) || "confirmed",
       created_by: ctx.userId,
     })
     .select("id")
@@ -151,26 +158,19 @@ export async function updateEvent(
   if (data.title !== undefined) updates.title = data.title.trim();
   if (data.description !== undefined)
     updates.description = data.description?.trim() || null;
-  if (data.event_type !== undefined) updates.event_type = data.event_type;
-  if (data.visibility !== undefined) updates.visibility = data.visibility;
+  if (data.event_type !== undefined) updates.event_type = clean(data.event_type) || "general";
+  if (data.visibility !== undefined) updates.visibility = clean(data.visibility) || "organization";
   if (data.starts_at !== undefined) updates.starts_at = data.starts_at;
-  if (data.ends_at !== undefined) updates.ends_at = data.ends_at || null;
+  if (data.ends_at !== undefined) updates.ends_at = clean(data.ends_at);
   if (data.is_all_day !== undefined) updates.is_all_day = data.is_all_day;
   if (data.timezone !== undefined) updates.timezone = data.timezone;
-  if (data.location !== undefined)
-    updates.location = data.location?.trim() || null;
-  if (data.location_type !== undefined)
-    updates.location_type = data.location_type;
-  if (data.virtual_url !== undefined)
-    updates.virtual_url = data.virtual_url?.trim() || null;
+  if (data.location !== undefined) updates.location = clean(data.location?.trim());
+  if (data.location_type !== undefined) updates.location_type = clean(data.location_type) || "in_person";
+  if (data.virtual_url !== undefined) updates.virtual_url = clean(data.virtual_url?.trim());
   if (data.color !== undefined) updates.color = data.color;
-  if (data.department_id !== undefined)
-    updates.department_id = data.department_id || null;
-  if (data.recurrence_frequency !== undefined)
-    updates.recurrence_frequency = data.recurrence_frequency;
-  if (data.recurrence_rule !== undefined)
-    updates.recurrence_rule = data.recurrence_rule?.trim() || null;
-  if (data.status !== undefined) updates.status = data.status;
+  if (data.department_id !== undefined) updates.department_id = clean(data.department_id);
+  if (data.recurrence_rule !== undefined) updates.recurrence_rule = clean(data.recurrence_rule?.trim());
+  if (data.status !== undefined) updates.status = clean(data.status) || "confirmed";
 
   const { error } = await supabaseAdmin
     .from("events")
