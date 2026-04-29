@@ -46,3 +46,18 @@ create policy "Users can delete custom event types in their org"
 
 -- Add recurrence_rule column to events if not exists
 alter table events add column if not exists recurrence_rule text;
+
+-- Add custom_event_type_id to events for custom type support
+alter table events add column if not exists custom_event_type_id uuid references custom_event_types(id) on delete set null;
+create index if not exists idx_events_custom_type on events(custom_event_type_id) where custom_event_type_id is not null;
+
+-- Add update policy for custom event types
+create policy "Users can update custom event types in their org"
+  on custom_event_types for update
+  using (
+    organization_id in (
+      select o.id from organizations o
+      join profiles p on p.organization_id = o.id
+      where p.id = auth.uid()
+    )
+  );

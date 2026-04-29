@@ -10,6 +10,7 @@ export type EventInput = {
   title: string;
   description?: string;
   event_type?: string;
+  custom_event_type_id?: string | null;
   visibility?: string;
   starts_at: string;
   ends_at?: string;
@@ -21,7 +22,6 @@ export type EventInput = {
   color?: string;
   department_id?: string | null;
   department_ids?: string[];
-  recurrence_frequency?: string;
   recurrence_rule?: string;
   status?: string;
 };
@@ -100,6 +100,7 @@ export async function createEvent(data: EventInput): Promise<ActionResult> {
       title: data.title.trim(),
       description: data.description?.trim() || null,
       event_type: clean(data.event_type) || "general",
+      custom_event_type_id: clean(data.custom_event_type_id),
       visibility: clean(data.visibility) || "organization",
       starts_at: data.starts_at,
       ends_at: clean(data.ends_at),
@@ -159,6 +160,7 @@ export async function updateEvent(
   if (data.description !== undefined)
     updates.description = data.description?.trim() || null;
   if (data.event_type !== undefined) updates.event_type = clean(data.event_type) || "general";
+  if (data.custom_event_type_id !== undefined) updates.custom_event_type_id = clean(data.custom_event_type_id);
   if (data.visibility !== undefined) updates.visibility = clean(data.visibility) || "organization";
   if (data.starts_at !== undefined) updates.starts_at = data.starts_at;
   if (data.ends_at !== undefined) updates.ends_at = clean(data.ends_at);
@@ -293,4 +295,76 @@ export async function createCustomEventType(
 
   revalidatePath("/workspace/calendar");
   return { success: true, id: eventType?.id };
+}
+
+// ─── Update Custom Event Type ─────────────────────────
+
+export async function updateCustomEventType(
+  id: string,
+  name: string,
+  color: string,
+): Promise<ActionResult> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated." };
+
+  const { error } = await supabaseAdmin
+    .from("custom_event_types")
+    .update({ name: name.trim(), color })
+    .eq("id", id)
+    .eq("organization_id", ctx.organizationId);
+
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath("/workspace/calendar");
+  return { success: true };
+}
+
+// ─── Delete Custom Event Type ─────────────────────────
+
+export async function deleteCustomEventType(id: string): Promise<ActionResult> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated." };
+
+  // Events using this type will have custom_event_type_id set to null (ON DELETE SET NULL)
+  const { error } = await supabaseAdmin
+    .from("custom_event_types")
+    .delete()
+    .eq("id", id)
+    .eq("organization_id", ctx.organizationId);
+
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath("/workspace/calendar");
+  return { success: true };
+}
+
+// ─── Get Event Types (preset + custom) ────────────────
+
+export const PRESET_EVENT_TYPES = [
+  { key: "service", label: "Service", color: "#5CE1A5" },
+  { key: "meeting", label: "Meeting", color: "#3B82F6" },
+  { key: "rehearsal", label: "Rehearsal", color: "#8B5CF6" },
+  { key: "class", label: "Class", color: "#F59E0B" },
+  { key: "outreach", label: "Outreach", color: "#EC4899" },
+  { key: "social", label: "Social", color: "#10B981" },
+  { key: "general", label: "General", color: "#6B7280" },
+] as const;
+
+export async function getEventTypes(): Promise<{
+  preset: typeof PRESET_EVENT_TYPES;
+  custom: { id: string; name: string; color: string }[];
+}> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { preset: PRESET_EVENT_TYPES, custom: [] };
+
+  const { data } = await supabaseAdmin
+    .from("custom_event_types")
+    .select("id, name, color")
+    .eq("organization_id", ctx.organizationId)
+    .order("name");
+
+  return {
+    preset: PRESET_EVENT_TYPES,
+    custom: (data ?? []) as { id: string; name: string; color: string }[],
+  };
 }

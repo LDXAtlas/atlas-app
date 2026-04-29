@@ -3,7 +3,13 @@
 import { useState, useTransition } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { X, Clock, MapPin, Video, Globe, Plus, Repeat } from "lucide-react";
-import { createEvent, updateEvent, createCustomEventType } from "@/app/actions/events";
+import {
+  createEvent,
+  updateEvent,
+  createCustomEventType,
+  updateCustomEventType,
+  deleteCustomEventType,
+} from "@/app/actions/events";
 
 // ─── Types ──────────────────────────────────────────────
 
@@ -36,6 +42,7 @@ export interface EventModalData {
   title: string;
   description: string | null;
   event_type: string;
+  custom_event_type_id?: string | null;
   starts_at: string;
   ends_at: string | null;
   is_all_day: boolean;
@@ -166,6 +173,8 @@ export function EventModal({
   const [title, setTitle] = useState(editEvent?.title || "");
   const [description, setDescription] = useState(editEvent?.description || "");
   const [eventType, setEventType] = useState<string>(editEvent?.event_type || "general");
+  const [customEventTypeId, setCustomEventTypeId] = useState<string | null>(editEvent?.custom_event_type_id || null);
+  const [showManageTypes, setShowManageTypes] = useState(false);
   const [startDate, setStartDate] = useState(
     editEvent ? editEvent.starts_at.slice(0, 10) : "",
   );
@@ -208,6 +217,8 @@ export function EventModal({
     setTitle("");
     setDescription("");
     setEventType("general");
+    setCustomEventTypeId(null);
+    setShowManageTypes(false);
     setStartDate("");
     setStartTime("09:00");
     setEndDate("");
@@ -253,8 +264,10 @@ export function EventModal({
     if (!newTypeName.trim()) return;
     startCreatingType(async () => {
       const result = await createCustomEventType(newTypeName.trim(), newTypeColor);
-      if (result.success) {
-        setEventType(newTypeName.trim().toLowerCase());
+      if (result.success && result.id) {
+        // Select the new custom type by UUID
+        setEventType("other");
+        setCustomEventTypeId(result.id);
         setColor(newTypeColor);
         setShowNewType(false);
         setNewTypeName("");
@@ -299,7 +312,8 @@ export function EventModal({
       const payload = {
         title: title.trim(),
         description: description.trim() || undefined,
-        event_type: eventType,
+        event_type: customEventTypeId ? "other" : eventType,
+        custom_event_type_id: customEventTypeId || null,
         starts_at: startsAt,
         ends_at: endsAt,
         is_all_day: isAllDay,
@@ -325,20 +339,42 @@ export function EventModal({
     });
   }
 
-  const allTypes: { key: string; label: string; color: string }[] = [
-    ...Object.entries(EVENT_TYPE_CONFIG).map(([key, config]) => ({
-      key,
-      label: config.label,
-      color: config.color,
-    })),
+  function selectPresetType(key: string, typeColor: string) {
+    setEventType(key);
+    setCustomEventTypeId(null);
+    setColor(typeColor);
+  }
+
+  function selectCustomType(ct: CustomEventType) {
+    setEventType("other");
+    setCustomEventTypeId(ct.id);
+    setColor(ct.color);
+  }
+
+  // Is the current selection a specific custom type?
+  const isCustomSelected = !!customEventTypeId;
+  const selectedCustomType = customEventTypes.find((ct) => ct.id === customEventTypeId);
+
+  const allTypes: { key: string; label: string; color: string; isCustom: boolean; customId?: string }[] = [
+    ...Object.entries(EVENT_TYPE_CONFIG)
+      .filter(([key]) => key !== "other") // hide "other" from list — it's set automatically
+      .map(([key, config]) => ({
+        key,
+        label: config.label,
+        color: config.color,
+        isCustom: false,
+      })),
     ...customEventTypes.map((ct) => ({
-      key: ct.name.toLowerCase(),
+      key: `custom-${ct.id}`,
       label: ct.name,
       color: ct.color,
+      isCustom: true,
+      customId: ct.id,
     })),
   ];
 
   return (
+    <>
     <AnimatePresence>
       {isOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
@@ -449,14 +485,19 @@ export function EventModal({
                 </label>
                 <div className="flex flex-wrap gap-2">
                   {allTypes.map((t) => {
-                    const active = eventType === t.key;
+                    const active = t.isCustom
+                      ? customEventTypeId === t.customId
+                      : eventType === t.key && !isCustomSelected;
                     return (
                       <button
                         key={t.key}
                         type="button"
                         onClick={() => {
-                          setEventType(t.key);
-                          setColor(t.color);
+                          if (t.isCustom && t.customId) {
+                            selectCustomType({ id: t.customId, name: t.label, color: t.color });
+                          } else {
+                            selectPresetType(t.key, t.color);
+                          }
                         }}
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all text-[13px]"
                         style={{
@@ -539,6 +580,17 @@ export function EventModal({
                         <X className="size-4" />
                       </button>
                     </div>
+                  )}
+                  {/* Manage types link */}
+                  {customEventTypes.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowManageTypes(true)}
+                      className="text-[11px] text-[#9CA3AF] hover:text-[#5CE1A5] transition-colors"
+                      style={{ fontFamily: "var(--font-source-sans)" }}
+                    >
+                      Manage types
+                    </button>
                   )}
                 </div>
               </div>
@@ -1082,5 +1134,137 @@ export function EventModal({
         </div>
       )}
     </AnimatePresence>
+
+    {/* Manage Types Modal */}
+    <AnimatePresence>
+      {showManageTypes && (
+        <>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setShowManageTypes(false)}
+            className="fixed inset-0 z-[100] bg-black/30 backdrop-blur-sm"
+          />
+          <div className="fixed inset-0 z-[105] flex items-center justify-center p-6 pointer-events-none">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="pointer-events-auto w-full max-w-[400px] bg-white rounded-2xl shadow-2xl border border-[#E5E7EB]/50 overflow-hidden"
+            >
+              <div className="flex items-center justify-between px-6 py-4 border-b border-[#E5E7EB]">
+                <h3 className="text-[16px] text-[#2D333A]" style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}>
+                  Manage Event Types
+                </h3>
+                <button onClick={() => setShowManageTypes(false)} className="p-1 text-[#6B7280] hover:text-[#2D333A]">
+                  <X className="size-5" />
+                </button>
+              </div>
+              <div className="p-4 space-y-2 max-h-[60vh] overflow-y-auto">
+                {customEventTypes.length === 0 ? (
+                  <p className="text-center text-[13px] text-[#9CA3AF] py-6" style={{ fontFamily: "var(--font-source-sans)" }}>
+                    No custom types yet. Create one from the event form.
+                  </p>
+                ) : (
+                  customEventTypes.map((ct) => (
+                    <ManageTypeRow key={ct.id} type={ct} onUpdated={() => onCreated?.()} />
+                  ))
+                )}
+              </div>
+            </motion.div>
+          </div>
+        </>
+      )}
+    </AnimatePresence>
+    </>
+  );
+}
+
+// ─── Manage Type Row ────────────────────────────────────
+function ManageTypeRow({ type, onUpdated }: { type: CustomEventType; onUpdated: () => void }) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(type.name);
+  const [color, setColor] = useState(type.color);
+  const [deleting, setDeleting] = useState(false);
+  const [saving, startSaving] = useTransition();
+
+  function handleSave() {
+    if (!name.trim()) return;
+    startSaving(async () => {
+      await updateCustomEventType(type.id, name.trim(), color);
+      setEditing(false);
+      onUpdated();
+    });
+  }
+
+  function handleDelete() {
+    startSaving(async () => {
+      await deleteCustomEventType(type.id);
+      onUpdated();
+    });
+  }
+
+  if (deleting) {
+    return (
+      <div className="flex items-center justify-between p-3 bg-red-50 rounded-xl border border-red-100">
+        <p className="text-[13px] text-red-600" style={{ fontFamily: "var(--font-source-sans)" }}>
+          Delete &ldquo;{type.name}&rdquo;?
+        </p>
+        <div className="flex gap-2">
+          <button onClick={() => setDeleting(false)} className="text-[12px] text-[#6B7280] px-2 py-1 rounded-lg hover:bg-white" style={{ fontWeight: 600 }}>
+            Cancel
+          </button>
+          <button onClick={handleDelete} disabled={saving} className="text-[12px] text-white bg-[#EF4444] px-2 py-1 rounded-lg disabled:opacity-50" style={{ fontWeight: 600 }}>
+            Delete
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (editing) {
+    return (
+      <div className="p-3 bg-[#F4F5F7] rounded-xl border border-[#E5E7EB] space-y-2">
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          className="w-full h-9 px-3 rounded-lg border border-[#E5E7EB] bg-white text-[13px] text-[#2D333A] outline-none focus:border-[#5CE1A5]"
+        />
+        <div className="flex items-center gap-1">
+          {["#5CE1A5","#3B82F6","#8B5CF6","#F59E0B","#EC4899","#10B981","#EF4444","#6B7280"].map((c) => (
+            <button
+              key={c}
+              onClick={() => setColor(c)}
+              className="size-5 rounded-md"
+              style={{ backgroundColor: c, boxShadow: color === c ? `0 0 0 2px white, 0 0 0 3px ${c}` : "none" }}
+            />
+          ))}
+        </div>
+        <div className="flex gap-2 justify-end">
+          <button onClick={() => { setEditing(false); setName(type.name); setColor(type.color); }} className="text-[12px] text-[#6B7280] px-2 py-1 rounded-lg hover:bg-white" style={{ fontWeight: 600 }}>
+            Cancel
+          </button>
+          <button onClick={handleSave} disabled={saving || !name.trim()} className="text-[12px] text-white bg-[#5CE1A5] px-3 py-1 rounded-lg disabled:opacity-50" style={{ fontWeight: 600 }}>
+            Save
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-3 p-3 rounded-xl hover:bg-[#F4F5F7] transition-colors group">
+      <div className="size-3 rounded-full shrink-0" style={{ backgroundColor: type.color }} />
+      <span className="flex-1 text-[14px] text-[#2D333A]" style={{ fontFamily: "var(--font-source-sans)", fontWeight: 500 }}>
+        {type.name}
+      </span>
+      <button onClick={() => setEditing(true)} className="text-[11px] text-[#9CA3AF] hover:text-[#5CE1A5] opacity-0 group-hover:opacity-100 transition-all" style={{ fontWeight: 600 }}>
+        Edit
+      </button>
+      <button onClick={() => setDeleting(true)} className="text-[11px] text-[#9CA3AF] hover:text-[#EF4444] opacity-0 group-hover:opacity-100 transition-all" style={{ fontWeight: 600 }}>
+        Delete
+      </button>
+    </div>
   );
 }
