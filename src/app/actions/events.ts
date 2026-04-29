@@ -340,7 +340,7 @@ export async function deleteCustomEventType(id: string): Promise<ActionResult> {
 
 // ─── Get Event Types (preset + custom) ────────────────
 
-export const PRESET_EVENT_TYPES = [
+const PRESET_TYPES = [
   { key: "service", label: "Service", color: "#5CE1A5" },
   { key: "meeting", label: "Meeting", color: "#3B82F6" },
   { key: "rehearsal", label: "Rehearsal", color: "#8B5CF6" },
@@ -348,14 +348,14 @@ export const PRESET_EVENT_TYPES = [
   { key: "outreach", label: "Outreach", color: "#EC4899" },
   { key: "social", label: "Social", color: "#10B981" },
   { key: "general", label: "General", color: "#6B7280" },
-] as const;
+];
 
 export async function getEventTypes(): Promise<{
-  preset: typeof PRESET_EVENT_TYPES;
+  preset: { key: string; label: string; color: string }[];
   custom: { id: string; name: string; color: string }[];
 }> {
   const ctx = await getAuthContext();
-  if (!ctx) return { preset: PRESET_EVENT_TYPES, custom: [] };
+  if (!ctx) return { preset: PRESET_TYPES, custom: [] };
 
   const { data } = await supabaseAdmin
     .from("custom_event_types")
@@ -364,7 +364,7 @@ export async function getEventTypes(): Promise<{
     .order("name");
 
   return {
-    preset: PRESET_EVENT_TYPES,
+    preset: PRESET_TYPES,
     custom: (data ?? []) as { id: string; name: string; color: string }[],
   };
 }
