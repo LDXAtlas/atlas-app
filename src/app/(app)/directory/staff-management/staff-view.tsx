@@ -48,7 +48,7 @@ const PRESET_COLORS = [
 ];
 
 const ROLE_BADGE_CONFIG: Record<string, { bg: string; text: string; border: string; icon: typeof Shield }> = {
-  admin: { bg: "#FEF2F2", text: "#DC2626", border: "#FECACA", icon: Crown },
+  admin: { bg: "rgba(92, 225, 165, 0.1)", text: "#5CE1A5", border: "rgba(92, 225, 165, 0.3)", icon: Crown },
   staff: { bg: "#EFF6FF", text: "#2563EB", border: "#BFDBFE", icon: ShieldCheck },
   leader: { bg: "#F5F3FF", text: "#7C3AED", border: "#DDD6FE", icon: Shield },
   volunteer: { bg: "#F9FAFB", text: "#6B7280", border: "#E5E7EB", icon: HandHelping },
@@ -81,6 +81,7 @@ export function StaffManagementView({
   const [editingDept, setEditingDept] = useState<Department | null>(null);
   const [deletingDept, setDeletingDept] = useState<Department | null>(null);
   const [assignModal, setAssignModal] = useState<StaffProfile | null>(null);
+  const [addToDeptModal, setAddToDeptModal] = useState<Department | null>(null);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [rolesExpanded, setRolesExpanded] = useState(false);
 
@@ -293,7 +294,7 @@ export function StaffManagementView({
 
             {/* Members Table */}
             {members.length > 0 ? (
-              <div className="bg-white rounded-2xl border border-[#E5E7EB] overflow-hidden">
+              <div className="bg-white rounded-2xl border border-[#E5E7EB] overflow-visible">
                 {/* Table Header */}
                 <div className="grid grid-cols-[1fr_120px_1fr_48px] gap-4 px-5 py-3 border-b border-[#E5E7EB] bg-[#F9FAFB]">
                   <span
@@ -440,7 +441,8 @@ export function StaffManagementView({
                                   animate={{ opacity: 1, scale: 1, y: 0 }}
                                   exit={{ opacity: 0, scale: 0.95, y: -4 }}
                                   transition={{ duration: 0.15 }}
-                                  className="absolute right-0 top-8 z-20 bg-white rounded-xl border border-[#E5E7EB] shadow-lg py-1 w-48"
+                                  className="absolute right-0 top-full mt-1 z-[100] bg-white rounded-xl border border-[#E5E7EB] shadow-xl py-1.5 w-52"
+                                  style={{ boxShadow: "0 8px 30px rgba(0,0,0,0.12)" }}
                                 >
                                   {!m.is_primary && (
                                     <button
@@ -506,12 +508,7 @@ export function StaffManagementView({
                 </p>
                 {canManage && (
                   <button
-                    onClick={() => {
-                      // Open assign modal for first unassigned profile, or just let them pick
-                      if (profiles.length > 0) {
-                        setAssignModal(profiles[0]);
-                      }
-                    }}
+                    onClick={() => setAddToDeptModal(dept)}
                     className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-[#F4F5F7] text-[12px] font-semibold text-[#6B7280] hover:bg-[#E5E7EB] transition-colors"
                     style={{ fontFamily: "var(--font-poppins)" }}
                   >
@@ -628,6 +625,17 @@ export function StaffManagementView({
               assignmentsByProfile.get(assignModal.id) || []
             }
             onClose={() => setAssignModal(null)}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {addToDeptModal && (
+          <AddToDepartmentModal
+            department={addToDeptModal}
+            profiles={profiles}
+            existingAssignments={assignments}
+            onClose={() => setAddToDeptModal(null)}
           />
         )}
       </AnimatePresence>
@@ -1322,6 +1330,214 @@ function AssignmentsModal({
           >
             {saving ? "Saving..." : "Save Assignments"}
           </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ─── Add to Department Modal (Search + Select) ──────────
+function AddToDepartmentModal({
+  department,
+  profiles,
+  existingAssignments,
+  onClose,
+}: {
+  department: Department;
+  profiles: StaffProfile[];
+  existingAssignments: ProfileDepartmentAssignment[];
+  onClose: () => void;
+}) {
+  const [search, setSearch] = useState("");
+  const [saving, setSaving] = useState<string | null>(null);
+  const DeptIcon = getIconByName(department.icon);
+
+  // Filter profiles that are NOT already in this department
+  const alreadyAssigned = new Set(
+    existingAssignments
+      .filter((a) => a.department_id === department.id)
+      .map((a) => a.profile_id)
+  );
+
+  const available = profiles.filter((p) => {
+    if (alreadyAssigned.has(p.id)) return false;
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (
+      p.full_name.toLowerCase().includes(q) ||
+      p.email.toLowerCase().includes(q) ||
+      p.role.toLowerCase().includes(q)
+    );
+  });
+
+  const assigned = profiles.filter((p) => alreadyAssigned.has(p.id));
+
+  async function handleAdd(profileId: string) {
+    setSaving(profileId);
+    // Get existing assignments for this profile
+    const existingForProfile = existingAssignments.filter(
+      (a) => a.profile_id === profileId
+    );
+    const newAssignments = [
+      ...existingForProfile.map((a) => ({
+        department_id: a.department_id,
+        is_primary: a.is_primary,
+      })),
+      {
+        department_id: department.id,
+        is_primary: existingForProfile.length === 0, // Primary if first assignment
+      },
+    ];
+    await bulkUpdateAssignments(profileId, newAssignments);
+    setSaving(null);
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 8 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 8 }}
+        transition={{ duration: 0.2 }}
+        className="bg-white rounded-2xl shadow-xl max-w-lg w-full mx-4 overflow-hidden max-h-[80vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="px-6 py-4 border-b border-[#E5E7EB] shrink-0">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div
+                className="size-9 rounded-xl flex items-center justify-center text-white shrink-0"
+                style={{ backgroundColor: department.color }}
+              >
+                <DeptIcon className="size-4" />
+              </div>
+              <div>
+                <h3
+                  className="text-[16px] font-semibold text-[#2D333A]"
+                  style={{ fontFamily: "var(--font-poppins)" }}
+                >
+                  Add to {department.name}
+                </h3>
+                <p
+                  className="text-[12px] text-[#6B7280]"
+                  style={{ fontFamily: "var(--font-source-sans)" }}
+                >
+                  Search and select team members to add
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              className="p-1 text-[#6B7280] hover:text-[#2D333A] transition-colors"
+            >
+              <X className="size-5" />
+            </button>
+          </div>
+
+          {/* Search */}
+          <div className="relative mt-4">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-[#9CA3AF]" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by name, email, or role..."
+              autoFocus
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[#E5E7EB] bg-[#F4F5F7] text-[14px] text-[#2D333A] placeholder-[#9CA3AF] outline-none focus:border-[#5CE1A5] transition-colors"
+              style={{ fontFamily: "var(--font-source-sans)" }}
+            />
+          </div>
+        </div>
+
+        {/* Results */}
+        <div className="flex-1 overflow-y-auto px-4 py-3">
+          {/* Already assigned */}
+          {assigned.length > 0 && !search && (
+            <div className="mb-4">
+              <p
+                className="text-[11px] uppercase tracking-wider text-[#9CA3AF] px-2 mb-2"
+                style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}
+              >
+                Already in {department.name} ({assigned.length})
+              </p>
+              {assigned.map((p) => {
+                const roleCfg = ROLE_BADGE_CONFIG[p.role] || ROLE_BADGE_CONFIG.member;
+                const initials = p.full_name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase();
+                return (
+                  <div key={p.id} className="flex items-center gap-3 px-2 py-2 rounded-xl opacity-50">
+                    <div className="size-8 rounded-full flex items-center justify-center text-[11px] font-semibold text-white shrink-0" style={{ backgroundColor: "#5CE1A5" }}>
+                      {initials}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[13px] text-[#2D333A] truncate" style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}>{p.full_name}</p>
+                      <p className="text-[11px] text-[#9CA3AF] truncate" style={{ fontFamily: "var(--font-source-sans)" }}>{p.email}</p>
+                    </div>
+                    <span className="text-[10px] px-2 py-0.5 rounded-md" style={{ fontFamily: "var(--font-poppins)", fontWeight: 600, backgroundColor: roleCfg.bg, color: roleCfg.text }}>
+                      {p.role.charAt(0).toUpperCase() + p.role.slice(1)}
+                    </span>
+                    <span className="text-[11px] text-[#5CE1A5]" style={{ fontFamily: "var(--font-source-sans)", fontWeight: 600 }}>Added</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Available to add */}
+          {available.length > 0 ? (
+            <div>
+              {!search && assigned.length > 0 && (
+                <p
+                  className="text-[11px] uppercase tracking-wider text-[#9CA3AF] px-2 mb-2"
+                  style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}
+                >
+                  Available ({available.length})
+                </p>
+              )}
+              {available.map((p) => {
+                const roleCfg = ROLE_BADGE_CONFIG[p.role] || ROLE_BADGE_CONFIG.member;
+                const initials = p.full_name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase();
+                const isSaving = saving === p.id;
+                return (
+                  <div key={p.id} className="flex items-center gap-3 px-2 py-2.5 rounded-xl hover:bg-[#F9FAFB] transition-colors">
+                    <div className="size-8 rounded-full flex items-center justify-center text-[11px] font-semibold text-white shrink-0" style={{ backgroundColor: "#5CE1A5" }}>
+                      {initials}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[13px] text-[#2D333A] truncate" style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}>{p.full_name}</p>
+                      <p className="text-[11px] text-[#9CA3AF] truncate" style={{ fontFamily: "var(--font-source-sans)" }}>{p.email}</p>
+                    </div>
+                    <span className="text-[10px] px-2 py-0.5 rounded-md" style={{ fontFamily: "var(--font-poppins)", fontWeight: 600, backgroundColor: roleCfg.bg, color: roleCfg.text }}>
+                      {p.role.charAt(0).toUpperCase() + p.role.slice(1)}
+                    </span>
+                    <button
+                      onClick={() => handleAdd(p.id)}
+                      disabled={isSaving}
+                      className="h-7 px-3 rounded-lg bg-[#5CE1A5] text-white text-[11px] font-semibold hover:bg-[#4BD694] transition-all disabled:opacity-50 shrink-0"
+                      style={{ fontFamily: "var(--font-poppins)" }}
+                    >
+                      {isSaving ? "..." : "+ Add"}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="py-8 text-center">
+              <p className="text-[14px] text-[#9CA3AF]" style={{ fontFamily: "var(--font-source-sans)" }}>
+                {search ? `No team members match "${search}"` : "All team members are already assigned"}
+              </p>
+              <p className="text-[12px] text-[#D1D5DB] mt-1" style={{ fontFamily: "var(--font-source-sans)" }}>
+                Invite new team members from Settings → Organization
+              </p>
+            </div>
+          )}
         </div>
       </motion.div>
     </motion.div>
