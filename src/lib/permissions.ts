@@ -36,8 +36,17 @@ export const can = {
   editMember: (role: Role) => ['admin', 'staff'].includes(role),
   deleteMember: (role: Role) => role === 'admin',
   importMembers: (role: Role) => ['admin', 'staff'].includes(role),
-  createAnnouncement: (role: Role) => ['admin', 'staff', 'leader'].includes(role),
+  // Announcements — simple role-based permissions
+  // TODO: Future iteration — approval workflow
+  // - Staff-created announcements with category 'general' should require admin approval
+  // - Add status field: draft, pending_approval, published, rejected
+  // - Build approval queue UI for admins
+  // - Notify admin when staff submits announcement for approval
+  // - Notify staff when announcement is approved or rejected
+  createAnnouncement: (role: Role) => ['admin', 'staff'].includes(role),
+  editOwnAnnouncement: (role: Role, isAuthor: boolean) => isAuthor && ['admin', 'staff'].includes(role),
   editAnyAnnouncement: (role: Role) => role === 'admin',
+  deleteOwnAnnouncement: (role: Role, isAuthor: boolean) => isAuthor && ['admin', 'staff'].includes(role),
   deleteAnyAnnouncement: (role: Role) => role === 'admin',
   pinAnnouncement: (role: Role) => ['admin', 'staff'].includes(role),
   createTask: (role: Role) => ['admin', 'staff', 'leader'].includes(role),

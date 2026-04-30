@@ -133,7 +133,8 @@ export async function updateAnnouncement(
   }
 
   const isAuthor = existing.author_id === ctx.userId;
-  if (!isAuthor && !can.editAnyAnnouncement(role)) {
+  const canEdit = can.editOwnAnnouncement(role, isAuthor) || can.editAnyAnnouncement(role);
+  if (!canEdit) {
     return { success: false, error: "You don't have permission to edit this announcement." };
   }
 
@@ -171,8 +172,22 @@ export async function deleteAnnouncement(id: string): Promise<ActionResult> {
     .single();
   const role = getRoleFromProfile(profile);
 
-  if (!can.deleteAnyAnnouncement(role)) {
-    return { success: false, error: "You don't have permission to do this." };
+  // Check: user is the author OR has deleteAnyAnnouncement permission
+  const { data: existing } = await supabaseAdmin
+    .from("announcements")
+    .select("author_id")
+    .eq("id", id)
+    .eq("organization_id", ctx.organizationId)
+    .single();
+
+  if (!existing) {
+    return { success: false, error: "Announcement not found." };
+  }
+
+  const isAuthor = existing.author_id === ctx.userId;
+  const canDel = can.deleteOwnAnnouncement(role, isAuthor) || can.deleteAnyAnnouncement(role);
+  if (!canDel) {
+    return { success: false, error: "You don't have permission to delete this announcement." };
   }
 
   const { error } = await supabaseAdmin

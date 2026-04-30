@@ -229,16 +229,18 @@ export function AnnouncementsView({
             See updates on what&apos;s happening at your church.
           </p>
         </div>
-        <div className="mb-1">
-          <button
-            onClick={() => setShowCompose(true)}
-            className="flex items-center gap-2 px-6 py-3 bg-[#2D333A] text-white rounded-xl text-[14px] hover:bg-[#1A1F24] transition-all"
-            style={{ fontWeight: 600 }}
-          >
-            <Plus className="size-4" />
-            Post Update
-          </button>
-        </div>
+        {["admin", "staff"].includes(currentUserRole) && (
+          <div className="mb-1">
+            <button
+              onClick={() => { setEditingAnnouncement(null); setShowCompose(true); }}
+              className="flex items-center gap-2 px-6 py-3 bg-[#2D333A] text-white rounded-xl text-[14px] hover:bg-[#1A1F24] transition-all"
+              style={{ fontWeight: 600 }}
+            >
+              <Plus className="size-4" />
+              Post Update
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Filter Tabs */}
@@ -307,7 +309,8 @@ export function AnnouncementsView({
                   isBookmarked={bookmarkedIds.has(ann.id)}
                   onToggleExpand={() => toggleExpanded(ann.id)}
                   onToggleBookmark={() => toggleBookmark(ann.id)}
-                  canEdit={ann.author_id === currentUserId || currentUserRole === "admin"}
+                  canEdit={(ann.author_id === currentUserId && ["admin", "staff"].includes(currentUserRole)) || currentUserRole === "admin"}
+                  canDelete={(ann.author_id === currentUserId && ["admin", "staff"].includes(currentUserRole)) || currentUserRole === "admin"}
                   onTogglePin={() => handleTogglePin(ann.id)}
                   onDelete={() => handleDelete(ann.id)}
                   onEdit={() => { setEditingAnnouncement(ann); setShowCompose(true); }}
@@ -336,7 +339,8 @@ export function AnnouncementsView({
                     isPinned={false}
                     isExpanded={expandedId === ann.id}
                     isBookmarked={bookmarkedIds.has(ann.id)}
-                    canEdit={ann.author_id === currentUserId || currentUserRole === "admin"}
+                    canEdit={(ann.author_id === currentUserId && ["admin", "staff"].includes(currentUserRole)) || currentUserRole === "admin"}
+                    canDelete={(ann.author_id === currentUserId && ["admin", "staff"].includes(currentUserRole)) || currentUserRole === "admin"}
                     onToggleExpand={() => toggleExpanded(ann.id)}
                     onToggleBookmark={() => toggleBookmark(ann.id)}
                     onTogglePin={() => handleTogglePin(ann.id)}
@@ -404,6 +408,7 @@ function AnnouncementCard({
   isExpanded,
   isBookmarked,
   canEdit,
+  canDelete,
   onToggleExpand,
   onToggleBookmark,
   onTogglePin,
@@ -415,6 +420,7 @@ function AnnouncementCard({
   isExpanded: boolean;
   isBookmarked: boolean;
   canEdit: boolean;
+  canDelete: boolean;
   onToggleExpand: () => void;
   onToggleBookmark: () => void;
   onTogglePin: () => void;
@@ -561,13 +567,15 @@ function AnnouncementCard({
               >
                 {ann.is_pinned ? "Unpin" : "Pin"}
               </button>
-              <button
-                onClick={onDelete}
-                className="text-[11px] text-[#9CA3AF] hover:text-red-500 transition-colors px-2 py-1 rounded-lg hover:bg-red-50"
-                style={{ fontWeight: 600 }}
-              >
-                Delete
-              </button>
+              {canDelete && (
+                <button
+                  onClick={onDelete}
+                  className="text-[11px] text-[#9CA3AF] hover:text-red-500 transition-colors px-2 py-1 rounded-lg hover:bg-red-50"
+                  style={{ fontWeight: 600 }}
+                >
+                  Delete
+                </button>
+              )}
             </div>
           </div>
         </div>
