@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useRef, useCallback } from "react";
+import { useState, useTransition, useRef, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   X,
@@ -77,9 +77,9 @@ export function ComposeModal({
   const [pendingCoverFile, setPendingCoverFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Re-initialize form when editAnnouncement changes
-  useState(() => {
-    if (editAnnouncement) {
+  // Re-initialize form when editAnnouncement changes or modal opens
+  useEffect(() => {
+    if (open && editAnnouncement) {
       setTitle(editAnnouncement.title);
       setContent(editAnnouncement.content);
       setCategory((editAnnouncement.category as Category) || "general");
@@ -88,8 +88,13 @@ export function ComposeModal({
       setCoverPreviewUrl(editAnnouncement.cover_image_url || null);
       setCoverAlt(editAnnouncement.cover_image_alt || "");
       setCoverUploaded(!!editAnnouncement.cover_image_url);
+      setCoverError(null);
+      setPendingCoverFile(null);
+      setError(null);
+    } else if (open && !editAnnouncement) {
+      resetForm();
     }
-  });
+  }, [open, editAnnouncement]);
 
   function resetForm() {
     setTitle("");
