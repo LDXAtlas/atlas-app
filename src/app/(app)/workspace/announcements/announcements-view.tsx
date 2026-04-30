@@ -14,7 +14,6 @@ import {
   Clock,
   Sparkles,
 } from "lucide-react";
-import Image from "next/image";
 import { ComposeModal } from "./compose-modal";
 import {
   markAsRead,
@@ -442,13 +441,12 @@ function AnnouncementCard({
     >
       {/* Cover Image */}
       {ann.cover_image_url && (
-        <div className="relative aspect-[3/1] w-full overflow-hidden rounded-t-3xl -mx-5 -mt-5 mb-4" style={{ width: "calc(100% + 40px)" }}>
-          <Image
+        <div className="w-full overflow-hidden rounded-t-3xl -mx-5 -mt-5 mb-4 bg-[#F4F5F7]" style={{ width: "calc(100% + 40px)", maxHeight: "300px" }}>
+          <img
             src={ann.cover_image_url}
             alt={ann.cover_image_alt || ann.title}
-            fill
-            className="object-cover"
-            sizes="(max-width: 768px) 100vw, 768px"
+            className="w-full h-auto object-contain"
+            style={{ maxHeight: "300px" }}
           />
         </div>
       )}

@@ -18,7 +18,6 @@ import {
   Trash2,
 } from "lucide-react";
 import Link from "next/link";
-import Image from "next/image";
 import {
   createAnnouncement,
   updateAnnouncement,
@@ -392,14 +391,12 @@ export function ComposeModal({
                   {coverPreviewUrl ? (
                     <div className="space-y-2">
                       {/* Preview */}
-                      <div className="relative aspect-[3/1] w-full overflow-hidden rounded-xl group/cover">
-                        <Image
+                      <div className="relative w-full overflow-hidden rounded-xl group/cover bg-[#F4F5F7]" style={{ maxHeight: "240px" }}>
+                        <img
                           src={coverPreviewUrl}
                           alt={coverAlt || "Cover preview"}
-                          fill
-                          className="object-cover"
-                          sizes="560px"
-                          unoptimized={coverPreviewUrl.startsWith("blob:")}
+                          className="w-full h-auto object-contain"
+                          style={{ maxHeight: "240px" }}
                         />
                         {/* Upload status overlay */}
                         {coverUploading && (
