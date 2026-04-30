@@ -14,6 +14,7 @@ import {
   Clock,
   Sparkles,
 } from "lucide-react";
+import Image from "next/image";
 import { ComposeModal } from "./compose-modal";
 import {
   markAsRead,
@@ -38,6 +39,8 @@ export type Announcement = {
   target_department_id?: string | null;
   target_department_name?: string | null;
   target_department_color?: string | null;
+  cover_image_url?: string | null;
+  cover_image_alt?: string | null;
 };
 
 type FilterTab = "all" | "general" | "staff" | "ministry";
@@ -437,6 +440,19 @@ function AnnouncementCard({
       animate={{ opacity: 1, y: 0 }}
       className="group relative bg-white rounded-3xl border border-[#E5E7EB]/50 p-5 shadow-[0_1px_3px_rgba(0,0,0,0.04)] hover:shadow-[0_4px_20px_rgba(0,0,0,0.08)] transition-all duration-300"
     >
+      {/* Cover Image */}
+      {ann.cover_image_url && (
+        <div className="relative aspect-[3/1] w-full overflow-hidden rounded-t-3xl -mx-5 -mt-5 mb-4" style={{ width: "calc(100% + 40px)" }}>
+          <Image
+            src={ann.cover_image_url}
+            alt={ann.cover_image_alt || ann.title}
+            fill
+            className="object-cover"
+            sizes="(max-width: 768px) 100vw, 768px"
+          />
+        </div>
+      )}
+
       <div className="flex items-start gap-4">
         {/* Avatar */}
         <InitialsAvatar name={authorName} color={config.color} />

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { can, getRoleFromProfile } from "@/lib/permissions";
+import sharp from "sharp";
 
 // ─── Types ──────────────────────────────────────────────
 export type AnnouncementInput = {
@@ -175,7 +176,7 @@ export async function deleteAnnouncement(id: string): Promise<ActionResult> {
   // Check: user is the author OR has deleteAnyAnnouncement permission
   const { data: existing } = await supabaseAdmin
     .from("announcements")
-    .select("author_id")
+    .select("author_id, cover_image_url")
     .eq("id", id)
     .eq("organization_id", ctx.organizationId)
     .single();
@@ -188,6 +189,12 @@ export async function deleteAnnouncement(id: string): Promise<ActionResult> {
   const canDel = can.deleteOwnAnnouncement(role, isAuthor) || can.deleteAnyAnnouncement(role);
   if (!canDel) {
     return { success: false, error: "You don't have permission to delete this announcement." };
+  }
+
+  // Delete cover image from storage if it exists
+  if (existing.cover_image_url) {
+    const storagePath = `${ctx.organizationId}/${id}/cover.webp`;
+    await supabaseAdmin.storage.from("announcement-images").remove([storagePath]);
   }
 
   const { error } = await supabaseAdmin
@@ -245,6 +252,205 @@ export async function togglePin(id: string): Promise<ActionResult> {
   }
 
   revalidatePath("/workspace/announcements");
+  return { success: true };
+}
+
+// ─── Upload Announcement Cover ─────────────────────────
+export async function uploadAnnouncementCover(
+  announcementId: string,
+  formData: FormData,
+): Promise<ActionResult & { url?: string }> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated or no organization found." };
+
+  const file = formData.get("file") as File | null;
+  if (!file) return { success: false, error: "No file provided." };
+
+  // Validate type
+  const allowedTypes = ["image/png", "image/jpg", "image/jpeg", "image/webp"];
+  if (!allowedTypes.includes(file.type)) {
+    return { success: false, error: "Unsupported format. Use PNG, JPG, or WebP." };
+  }
+
+  // Validate size (5MB)
+  if (file.size > 5 * 1024 * 1024) {
+    return { success: false, error: "File too large. Maximum size is 5MB." };
+  }
+
+  // Verify permission
+  const { data: profile } = await supabaseAdmin
+    .from("profiles")
+    .select("role")
+    .eq("id", ctx.userId)
+    .single();
+  const role = getRoleFromProfile(profile);
+
+  const { data: existing } = await supabaseAdmin
+    .from("announcements")
+    .select("author_id")
+    .eq("id", announcementId)
+    .eq("organization_id", ctx.organizationId)
+    .single();
+
+  if (!existing) return { success: false, error: "Announcement not found." };
+
+  const isAuthor = existing.author_id === ctx.userId;
+  const canEdit = can.editOwnAnnouncement(role, isAuthor) || can.editAnyAnnouncement(role);
+  if (!canEdit) {
+    return { success: false, error: "You don't have permission to edit this announcement." };
+  }
+
+  // Process image with sharp
+  const arrayBuffer = await file.arrayBuffer();
+  const buffer = Buffer.from(arrayBuffer);
+
+  const webpBuffer = await sharp(buffer)
+    .resize({ width: 1200, withoutEnlargement: true })
+    .webp({ quality: 85 })
+    .toBuffer();
+
+  // Upload to Supabase Storage
+  const storagePath = `${ctx.organizationId}/${announcementId}/cover.webp`;
+  const { error: uploadError } = await supabaseAdmin.storage
+    .from("announcement-images")
+    .upload(storagePath, webpBuffer, {
+      contentType: "image/webp",
+      upsert: true,
+    });
+
+  if (uploadError) {
+    console.error("[uploadAnnouncementCover] Upload error:", uploadError.message);
+    return { success: false, error: "Failed to upload image." };
+  }
+
+  // Get public URL
+  const { data: publicUrlData } = supabaseAdmin.storage
+    .from("announcement-images")
+    .getPublicUrl(storagePath);
+
+  const publicUrl = publicUrlData.publicUrl;
+
+  // Get alt text from formData if provided
+  const altText = (formData.get("alt") as string) || "";
+
+  // Update announcement row
+  const { error: updateError } = await supabaseAdmin
+    .from("announcements")
+    .update({
+      cover_image_url: publicUrl,
+      cover_image_alt: altText || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", announcementId)
+    .eq("organization_id", ctx.organizationId);
+
+  if (updateError) {
+    console.error("[uploadAnnouncementCover] Update error:", updateError.message);
+    return { success: false, error: "Failed to save image metadata." };
+  }
+
+  revalidatePath("/workspace/announcements");
+  revalidatePath("/dashboard");
+  return { success: true, url: publicUrl };
+}
+
+// ─── Remove Announcement Cover ─────────────────────────
+export async function removeAnnouncementCover(
+  announcementId: string,
+): Promise<ActionResult> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated or no organization found." };
+
+  const { data: profile } = await supabaseAdmin
+    .from("profiles")
+    .select("role")
+    .eq("id", ctx.userId)
+    .single();
+  const role = getRoleFromProfile(profile);
+
+  const { data: existing } = await supabaseAdmin
+    .from("announcements")
+    .select("author_id")
+    .eq("id", announcementId)
+    .eq("organization_id", ctx.organizationId)
+    .single();
+
+  if (!existing) return { success: false, error: "Announcement not found." };
+
+  const isAuthor = existing.author_id === ctx.userId;
+  const canEdit = can.editOwnAnnouncement(role, isAuthor) || can.editAnyAnnouncement(role);
+  if (!canEdit) {
+    return { success: false, error: "You don't have permission to edit this announcement." };
+  }
+
+  // Delete from storage
+  const storagePath = `${ctx.organizationId}/${announcementId}/cover.webp`;
+  await supabaseAdmin.storage.from("announcement-images").remove([storagePath]);
+
+  // Update announcement row
+  const { error } = await supabaseAdmin
+    .from("announcements")
+    .update({
+      cover_image_url: null,
+      cover_image_alt: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", announcementId)
+    .eq("organization_id", ctx.organizationId);
+
+  if (error) {
+    console.error("[removeAnnouncementCover] Error:", error.message);
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath("/workspace/announcements");
+  revalidatePath("/dashboard");
+  return { success: true };
+}
+
+// ─── Update Announcement Cover Alt Text ────────────────
+export async function updateAnnouncementCoverAlt(
+  announcementId: string,
+  altText: string,
+): Promise<ActionResult> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated or no organization found." };
+
+  const { data: profile } = await supabaseAdmin
+    .from("profiles")
+    .select("role")
+    .eq("id", ctx.userId)
+    .single();
+  const role = getRoleFromProfile(profile);
+
+  const { data: existing } = await supabaseAdmin
+    .from("announcements")
+    .select("author_id")
+    .eq("id", announcementId)
+    .eq("organization_id", ctx.organizationId)
+    .single();
+
+  if (!existing) return { success: false, error: "Announcement not found." };
+
+  const isAuthor = existing.author_id === ctx.userId;
+  const canEdit = can.editOwnAnnouncement(role, isAuthor) || can.editAnyAnnouncement(role);
+  if (!canEdit) {
+    return { success: false, error: "You don't have permission to edit this announcement." };
+  }
+
+  const { error } = await supabaseAdmin
+    .from("announcements")
+    .update({ cover_image_alt: altText || null })
+    .eq("id", announcementId)
+    .eq("organization_id", ctx.organizationId);
+
+  if (error) {
+    console.error("[updateAnnouncementCoverAlt] Error:", error.message);
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath("/workspace/announcements");
+  revalidatePath("/dashboard");
   return { success: true };
 }
 

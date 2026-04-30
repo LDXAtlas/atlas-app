@@ -32,7 +32,7 @@ export default async function AnnouncementsPage() {
   const [announcementsRes, departmentsRes] = await Promise.all([
     supabaseAdmin
       .from("announcements")
-      .select("id, title, content, category, is_pinned, is_published, published_at, created_at, updated_at, author_id, target_department_id")
+      .select("id, title, content, category, is_pinned, is_published, published_at, created_at, updated_at, author_id, target_department_id, cover_image_url, cover_image_alt")
       .eq("organization_id", orgId)
       .eq("is_published", true)
       .order("is_pinned", { ascending: false })
@@ -106,6 +106,8 @@ export default async function AnnouncementsPage() {
       updated_at: string;
       author_id: string;
       target_department_id: string | null;
+      cover_image_url: string | null;
+      cover_image_alt: string | null;
     }) => ({
       id: a.id,
       title: a.title,
@@ -122,6 +124,8 @@ export default async function AnnouncementsPage() {
       target_department_id: a.target_department_id,
       target_department_name: a.target_department_id ? deptMap[a.target_department_id]?.name || null : null,
       target_department_color: a.target_department_id ? deptMap[a.target_department_id]?.color || null : null,
+      cover_image_url: a.cover_image_url,
+      cover_image_alt: a.cover_image_alt,
     }),
   );
 

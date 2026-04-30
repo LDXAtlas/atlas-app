@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { Megaphone, Pin } from "lucide-react";
 
 interface Announcement {
@@ -14,6 +15,7 @@ interface Announcement {
   is_read: boolean;
   target_department_name?: string | null;
   target_department_color?: string | null;
+  cover_image_url?: string | null;
 }
 
 interface Props {
@@ -65,6 +67,19 @@ export function AnnouncementsFeed({ announcements }: Props) {
                     <div className="size-2" />
                   )}
                 </div>
+
+                {/* Cover thumbnail */}
+                {ann.cover_image_url && (
+                  <div className="relative size-12 rounded-lg overflow-hidden shrink-0">
+                    <Image
+                      src={ann.cover_image_url}
+                      alt={ann.title}
+                      fill
+                      className="object-cover"
+                      sizes="48px"
+                    />
+                  </div>
+                )}
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-0.5">

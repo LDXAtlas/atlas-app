@@ -49,6 +49,7 @@ export default async function DashboardPage() {
     is_read: boolean;
     target_department_name: string | null;
     target_department_color: string | null;
+    cover_image_url: string | null;
   }[] = [];
   let upcomingEvents: {
     id: string;
@@ -110,7 +111,7 @@ export default async function DashboardPage() {
           .limit(5),
         supabaseAdmin
           .from("announcements")
-          .select("id, title, content, category, is_pinned, published_at, author_id, target_department_id")
+          .select("id, title, content, category, is_pinned, published_at, author_id, target_department_id, cover_image_url")
           .eq("organization_id", org.id)
           .eq("is_published", true)
           .order("is_pinned", { ascending: false })
@@ -197,6 +198,7 @@ export default async function DashboardPage() {
           is_read: (readData?.length ?? 0) > 0,
           target_department_name: deptName,
           target_department_color: deptColor,
+          cover_image_url: ann.cover_image_url || null,
         });
       }
 

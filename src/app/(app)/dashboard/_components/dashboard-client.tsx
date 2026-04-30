@@ -67,6 +67,7 @@ export interface DashboardProps {
     is_read: boolean;
     target_department_name: string | null;
     target_department_color: string | null;
+    cover_image_url: string | null;
   }[];
   upcomingEvents?: UpcomingEventData[];
 }

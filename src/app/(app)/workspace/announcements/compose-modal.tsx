@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   X,
@@ -10,9 +10,22 @@ import {
   Users,
   ChevronDown,
   Building,
+  Upload,
+  ImageIcon,
+  Loader2,
+  Check,
+  Replace,
+  Trash2,
 } from "lucide-react";
 import Link from "next/link";
-import { createAnnouncement, updateAnnouncement } from "@/app/actions/announcements";
+import Image from "next/image";
+import {
+  createAnnouncement,
+  updateAnnouncement,
+  uploadAnnouncementCover,
+  removeAnnouncementCover,
+  updateAnnouncementCoverAlt,
+} from "@/app/actions/announcements";
 import type { Announcement } from "./announcements-view";
 
 type Category = "general" | "staff" | "ministry";
@@ -55,6 +68,16 @@ export function ComposeModal({
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
+  // Cover image state
+  const [coverPreviewUrl, setCoverPreviewUrl] = useState<string | null>(editAnnouncement?.cover_image_url || null);
+  const [coverAlt, setCoverAlt] = useState<string>(editAnnouncement?.cover_image_alt || "");
+  const [coverUploading, setCoverUploading] = useState(false);
+  const [coverUploaded, setCoverUploaded] = useState(!!editAnnouncement?.cover_image_url);
+  const [coverError, setCoverError] = useState<string | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [pendingCoverFile, setPendingCoverFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   // Re-initialize form when editAnnouncement changes
   useState(() => {
     if (editAnnouncement) {
@@ -63,6 +86,9 @@ export function ComposeModal({
       setCategory((editAnnouncement.category as Category) || "general");
       setAudience(editAnnouncement.target_department_id ? "department" : "everyone");
       setSelectedDeptId(editAnnouncement.target_department_id || "");
+      setCoverPreviewUrl(editAnnouncement.cover_image_url || null);
+      setCoverAlt(editAnnouncement.cover_image_alt || "");
+      setCoverUploaded(!!editAnnouncement.cover_image_url);
     }
   });
 
@@ -73,7 +99,105 @@ export function ComposeModal({
     setAudience("everyone");
     setSelectedDeptId("");
     setError(null);
+    setCoverPreviewUrl(null);
+    setCoverAlt("");
+    setCoverUploading(false);
+    setCoverUploaded(false);
+    setCoverError(null);
+    setIsDragOver(false);
+    setPendingCoverFile(null);
   }
+
+  // ─── Cover image handlers ──────────────────────────────
+  const handleCoverFile = useCallback(async (file: File, announcementId?: string) => {
+    setCoverError(null);
+
+    // Validate type
+    const allowedTypes = ["image/png", "image/jpg", "image/jpeg", "image/webp"];
+    if (!allowedTypes.includes(file.type)) {
+      setCoverError("Unsupported format. Use PNG, JPG, or WebP.");
+      return;
+    }
+
+    // Validate size
+    if (file.size > 5 * 1024 * 1024) {
+      setCoverError("File too large. Maximum size is 5MB.");
+      return;
+    }
+
+    // Show local preview immediately
+    const localUrl = URL.createObjectURL(file);
+    setCoverPreviewUrl(localUrl);
+    setCoverUploaded(false);
+
+    // If we have an announcement ID (editing), upload immediately
+    const targetId = announcementId || editAnnouncement?.id;
+    if (targetId) {
+      setCoverUploading(true);
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("alt", coverAlt);
+
+      const result = await uploadAnnouncementCover(targetId, formData);
+      setCoverUploading(false);
+
+      if (result.success && result.url) {
+        setCoverPreviewUrl(result.url);
+        setCoverUploaded(true);
+        URL.revokeObjectURL(localUrl);
+      } else {
+        setCoverError(result.error || "Upload failed.");
+        setCoverPreviewUrl(null);
+        URL.revokeObjectURL(localUrl);
+      }
+    } else {
+      // For new announcements, store the file to upload after creation
+      setPendingCoverFile(file);
+    }
+  }, [editAnnouncement?.id, coverAlt]);
+
+  const handleRemoveCover = useCallback(async () => {
+    const targetId = editAnnouncement?.id;
+    if (targetId && coverUploaded) {
+      await removeAnnouncementCover(targetId);
+    }
+    setCoverPreviewUrl(null);
+    setCoverAlt("");
+    setCoverUploaded(false);
+    setCoverError(null);
+  }, [editAnnouncement?.id, coverUploaded]);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      handleCoverFile(file);
+    }
+  }, [handleCoverFile]);
+
+  const handleFileInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      handleCoverFile(file);
+    }
+    // Reset input so same file can be re-selected
+    e.target.value = "";
+  }, [handleCoverFile]);
 
   function handlePost() {
     if (!title.trim()) {
@@ -103,6 +227,19 @@ export function ComposeModal({
         : await createAnnouncement(payload);
 
       if (result.success) {
+        // If editing and alt text changed, update it
+        if (isEditing && coverUploaded && coverAlt !== (editAnnouncement?.cover_image_alt || "")) {
+          await updateAnnouncementCoverAlt(editAnnouncement!.id, coverAlt);
+        }
+
+        // If creating a new announcement and there's a pending cover file, upload it
+        if (!isEditing && result.id && pendingCoverFile) {
+          const formData = new FormData();
+          formData.append("file", pendingCoverFile);
+          formData.append("alt", coverAlt);
+          await uploadAnnouncementCover(result.id, formData);
+        }
+
         resetForm();
         onClose();
       } else {
@@ -235,6 +372,119 @@ export function ComposeModal({
                         </div>
                       )}
                     </div>
+                  )}
+                </div>
+
+                {/* Cover Image */}
+                <div className="mb-5">
+                  <label className="text-[11px] uppercase tracking-widest text-[#9CA3AF] block mb-2" style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}>
+                    Cover Image (optional)
+                  </label>
+
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/jpg,image/webp"
+                    onChange={handleFileInputChange}
+                    className="hidden"
+                  />
+
+                  {coverPreviewUrl ? (
+                    <div className="space-y-2">
+                      {/* Preview */}
+                      <div className="relative aspect-[3/1] w-full overflow-hidden rounded-xl group/cover">
+                        <Image
+                          src={coverPreviewUrl}
+                          alt={coverAlt || "Cover preview"}
+                          fill
+                          className="object-cover"
+                          sizes="560px"
+                          unoptimized={coverPreviewUrl.startsWith("blob:")}
+                        />
+                        {/* Upload status overlay */}
+                        {coverUploading && (
+                          <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                            <Loader2 className="size-8 text-[#5CE1A5] animate-spin" />
+                          </div>
+                        )}
+                        {coverUploaded && !coverUploading && (
+                          <div className="absolute top-2 right-2">
+                            <div className="size-6 rounded-full bg-[#5CE1A5] flex items-center justify-center">
+                              <Check className="size-3.5 text-white" />
+                            </div>
+                          </div>
+                        )}
+                        {/* Hover overlay with Replace/Remove */}
+                        {!coverUploading && (
+                          <div className="absolute inset-0 bg-black/0 group-hover/cover:bg-black/40 transition-all flex items-center justify-center gap-3 opacity-0 group-hover/cover:opacity-100">
+                            <button
+                              type="button"
+                              onClick={() => fileInputRef.current?.click()}
+                              className="flex items-center gap-1.5 px-3 py-2 bg-white rounded-lg text-[12px] text-[#2D333A] hover:bg-[#F4F5F7] transition-colors"
+                              style={{ fontFamily: "var(--font-source-sans)", fontWeight: 600 }}
+                            >
+                              <Replace className="size-3.5" />
+                              Replace
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleRemoveCover}
+                              className="flex items-center gap-1.5 px-3 py-2 bg-white rounded-lg text-[12px] text-red-500 hover:bg-red-50 transition-colors"
+                              style={{ fontFamily: "var(--font-source-sans)", fontWeight: 600 }}
+                            >
+                              <Trash2 className="size-3.5" />
+                              Remove
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Alt text input */}
+                      <input
+                        type="text"
+                        placeholder="Image description (alt text)"
+                        value={coverAlt}
+                        onChange={(e) => setCoverAlt(e.target.value)}
+                        className="w-full bg-[#F4F5F7] border border-transparent rounded-xl px-4 py-2.5 text-[13px] placeholder:text-[#9CA3AF] focus:ring-2 focus:ring-[#5CE1A5]/10 focus:border-[#5CE1A5]/40 outline-none transition-all"
+                        style={{ fontFamily: "var(--font-source-sans)", fontWeight: 400 }}
+                      />
+                    </div>
+                  ) : (
+                    <div
+                      onClick={() => fileInputRef.current?.click()}
+                      onDragOver={handleDragOver}
+                      onDragLeave={handleDragLeave}
+                      onDrop={handleDrop}
+                      className="relative flex flex-col items-center justify-center py-8 rounded-xl cursor-pointer transition-all"
+                      style={{
+                        border: isDragOver ? "2px solid #5CE1A5" : "2px dashed #E5E7EB",
+                        backgroundColor: isDragOver ? "rgba(92,225,165,0.05)" : "transparent",
+                      }}
+                    >
+                      <div
+                        className="size-10 rounded-full flex items-center justify-center mb-2"
+                        style={{ backgroundColor: "rgba(92,225,165,0.08)" }}
+                      >
+                        {isDragOver ? (
+                          <Upload className="size-5 text-[#5CE1A5]" />
+                        ) : (
+                          <ImageIcon className="size-5 text-[#9CA3AF]" />
+                        )}
+                      </div>
+                      <p className="text-[13px] text-[#6B7280] mb-0.5" style={{ fontFamily: "var(--font-source-sans)", fontWeight: 500 }}>
+                        {isDragOver ? "Drop image here" : "Click or drag to upload"}
+                      </p>
+                      <p className="text-[11px] text-[#9CA3AF]" style={{ fontFamily: "var(--font-source-sans)" }}>
+                        PNG, JPG, or WebP. Max 5MB.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Cover error */}
+                  {coverError && (
+                    <p className="mt-1.5 text-[12px] text-red-500" style={{ fontFamily: "var(--font-source-sans)" }}>
+                      {coverError}
+                    </p>
                   )}
                 </div>
 
