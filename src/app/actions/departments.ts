@@ -50,7 +50,7 @@ export async function addDepartment(data: DepartmentInput) {
     name: data.name,
     color: data.color || "#5CE1A5",
     description: data.description || null,
-    icon: data.icon || "building",
+    icon: data.icon || "Building",
     leader_id: data.leader_id || null,
     hub_enabled: data.hub_enabled || false,
   };

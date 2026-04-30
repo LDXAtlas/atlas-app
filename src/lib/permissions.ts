@@ -66,6 +66,7 @@ export const can = {
   createWorkflow: (role: Role) => ['admin', 'staff'].includes(role),
   runWorkflow: (role: Role) => ['admin', 'staff', 'leader'].includes(role),
   deleteWorkflow: (role: Role) => role === 'admin',
+  manageDepartmentAssignments: (role: Role) => ['admin', 'staff'].includes(role),
 };
 
 export const getRoleFromProfile = (profile: { role?: string | null } | null): Role => {
