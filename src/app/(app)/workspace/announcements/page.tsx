@@ -32,7 +32,7 @@ export default async function AnnouncementsPage() {
   const [announcementsRes, departmentsRes] = await Promise.all([
     supabaseAdmin
       .from("announcements")
-      .select("id, title, content, category, is_pinned, is_published, published_at, created_at, author_id, target_department_id")
+      .select("id, title, content, category, is_pinned, is_published, published_at, created_at, updated_at, author_id, target_department_id")
       .eq("organization_id", orgId)
       .eq("is_published", true)
       .order("is_pinned", { ascending: false })
@@ -86,6 +86,13 @@ export default async function AnnouncementsPage() {
   // TODO: Once member-to-department assignments exist, filter announcements
   // so users only see announcements targeted to their department or to Everyone.
   // For now, show all announcements regardless of target_department_id.
+  // Get current user's role for permission checks
+  const { data: userProfile } = await supabaseAdmin
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+
   const mapped: Announcement[] = announcements.map(
     (a: {
       id: string;
@@ -96,6 +103,7 @@ export default async function AnnouncementsPage() {
       is_published: boolean;
       published_at: string;
       created_at: string;
+      updated_at: string;
       author_id: string;
       target_department_id: string | null;
     }) => ({
@@ -107,6 +115,8 @@ export default async function AnnouncementsPage() {
       is_published: a.is_published,
       published_at: a.published_at,
       created_at: a.created_at,
+      updated_at: a.updated_at,
+      author_id: a.author_id,
       author_name: authorMap[a.author_id] || "Unknown",
       is_read: readIds.has(a.id),
       target_department_id: a.target_department_id,
@@ -115,5 +125,12 @@ export default async function AnnouncementsPage() {
     }),
   );
 
-  return <AnnouncementsView announcements={mapped} departments={departments} />;
+  return (
+    <AnnouncementsView
+      announcements={mapped}
+      departments={departments}
+      currentUserId={user.id}
+      currentUserRole={userProfile?.role || "member"}
+    />
+  );
 }

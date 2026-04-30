@@ -105,6 +105,60 @@ export async function createAnnouncement(
   return { success: true, id: announcement?.id };
 }
 
+// ─── Update Announcement ────────────────────────────────
+export async function updateAnnouncement(
+  id: string,
+  data: AnnouncementInput,
+): Promise<ActionResult> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated or no organization found." };
+
+  const { data: profile } = await supabaseAdmin
+    .from("profiles")
+    .select("role")
+    .eq("id", ctx.userId)
+    .single();
+  const role = getRoleFromProfile(profile);
+
+  // Check: user is the author OR has editAnyAnnouncement permission
+  const { data: existing } = await supabaseAdmin
+    .from("announcements")
+    .select("author_id")
+    .eq("id", id)
+    .eq("organization_id", ctx.organizationId)
+    .single();
+
+  if (!existing) {
+    return { success: false, error: "Announcement not found." };
+  }
+
+  const isAuthor = existing.author_id === ctx.userId;
+  if (!isAuthor && !can.editAnyAnnouncement(role)) {
+    return { success: false, error: "You don't have permission to edit this announcement." };
+  }
+
+  const { error } = await supabaseAdmin
+    .from("announcements")
+    .update({
+      title: data.title.trim(),
+      content: data.content.trim(),
+      category: data.category || "general",
+      target_department_id: data.target_department_id || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id)
+    .eq("organization_id", ctx.organizationId);
+
+  if (error) {
+    console.error("[updateAnnouncement] Error:", error.message);
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath("/workspace/announcements");
+  revalidatePath("/dashboard");
+  return { success: true };
+}
+
 // ─── Delete Announcement ────────────────────────────────
 export async function deleteAnnouncement(id: string): Promise<ActionResult> {
   const ctx = await getAuthContext();

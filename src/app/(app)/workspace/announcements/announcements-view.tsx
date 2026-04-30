@@ -31,6 +31,8 @@ export type Announcement = {
   is_published: boolean;
   published_at: string;
   created_at: string;
+  updated_at?: string;
+  author_id: string;
   author_name: string | null;
   is_read: boolean;
   target_department_id?: string | null;
@@ -129,12 +131,17 @@ function CategoryBadge({ category }: { category: string }) {
 export function AnnouncementsView({
   announcements,
   departments = [],
+  currentUserId = "",
+  currentUserRole = "member",
 }: {
   announcements: Announcement[];
   departments?: { id: string; name: string; color: string }[];
+  currentUserId?: string;
+  currentUserRole?: string;
 }) {
   const [activeTab, setActiveTab] = useState<FilterTab>("all");
   const [showCompose, setShowCompose] = useState(false);
+  const [editingAnnouncement, setEditingAnnouncement] = useState<Announcement | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(
     new Set(),
@@ -300,8 +307,10 @@ export function AnnouncementsView({
                   isBookmarked={bookmarkedIds.has(ann.id)}
                   onToggleExpand={() => toggleExpanded(ann.id)}
                   onToggleBookmark={() => toggleBookmark(ann.id)}
+                  canEdit={ann.author_id === currentUserId || currentUserRole === "admin"}
                   onTogglePin={() => handleTogglePin(ann.id)}
                   onDelete={() => handleDelete(ann.id)}
+                  onEdit={() => { setEditingAnnouncement(ann); setShowCompose(true); }}
                 />
               ))}
             </div>
@@ -327,10 +336,12 @@ export function AnnouncementsView({
                     isPinned={false}
                     isExpanded={expandedId === ann.id}
                     isBookmarked={bookmarkedIds.has(ann.id)}
+                    canEdit={ann.author_id === currentUserId || currentUserRole === "admin"}
                     onToggleExpand={() => toggleExpanded(ann.id)}
                     onToggleBookmark={() => toggleBookmark(ann.id)}
                     onTogglePin={() => handleTogglePin(ann.id)}
                     onDelete={() => handleDelete(ann.id)}
+                    onEdit={() => { setEditingAnnouncement(ann); setShowCompose(true); }}
                   />
                 ))}
               </div>
@@ -378,8 +389,9 @@ export function AnnouncementsView({
       {/* Compose Modal */}
       <ComposeModal
         open={showCompose}
-        onClose={() => setShowCompose(false)}
+        onClose={() => { setShowCompose(false); setEditingAnnouncement(null); }}
         departments={departments}
+        editAnnouncement={editingAnnouncement}
       />
     </div>
   );
@@ -391,22 +403,27 @@ function AnnouncementCard({
   isPinned,
   isExpanded,
   isBookmarked,
+  canEdit,
   onToggleExpand,
   onToggleBookmark,
   onTogglePin,
   onDelete,
+  onEdit,
 }: {
   announcement: Announcement;
   isPinned: boolean;
   isExpanded: boolean;
   isBookmarked: boolean;
+  canEdit: boolean;
   onToggleExpand: () => void;
   onToggleBookmark: () => void;
   onTogglePin: () => void;
   onDelete: () => void;
+  onEdit: () => void;
 }) {
   const config = CATEGORY_CONFIG[ann.category] || CATEGORY_CONFIG.general;
   const authorName = ann.author_name || "Unknown";
+  const wasEdited = ann.updated_at && ann.created_at && new Date(ann.updated_at).getTime() - new Date(ann.created_at).getTime() > 5000;
 
   return (
     <motion.div
@@ -456,6 +473,9 @@ function AnnouncementCard({
             <div className="flex items-center gap-1.5 text-[11px] text-[#9CA3AF] ml-auto">
               <Clock className="size-3" />
               {relativeTime(ann.published_at)}
+              {wasEdited && (
+                <span className="text-[#9CA3AF]">&middot; Edited</span>
+              )}
             </div>
           </div>
 
@@ -525,6 +545,15 @@ function AnnouncementCard({
               </button>
             </div>
             <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+              {canEdit && (
+                <button
+                  onClick={onEdit}
+                  className="text-[11px] text-[#9CA3AF] hover:text-[#5CE1A5] transition-colors px-2 py-1 rounded-lg hover:bg-[#5CE1A5]/5"
+                  style={{ fontWeight: 600 }}
+                >
+                  Edit
+                </button>
+              )}
               <button
                 onClick={onTogglePin}
                 className="text-[11px] text-[#9CA3AF] hover:text-amber-500 transition-colors px-2 py-1 rounded-lg hover:bg-amber-50"

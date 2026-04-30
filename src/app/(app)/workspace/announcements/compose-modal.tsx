@@ -12,7 +12,8 @@ import {
   Building,
 } from "lucide-react";
 import Link from "next/link";
-import { createAnnouncement } from "@/app/actions/announcements";
+import { createAnnouncement, updateAnnouncement } from "@/app/actions/announcements";
+import type { Announcement } from "./announcements-view";
 
 type Category = "general" | "staff" | "ministry";
 
@@ -38,18 +39,32 @@ export function ComposeModal({
   open,
   onClose,
   departments = [],
+  editAnnouncement,
 }: {
   open: boolean;
   onClose: () => void;
   departments?: Department[];
+  editAnnouncement?: Announcement | null;
 }) {
-  const [title, setTitle] = useState("");
-  const [content, setContent] = useState("");
-  const [category, setCategory] = useState<Category>("general");
-  const [audience, setAudience] = useState<"everyone" | "department">("everyone");
-  const [selectedDeptId, setSelectedDeptId] = useState<string>("");
+  const isEditing = !!editAnnouncement;
+  const [title, setTitle] = useState(editAnnouncement?.title || "");
+  const [content, setContent] = useState(editAnnouncement?.content || "");
+  const [category, setCategory] = useState<Category>((editAnnouncement?.category as Category) || "general");
+  const [audience, setAudience] = useState<"everyone" | "department">(editAnnouncement?.target_department_id ? "department" : "everyone");
+  const [selectedDeptId, setSelectedDeptId] = useState<string>(editAnnouncement?.target_department_id || "");
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+
+  // Re-initialize form when editAnnouncement changes
+  useState(() => {
+    if (editAnnouncement) {
+      setTitle(editAnnouncement.title);
+      setContent(editAnnouncement.content);
+      setCategory((editAnnouncement.category as Category) || "general");
+      setAudience(editAnnouncement.target_department_id ? "department" : "everyone");
+      setSelectedDeptId(editAnnouncement.target_department_id || "");
+    }
+  });
 
   function resetForm() {
     setTitle("");
@@ -76,17 +91,22 @@ export function ComposeModal({
     setError(null);
 
     startTransition(async () => {
-      const result = await createAnnouncement({
+      const payload = {
         title: title.trim(),
         content: content.trim(),
         category,
         target_department_id: audience === "department" ? selectedDeptId : null,
-      });
+      };
+
+      const result = isEditing
+        ? await updateAnnouncement(editAnnouncement!.id, payload)
+        : await createAnnouncement(payload);
+
       if (result.success) {
         resetForm();
         onClose();
       } else {
-        setError(result.error || "Failed to post announcement.");
+        setError(result.error || `Failed to ${isEditing ? "update" : "post"} announcement.`);
       }
     });
   }
@@ -116,7 +136,7 @@ export function ComposeModal({
                 <div className="flex items-start justify-between mb-6">
                   <div>
                     <h2 className="text-[20px] text-[#2D333A]" style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}>
-                      Create Update
+                      {isEditing ? "Edit Update" : "Create Update"}
                     </h2>
                     <p className="text-[#6B7280] text-[13px] mt-0.5" style={{ fontFamily: "var(--font-source-sans)" }}>
                       Broadcast to your church community
@@ -271,7 +291,7 @@ export function ComposeModal({
                     style={{ fontWeight: 600 }}
                   >
                     <Send className="size-4" />
-                    {isPending ? "Posting..." : "Post Update"}
+                    {isPending ? (isEditing ? "Saving..." : "Posting...") : (isEditing ? "Save Changes" : "Post Update")}
                   </button>
                 </div>
               </div>
