@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { X, Clock, MapPin, Video, Globe, Plus, Repeat } from "lucide-react";
 import {
@@ -61,6 +61,8 @@ interface EventModalProps {
   departments: Department[];
   customEventTypes?: CustomEventType[];
   editEvent?: EventModalData | null;
+  initialDate?: string;
+  initialTime?: string;
 }
 
 // ─── Event Type Config ──────────────────────────────────
@@ -165,6 +167,8 @@ export function EventModal({
   departments,
   customEventTypes = [],
   editEvent,
+  initialDate,
+  initialTime,
 }: EventModalProps) {
   const [isPending, startTransition] = useTransition();
   const isEditing = !!editEvent;
@@ -212,6 +216,57 @@ export function EventModal({
   const [newTypeName, setNewTypeName] = useState("");
   const [newTypeColor, setNewTypeColor] = useState("#6B7280");
   const [isCreatingType, startCreatingType] = useTransition();
+
+  useEffect(() => {
+    if (isOpen) {
+      setTitle(editEvent?.title || "");
+      setDescription(editEvent?.description || "");
+      setEventType(editEvent?.event_type || "general");
+      setCustomEventTypeId(editEvent?.custom_event_type_id || null);
+      
+      let startD = initialDate || "";
+      let startT = initialTime || "09:00";
+      
+      if (editEvent) {
+         const d = new Date(editEvent.starts_at);
+         startD = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+         startT = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+      }
+      setStartDate(startD);
+      setStartTime(startT);
+
+      let endD = startD;
+      let endT = "10:00";
+      if (editEvent?.ends_at) {
+         const d = new Date(editEvent.ends_at);
+         endD = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+         endT = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+      } else if (initialTime) {
+         const [h, m] = initialTime.split(':').map(Number);
+         endT = `${String((h + 1) % 24).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+      }
+      
+      setEndDate(endD);
+      setEndTime(endT);
+      
+      setIsAllDay(editEvent?.is_all_day || false);
+      setLocation(editEvent?.location || "");
+      setLocationType((editEvent?.location_type as LocationType) || "in_person");
+      setVirtualUrl(editEvent?.virtual_url || "");
+      setDepartmentIds(editEvent?.department_ids || []);
+      setColor(editEvent?.color || "#5CE1A5");
+      setError("");
+      
+      const parsed = parseRecurrenceRule(editEvent?.recurrence_rule || null);
+      setIsRecurring(!!editEvent?.recurrence_rule);
+      setRecFrequency(parsed.frequency);
+      setRecInterval(parsed.interval);
+      setRecWeekdays(parsed.weekdays);
+      setRecEndType(parsed.endType);
+      setRecEndDate(parsed.endDate);
+      setRecEndCount(parsed.endCount);
+    }
+  }, [isOpen, editEvent, initialDate, initialTime]);
 
   function resetForm() {
     setTitle("");
@@ -290,12 +345,12 @@ export function EventModal({
     setError("");
 
     const startsAt = isAllDay
-      ? `${startDate}T00:00:00`
-      : `${startDate}T${startTime}:00`;
+      ? new Date(`${startDate}T00:00:00`).toISOString()
+      : new Date(`${startDate}T${startTime}:00`).toISOString();
     const endsAtDate = endDate || startDate;
     const endsAt = isAllDay
-      ? `${endsAtDate}T23:59:59`
-      : `${endsAtDate}T${endTime}:00`;
+      ? new Date(`${endsAtDate}T23:59:59`).toISOString()
+      : new Date(`${endsAtDate}T${endTime}:00`).toISOString();
 
     const recurrenceRule = isRecurring
       ? buildRecurrenceRule(

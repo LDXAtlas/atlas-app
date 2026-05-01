@@ -17,6 +17,7 @@ import {
   Repeat,
   Video,
   Check,
+  FileText,
 } from "lucide-react";
 import {
   EventModal,
@@ -191,6 +192,84 @@ function describeRecurrence(rule: string | null): string | null {
   if (map.has("UNTIL")) s += ` until ${map.get("UNTIL")}`;
   if (map.has("COUNT")) s += ` (${map.get("COUNT")} times)`;
   return s;
+}
+
+function getAllEventDates(evt: CalendarEvent): Date[] {
+  const baseDate = new Date(evt.starts_at);
+  if (!evt.recurrence_rule) return [baseDate];
+  
+  const map = new Map<string, string>();
+  for (const p of evt.recurrence_rule.split(";")) {
+    const [k, v] = p.split("=");
+    if (k && v) map.set(k, v);
+  }
+  
+  const freq = (map.get("FREQ") || "").toLowerCase();
+  if (!freq) return [baseDate];
+  
+  const interval = parseInt(map.get("INTERVAL") || "1", 10);
+  const count = map.has("COUNT") ? parseInt(map.get("COUNT") || "10", 10) : null;
+  const untilStr = map.get("UNTIL");
+  const until = untilStr ? new Date(`${untilStr}T23:59:59`) : null;
+  const weekdaysStr = map.get("BYDAY");
+
+  const dates: Date[] = [];
+  let currDate = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate());
+  let occurrenceCount = 0;
+  
+  const jsDaysMap: Record<string, number> = { SU: 0, MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6 };
+  const targetDays = weekdaysStr ? weekdaysStr.split(',').map(d => jsDaysMap[d]).filter(d => d !== undefined) : [baseDate.getDay()];
+  
+  let loops = 0;
+  
+  let limitCount = count !== null ? count : 730;
+  
+  if (freq === "weekly" && weekdaysStr) {
+    let currentDay = new Date(currDate);
+    // Align to Sunday to handle week boundaries
+    let currentWeekStart = new Date(currentDay);
+    currentWeekStart.setDate(currentWeekStart.getDate() - currentWeekStart.getDay());
+    
+    while (occurrenceCount < limitCount && loops < 3000) {
+      loops++;
+      if (until !== null && currentDay > until) break;
+      
+      // Only emit if it's on or after baseDate
+      if (currentDay >= currDate && targetDays.includes(currentDay.getDay())) {
+         dates.push(new Date(currentDay));
+         occurrenceCount++;
+      }
+      
+      currentDay.setDate(currentDay.getDate() + 1);
+      
+      if (currentDay.getDay() === 0) {
+         currentDay.setDate(currentDay.getDate() + (interval - 1) * 7);
+      }
+    }
+    return dates;
+  }
+
+  while (occurrenceCount < limitCount && loops < 3000) {
+    loops++;
+    if (until !== null && currDate > until) break;
+    
+    dates.push(new Date(currDate));
+    occurrenceCount++;
+
+    if (freq === "daily") {
+      currDate.setDate(currDate.getDate() + interval);
+    } else if (freq === "weekly") {
+      currDate.setDate(currDate.getDate() + interval * 7);
+    } else if (freq === "monthly") {
+      currDate.setMonth(currDate.getMonth() + interval);
+    } else if (freq === "yearly") {
+      currDate.setFullYear(currDate.getFullYear() + interval);
+    } else {
+      break;
+    }
+  }
+  
+  return dates;
 }
 
 // ─── HOUR_LABELS ────────────────────────────────────────
@@ -439,6 +518,57 @@ function EventDetailPanel({
             </div>
           )}
 
+          {/* Linked Files */}
+          <div className="pt-2 border-t border-[#E5E7EB]">
+            <div className="flex items-center justify-between mb-3">
+              <h4
+                className="text-[12px] text-[#9CA3AF] uppercase tracking-wider"
+                style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}
+              >
+                Linked Files
+              </h4>
+              <button
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] text-[#2D333A] hover:bg-[#F4F5F7] border border-[#E5E7EB] transition-all"
+                style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}
+              >
+                <LinkIcon className="size-3" />
+                Link File
+              </button>
+            </div>
+            
+            <div className="space-y-2">
+              <div className="flex items-center justify-between p-3 rounded-xl border border-[#E5E7EB] hover:border-[#D1D5DB] transition-all group cursor-pointer">
+                <div className="flex items-center gap-3">
+                  <div className="size-8 rounded-lg bg-[#F4F5F7] flex items-center justify-center shrink-0">
+                    <FileText className="size-4 text-[#6B7280]" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[13px] text-[#2D333A] truncate" style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}>Service_Run_Sheet.pdf</p>
+                    <p className="text-[11px] text-[#9CA3AF]" style={{ fontFamily: "var(--font-source-sans)" }}>Added today &middot; 2.4 MB</p>
+                  </div>
+                </div>
+                <button className="opacity-0 group-hover:opacity-100 p-1.5 text-[#9CA3AF] hover:text-[#EF4444] rounded-md hover:bg-[#FEF2F2] transition-all">
+                  <X className="size-3.5" />
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between p-3 rounded-xl border border-[#E5E7EB] hover:border-[#D1D5DB] transition-all group cursor-pointer">
+                <div className="flex items-center gap-3">
+                  <div className="size-8 rounded-lg bg-[#F4F5F7] flex items-center justify-center shrink-0">
+                    <FileText className="size-4 text-[#6B7280]" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[13px] text-[#2D333A] truncate" style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}>Sermon_Notes.docx</p>
+                    <p className="text-[11px] text-[#9CA3AF]" style={{ fontFamily: "var(--font-source-sans)" }}>Added yesterday &middot; 1.1 MB</p>
+                  </div>
+                </div>
+                <button className="opacity-0 group-hover:opacity-100 p-1.5 text-[#9CA3AF] hover:text-[#EF4444] rounded-md hover:bg-[#FEF2F2] transition-all">
+                  <X className="size-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
+
           {/* Department badges */}
           {event.departments.length > 0 && (
             <div className="pt-2 border-t border-[#E5E7EB]">
@@ -686,7 +816,7 @@ function MonthGrid({
                     "#6B7280";
                   return (
                     <div
-                      key={evt.id}
+                      key={`${evt.id}-${evt.starts_at}`}
                       onClick={(e) => {
                         e.stopPropagation();
                         onEventClick(evt);
@@ -751,6 +881,7 @@ function WeekGrid({
   today,
   getEventsForDay,
   onEventClick,
+  onDoubleClickSlot,
 }: {
   year: number;
   month: number;
@@ -758,6 +889,7 @@ function WeekGrid({
   today: Date;
   getEventsForDay: (d: Date) => CalendarEvent[];
   onEventClick: (e: CalendarEvent) => void;
+  onDoubleClickSlot: (date: Date, hour: number) => void;
 }) {
   const weekDays = getWeekDays(year, month, day);
 
@@ -839,6 +971,7 @@ function WeekGrid({
                   return (
                     <div
                       key={di}
+                      onDoubleClick={() => onDoubleClickSlot(d, h)}
                       className="h-14 border-b border-r border-[#E5E7EB]/50 last:border-r-0 relative px-0.5 py-0.5"
                     >
                       {hourEvts.map((evt) => {
@@ -848,7 +981,7 @@ function WeekGrid({
                           "#6B7280";
                         return (
                           <div
-                            key={evt.id}
+                            key={`${evt.id}-${evt.starts_at}`}
                             onClick={() => onEventClick(evt)}
                             className="text-[10px] px-1.5 py-0.5 rounded truncate cursor-pointer border hover:brightness-95 transition-all"
                             style={{
@@ -882,11 +1015,13 @@ function DayGrid({
   today,
   events,
   onEventClick,
+  onDoubleClickSlot,
 }: {
   date: Date;
   today: Date;
   events: CalendarEvent[];
   onEventClick: (e: CalendarEvent) => void;
+  onDoubleClickSlot: (date: Date, hour: number) => void;
 }) {
   const isToday = isSameDay(date, today);
 
@@ -945,7 +1080,7 @@ function DayGrid({
                   "#6B7280";
                 return (
                   <div
-                    key={evt.id}
+                    key={`${evt.id}-${evt.starts_at}`}
                     onClick={() => onEventClick(evt)}
                     className="px-3 py-1.5 rounded-lg text-[12px] cursor-pointer border hover:brightness-95 transition-all"
                     style={{
@@ -975,6 +1110,7 @@ function DayGrid({
             return (
               <div
                 key={h}
+                onDoubleClick={() => onDoubleClickSlot(date, h)}
                 className="flex border-b border-[#E5E7EB]/50 min-h-[56px]"
               >
                 <div className="w-16 shrink-0 border-r border-[#E5E7EB]/50 flex items-start justify-end pr-2 pt-1">
@@ -996,7 +1132,7 @@ function DayGrid({
                       "#6B7280";
                     return (
                       <div
-                        key={evt.id}
+                        key={`${evt.id}-${evt.starts_at}`}
                         onClick={() => onEventClick(evt)}
                         className="px-3 py-2 rounded-lg cursor-pointer border hover:brightness-95 transition-all"
                         style={{
@@ -1166,7 +1302,7 @@ function AgendaView({
                   "#6B7280";
                 return (
                   <div
-                    key={evt.id}
+                    key={`${evt.id}-${evt.starts_at}`}
                     onClick={() => onEventClick(evt)}
                     className="flex items-start gap-3 p-4 bg-white rounded-2xl border border-[#E5E7EB]/50 cursor-pointer hover:border-[#D1D5DB] transition-all"
                     style={{
@@ -1268,32 +1404,63 @@ export function CalendarView({
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [detailEvent, setDetailEvent] = useState<CalendarEvent | null>(null);
   const [editEvent, setEditEvent] = useState<EventModalData | null>(null);
+  const [initialDate, setInitialDate] = useState<string>("");
+  const [initialTime, setInitialTime] = useState<string>("");
 
   const today = new Date();
+
+  // Expand recurring events
+  const expandedEvents = useMemo(() => {
+    const result: CalendarEvent[] = [];
+    for (const evt of events) {
+      if (evt.status === "cancelled") continue;
+      
+      const dates = getAllEventDates(evt);
+      for (let i = 0; i < dates.length; i++) {
+        const d = dates[i];
+        const occEvent = { ...evt };
+        
+        const origStart = new Date(evt.starts_at);
+        const newStart = new Date(origStart);
+        newStart.setFullYear(d.getFullYear(), d.getMonth(), d.getDate());
+        occEvent.starts_at = newStart.toISOString();
+        
+        if (evt.ends_at) {
+          const origEnd = new Date(evt.ends_at);
+          const dayDiff = Math.round((origEnd.getTime() - origStart.getTime()) / 86400000);
+          const endD = new Date(d);
+          endD.setDate(endD.getDate() + dayDiff);
+          const newEnd = new Date(origEnd);
+          newEnd.setFullYear(endD.getFullYear(), endD.getMonth(), endD.getDate());
+          occEvent.ends_at = newEnd.toISOString();
+        }
+        result.push(occEvent);
+      }
+    }
+    return result;
+  }, [events]);
 
   // Build event lookup by date
   const eventsByDay = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>();
-    for (const evt of events) {
-      if (evt.status === "cancelled") continue;
+    for (const evt of expandedEvents) {
       const date = new Date(evt.starts_at);
       const key = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(evt);
     }
     return map;
-  }, [events]);
+  }, [expandedEvents]);
 
   // Set of days with events (for mini calendar)
   const eventDays = useMemo(() => {
     const s = new Set<string>();
-    for (const evt of events) {
-      if (evt.status === "cancelled") continue;
+    for (const evt of expandedEvents) {
       const date = new Date(evt.starts_at);
       s.add(`${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`);
     }
     return s;
-  }, [events]);
+  }, [expandedEvents]);
 
   const getEventsForDay = useCallback(
     (d: Date): CalendarEvent[] => {
@@ -1341,6 +1508,16 @@ export function CalendarView({
     setMonth(date.getMonth());
   }
 
+  function handleDoubleClickSlot(date: Date, hour: number) {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, "0");
+    const d = String(date.getDate()).padStart(2, "0");
+    setInitialDate(`${y}-${m}-${d}`);
+    setInitialTime(`${String(hour).padStart(2, "0")}:00`);
+    setEditEvent(null);
+    setIsCreateOpen(true);
+  }
+
   function handleEventClick(event: CalendarEvent) {
     setDetailEvent(event);
   }
@@ -1369,14 +1546,14 @@ export function CalendarView({
   // Upcoming events (next 3 for sidebar)
   const upcomingEvents = useMemo(() => {
     const nowStr = new Date().toISOString();
-    return events
-      .filter((e) => e.starts_at >= nowStr && e.status !== "cancelled")
+    return expandedEvents
+      .filter((e) => e.starts_at >= nowStr)
       .sort(
         (a, b) =>
           new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime(),
       )
       .slice(0, 3);
-  }, [events]);
+  }, [expandedEvents]);
 
   const VIEW_MODES: { key: CalendarViewMode; label: string }[] = [
     { key: "month", label: "Month" },
@@ -1408,6 +1585,8 @@ export function CalendarView({
           <button
             onClick={() => {
               setEditEvent(null);
+              setInitialDate("");
+              setInitialTime("");
               setIsCreateOpen(true);
             }}
             className="px-5 py-2.5 rounded-xl text-white text-[14px] hover:brightness-105 active:scale-[0.98] transition-all flex items-center gap-2 shrink-0"
@@ -1519,6 +1698,7 @@ export function CalendarView({
                 today={today}
                 getEventsForDay={getEventsForDay}
                 onEventClick={handleEventClick}
+                onDoubleClickSlot={handleDoubleClickSlot}
               />
             )}
             {viewMode === "day" && (
@@ -1527,11 +1707,12 @@ export function CalendarView({
                 today={today}
                 events={getEventsForDay(new Date(year, month, selectedDay))}
                 onEventClick={handleEventClick}
+                onDoubleClickSlot={handleDoubleClickSlot}
               />
             )}
             {viewMode === "agenda" && (
               <AgendaView
-                events={events}
+                events={expandedEvents}
                 onEventClick={handleEventClick}
               />
             )}
@@ -1651,7 +1832,7 @@ export function CalendarView({
                   const date = new Date(evt.starts_at);
                   return (
                     <div
-                      key={evt.id}
+                      key={`${evt.id}-${evt.starts_at}`}
                       onClick={() => handleEventClick(evt)}
                       className="flex gap-3 items-start cursor-pointer group"
                     >
@@ -1713,14 +1894,20 @@ export function CalendarView({
         onClose={() => {
           setIsCreateOpen(false);
           setEditEvent(null);
+          setInitialDate("");
+          setInitialTime("");
         }}
         onCreated={() => {
           router.refresh();
           setEditEvent(null);
+          setInitialDate("");
+          setInitialTime("");
         }}
         departments={departments}
         customEventTypes={customEventTypes}
         editEvent={editEvent}
+        initialDate={initialDate}
+        initialTime={initialTime}
       />
     </div>
   );

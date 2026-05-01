@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "@/app/actions/auth";
@@ -219,6 +219,19 @@ interface AppShellProps {
 
 export function AppShell({ userName, tier, children }: AppShellProps) {
   const [collapsed, setCollapsed] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const notificationsRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (notificationsRef.current && !notificationsRef.current.contains(event.target as Node)) {
+        setNotificationsOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   const pathname = usePathname();
   const breadcrumbs = getBreadcrumbs(pathname);
   const title = breadcrumbs[breadcrumbs.length - 1]?.label || "Dashboard";
@@ -258,7 +271,7 @@ export function AppShell({ userName, tier, children }: AppShellProps) {
       <motion.aside
         animate={{ width: sidebarWidth }}
         transition={{ duration: 0.3, ease: [0.23, 1, 0.32, 1] }}
-        className="fixed inset-y-0 left-0 z-50 flex flex-col bg-white border-r border-[#E5E7EB] overflow-hidden"
+        className={`fixed inset-y-0 left-0 z-50 flex flex-col bg-white border-r border-[#E5E7EB] ${collapsed ? "overflow-visible" : "overflow-hidden"}`}
       >
         {/* Logo */}
         <div className={`flex items-center gap-3 min-h-[80px] ${collapsed ? "px-0 justify-center" : "px-6"} py-6`}>
@@ -282,7 +295,7 @@ export function AppShell({ userName, tier, children }: AppShellProps) {
         </div>
 
         {/* Navigation */}
-        <nav className={`flex-1 flex flex-col gap-[2px] overflow-y-auto pb-4 ${collapsed ? "px-2" : "px-4"}`}>
+        <nav className={`flex-1 flex flex-col gap-[2px] pb-4 ${collapsed ? "px-2 overflow-visible" : "px-4 overflow-y-auto"}`}>
           {/* Top items */}
           {topNav.map((item) => (
             <NavLink key={item.href} item={item} active={isActive(item.href)} collapsed={collapsed} />
@@ -297,6 +310,13 @@ export function AppShell({ userName, tier, children }: AppShellProps) {
               module={mod}
               isOpen={openModules.has(mod.id)}
               onToggle={() => toggleModule(mod.id)}
+              onClose={() => {
+                setOpenModules((prev) => {
+                  const next = new Set(prev);
+                  next.delete(mod.id);
+                  return next;
+                });
+              }}
               pathname={pathname}
               collapsed={collapsed}
               tier={tier}
@@ -398,12 +418,64 @@ export function AppShell({ userName, tier, children }: AppShellProps) {
           </div>
 
           <div className="flex items-center gap-4">
-            <button className="relative text-[#6B7280] hover:text-[#5CE1A5] transition-colors p-2">
-              <Bell className="size-5" />
-              <span className="absolute top-1 right-1 size-4 bg-[#5CE1A5] text-white text-[9px] font-semibold rounded-full flex items-center justify-center border-2 border-white">
-                3
-              </span>
-            </button>
+            <div className="relative" ref={notificationsRef}>
+              <button 
+                onClick={() => setNotificationsOpen(!notificationsOpen)}
+                className="relative text-[#6B7280] hover:text-[#5CE1A5] transition-colors p-2"
+              >
+                <Bell className="size-5" />
+                <span className="absolute top-1 right-1 size-4 bg-[#5CE1A5] text-white text-[9px] font-semibold rounded-full flex items-center justify-center border-2 border-white">
+                  3
+                </span>
+              </button>
+
+              <AnimatePresence>
+                {notificationsOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                    transition={{ duration: 0.2 }}
+                    className="absolute right-0 top-[calc(100%+8px)] w-80 bg-white border border-[#E5E7EB] shadow-2xl rounded-2xl z-[100] overflow-hidden"
+                  >
+                    <div className="px-4 py-3 border-b border-[#E5E7EB] flex items-center justify-between bg-[#F4F5F7]/50">
+                      <h3 className="text-[14px] text-[#2D333A]" style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}>Notifications</h3>
+                      <button className="text-[11px] text-[#5CE1A5] hover:text-[#3DB882] transition-colors font-medium">Mark all as read</button>
+                    </div>
+                    <div className="max-h-[300px] overflow-y-auto">
+                      <div className="px-4 py-3 border-b border-[#E5E7EB] hover:bg-[#F4F5F7] transition-colors cursor-pointer relative group">
+                        <div className="absolute left-0 top-0 bottom-0 w-1 bg-[#5CE1A5]" />
+                        <p className="text-[13px] text-[#2D333A] leading-snug mb-1" style={{ fontFamily: "var(--font-source-sans)" }}>
+                          <span className="font-semibold">Sarah Jenkins</span> mentioned you in <span className="font-semibold text-[#5CE1A5]">Sunday Service Planning</span>
+                        </p>
+                        <p className="text-[11px] text-[#9CA3AF]" style={{ fontFamily: "var(--font-source-sans)" }}>10 minutes ago</p>
+                      </div>
+                      
+                      <div className="px-4 py-3 border-b border-[#E5E7EB] hover:bg-[#F4F5F7] transition-colors cursor-pointer relative group">
+                        <div className="absolute left-0 top-0 bottom-0 w-1 bg-[#5CE1A5]" />
+                        <p className="text-[13px] text-[#2D333A] leading-snug mb-1" style={{ fontFamily: "var(--font-source-sans)" }}>
+                          <span className="font-semibold">Youth Group Retreat</span> was rescheduled to next week.
+                        </p>
+                        <p className="text-[11px] text-[#9CA3AF]" style={{ fontFamily: "var(--font-source-sans)" }}>1 hour ago</p>
+                      </div>
+                      
+                      <div className="px-4 py-3 hover:bg-[#F4F5F7] transition-colors cursor-pointer relative group opacity-70">
+                        <p className="text-[13px] text-[#2D333A] leading-snug mb-1" style={{ fontFamily: "var(--font-source-sans)" }}>
+                          <span className="font-semibold">Pastor Mike</span> assigned a task to you: <span className="font-semibold text-[#5CE1A5]">Review sermon notes</span>
+                        </p>
+                        <p className="text-[11px] text-[#9CA3AF]" style={{ fontFamily: "var(--font-source-sans)" }}>Yesterday</p>
+                      </div>
+                    </div>
+                    <div className="px-4 py-2 border-t border-[#E5E7EB] text-center bg-[#F4F5F7]/50">
+                      <button className="text-[12px] text-[#9CA3AF] hover:text-[#5CE1A5] transition-colors" style={{ fontFamily: "var(--font-source-sans)" }}>
+                        View all notifications
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+            
             <div className="size-8 rounded-full bg-gradient-to-br from-[#5CE1A5] to-[#3DB882] flex items-center justify-center border border-[#E5E7EB] shadow-sm">
               <span className="text-white text-xs font-semibold" style={{ fontFamily: "var(--font-poppins)" }}>
                 {userName.charAt(0).toUpperCase()}
@@ -426,6 +498,7 @@ function ModuleSection({
   module: mod,
   isOpen,
   onToggle,
+  onClose,
   pathname,
   collapsed,
   tier,
@@ -433,10 +506,28 @@ function ModuleSection({
   module: ModuleGroup;
   isOpen: boolean;
   onToggle: () => void;
+  onClose: () => void;
   pathname: string;
   collapsed: boolean;
   tier: SubscriptionTier;
 }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!collapsed || !isOpen) return;
+
+    function handleClickOutside(event: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        onClose();
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [collapsed, isOpen, onClose]);
+
   const hasActivePage = mod.items.some(
     (item) => pathname === item.href || pathname.startsWith(item.href + "/")
   );
@@ -446,7 +537,7 @@ function ModuleSection({
   const isHighlighted = !locked && (isOpen || hasActivePage);
 
   return (
-    <div className="relative">
+    <div className="relative" ref={containerRef}>
       {/* Module context thread — 3px left border when highlighted */}
       {isHighlighted && (
         <div
@@ -676,6 +767,113 @@ function ModuleSection({
                 );
               })}
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Popup menu for collapsed view */}
+      <AnimatePresence>
+        {collapsed && !locked && isOpen && (
+          <motion.div
+            initial={{ opacity: 0, x: -5, scale: 0.95 }}
+            animate={{ opacity: 1, x: 0, scale: 1 }}
+            exit={{ opacity: 0, x: -5, scale: 0.95 }}
+            transition={{ duration: 0.15 }}
+            className="absolute left-[calc(100%+8px)] top-0 min-w-[200px] bg-white border border-[#E5E7EB] shadow-xl rounded-xl z-[100] py-1.5 px-1.5"
+          >
+            <div className="px-3 py-2 mb-1 border-b border-[#E5E7EB]">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-[#9CA3AF]" style={{ fontFamily: "var(--font-source-sans)" }}>
+                {mod.label}
+              </span>
+            </div>
+            {mod.items.map((item) => {
+              const active = pathname === item.href || pathname.startsWith(item.href + "/");
+              const itemLocked = isItemLocked(item.href, tier);
+
+              if (itemLocked) {
+                const required = getRequiredTier(mod.id, item.href);
+                const tierConf = TIER_CONFIG[required];
+                const TierIcon = tierConf.icon;
+                return (
+                  <Link
+                    key={item.href}
+                    href={getUpgradePath(mod.id, item.href)}
+                    onClick={() => { if (collapsed) onClose(); }}
+                    className="relative flex items-center w-full px-3 py-2 gap-3 rounded-lg text-[13px] overflow-hidden hover:bg-gray-50 transition-colors"
+                    style={{ opacity: 0.55 }}
+                  >
+                    <div className="relative size-4 shrink-0 text-[#9CA3AF]">
+                      {item.icon}
+                    </div>
+                    <span
+                      className="relative whitespace-nowrap overflow-hidden flex-1 text-[#9CA3AF]"
+                      style={{ fontFamily: "var(--font-poppins)", fontWeight: 400 }}
+                    >
+                      {item.label}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <TierIcon className="size-3" style={{ color: tierConf.color }} />
+                      <span
+                        className="text-[9px] font-semibold uppercase tracking-wide px-1 py-0.5 rounded"
+                        style={{
+                          fontFamily: "var(--font-poppins)",
+                          color: tierConf.color,
+                          backgroundColor: `${tierConf.color}10`,
+                        }}
+                      >
+                        {tierConf.label}
+                      </span>
+                    </div>
+                  </Link>
+                );
+              }
+
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={() => { if (collapsed) onClose(); }}
+                  className="relative flex items-center w-full px-3 py-2 gap-3 rounded-lg text-[13px] overflow-hidden hover:bg-gray-50 transition-colors"
+                >
+                  <motion.div
+                    className="absolute inset-0 rounded-lg"
+                    initial={false}
+                    animate={{ opacity: active ? 1 : 0 }}
+                    transition={{ duration: 0.25 }}
+                    style={
+                      isAI
+                        ? { background: `linear-gradient(135deg, ${AI_FROM}08, ${AI_TO}08)` }
+                        : { backgroundColor: `${mod.color}08` }
+                    }
+                  />
+                  <div
+                    className="relative size-4 shrink-0 z-10"
+                    style={
+                      active
+                        ? isAI
+                          ? { background: AI_GRADIENT, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" } as React.CSSProperties
+                          : { color: mod.color }
+                        : { color: "#6B7280" }
+                    }
+                  >
+                    {item.icon}
+                  </div>
+                  <span
+                    className="relative whitespace-nowrap overflow-hidden z-10"
+                    style={{
+                      fontFamily: "var(--font-poppins)",
+                      fontWeight: active ? 600 : 400,
+                      color: active ? (isAI ? "inherit" : mod.color) : "#6B7280",
+                      ...(active && isAI
+                        ? { background: AI_GRADIENT, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" } as React.CSSProperties
+                        : {}),
+                    }}
+                  >
+                    {item.label}
+                  </span>
+                </Link>
+              );
+            })}
           </motion.div>
         )}
       </AnimatePresence>
