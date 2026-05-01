@@ -1178,17 +1178,9 @@ function TaskGridGroup({
 // ─── Insights Panel ────────────────────────────────────
 function InsightsPanel({
   tasks,
-  todayCompleted,
-  todayTotal,
-  totalDone,
-  urgentCount,
   onFilterPriority,
 }: {
   tasks: Task[];
-  todayCompleted: number;
-  todayTotal: number;
-  totalDone: number;
-  urgentCount: number;
   onFilterPriority: (p: string) => void;
 }) {
   // Priority breakdown (pending only)
@@ -1219,71 +1211,6 @@ function InsightsPanel({
 
   return (
     <div className="space-y-6">
-      {/* Today's Progress */}
-      <div className="bg-[#F4F5F7] rounded-xl p-5">
-        <h4
-          className="text-[13px] text-[#2D333A] uppercase tracking-wider mb-4"
-          style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}
-        >
-          Today&apos;s Progress
-        </h4>
-        <div className="flex items-center gap-4">
-          <ProgressRing completed={todayCompleted} total={todayTotal} />
-          <div>
-            <p
-              className="text-[22px] text-[#2D333A] leading-none"
-              style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}
-            >
-              {todayCompleted}
-              <span
-                className="text-[#9CA3AF] text-[14px]"
-                style={{ fontWeight: 600 }}
-              >
-                /{todayTotal}
-              </span>
-            </p>
-            <p
-              className="text-[12px] text-[#6B7280] mt-1"
-              style={{ fontFamily: "var(--font-source-sans)" }}
-            >
-              tasks completed
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Stat boxes */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="bg-[#F4F5F7] rounded-xl p-4 text-center">
-          <p
-            className="text-[20px] text-[#2D333A] leading-none"
-            style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}
-          >
-            {totalDone}
-          </p>
-          <p
-            className="text-[11px] text-[#9CA3AF] mt-1"
-            style={{ fontFamily: "var(--font-source-sans)" }}
-          >
-            Total Done
-          </p>
-        </div>
-        <div className="bg-red-50 rounded-xl p-4 text-center">
-          <p
-            className="text-[20px] text-red-500 leading-none"
-            style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}
-          >
-            {urgentCount}
-          </p>
-          <p
-            className="text-[11px] text-[#9CA3AF] mt-1"
-            style={{ fontFamily: "var(--font-source-sans)" }}
-          >
-            Urgent
-          </p>
-        </div>
-      </div>
-
       {/* By Priority */}
       <div>
         <h4
@@ -1528,23 +1455,11 @@ export function TasksView({
   ).length;
   const totalCount = initialTasks.length;
 
-  // Insights computations
-  const todayGroupAll = groupTasks(initialTasks);
-  const todayTasks = todayGroupAll.today;
-  const todayCompleted = todayTasks.filter(
-    (t) => t.status === "done",
-  ).length;
-  const urgentCount = initialTasks.filter(
-    (t) =>
-      (t.priority === "high" || t.priority === "urgent") &&
-      t.status !== "done",
-  ).length;
-
   return (
     <div className="h-full flex flex-col overflow-y-auto bg-white">
       {/* Header */}
-      <div className="flex items-end justify-between mb-8 px-4 sm:px-6 pt-4 sm:pt-6">
-        <div className="flex items-center gap-4">
+      <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-6 mb-8 px-4 sm:px-6 pt-4 sm:pt-6">
+        <div className="flex flex-col md:flex-row md:items-center gap-6">
           <div>
             <h1
               className="text-[24px] text-[#2D333A] leading-tight"
@@ -1562,16 +1477,28 @@ export function TasksView({
               Your personal tasks and to-dos.
             </p>
           </div>
+          
           {totalCount > 0 && (
-            <div className="hidden sm:block">
-              <ProgressRing
-                completed={completedCount}
-                total={totalCount}
-              />
+            <div className="hidden sm:flex items-center gap-3">
+              <ProgressRing completed={completedCount} total={totalCount} />
+              <div>
+                <p
+                  className="text-[13px] text-[#2D333A] leading-tight"
+                  style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}
+                >
+                  Total Progress
+                </p>
+                <p
+                  className="text-[11px] text-[#6B7280] mt-0.5"
+                  style={{ fontFamily: "var(--font-source-sans)" }}
+                >
+                  {completedCount} of {totalCount} completed
+                </p>
+              </div>
             </div>
           )}
         </div>
-        <div className="mb-1">
+        <div className="mb-1 shrink-0">
           <button
             onClick={() => {
               setEditingTask(null);
@@ -1805,10 +1732,6 @@ export function TasksView({
         <div className="w-[260px] shrink-0 hidden xl:block">
           <InsightsPanel
             tasks={initialTasks}
-            todayCompleted={todayCompleted}
-            todayTotal={todayTasks.length}
-            totalDone={completedCount}
-            urgentCount={urgentCount}
             onFilterPriority={(p) => {
               if (p === "high") {
                 setViewFilter("high-priority");
