@@ -8,7 +8,14 @@ import {
 } from "@dnd-kit/sortable";
 import { useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { Plus, MoreHorizontal, Pencil, Trash2, Palette } from "lucide-react";
+import {
+  Plus,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+  Palette,
+  GripVertical,
+} from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import type { BoardColumnWithCards } from "@/app/actions/boards";
 import { KanbanCard, StaticKanbanCard } from "./kanban-card";
@@ -90,13 +97,28 @@ export function KanbanColumn({
     <div
       ref={isOverlay ? undefined : setNodeRef}
       style={style}
-      className="shrink-0 w-[280px] rounded-xl border bg-[#FAFBFC] flex flex-col"
+      className="shrink-0 w-[320px] rounded-2xl border border-[#E5E7EB] bg-[#F8FAFC] flex flex-col"
       data-column-id={column.id}
     >
       {/* Header */}
-      <div className="flex items-center gap-2 px-3 pt-3 pb-2">
+      <div className="flex items-center gap-2 px-4 pt-4 pb-3 group/header">
+        {/* Drag handle on the far left */}
+        {canEdit && !isOverlay ? (
+          <button
+            type="button"
+            {...attributes}
+            {...listeners}
+            className="text-[#94A3B8] hover:text-[#475569] cursor-grab active:cursor-grabbing shrink-0 transition-colors opacity-0 group-hover/header:opacity-100"
+            aria-label="Drag to reorder column"
+            title="Drag to reorder column"
+          >
+            <GripVertical className="size-4" />
+          </button>
+        ) : (
+          <span className="size-4 shrink-0" aria-hidden />
+        )}
         <span
-          className="size-2 rounded-full shrink-0"
+          className="size-2.5 rounded-full shrink-0"
           style={{ backgroundColor: column.color }}
           aria-hidden
         />
@@ -118,26 +140,34 @@ export function KanbanColumn({
                 setRenaming(false);
               }
             }}
-            className="flex-1 h-6 px-1 -mx-1 text-[14px] text-[#2D333A] bg-white border border-[#5CE1A5] rounded outline-none"
-            style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}
+            className="flex-1 h-7 px-1.5 -mx-1 text-[15px] text-[#0F172A] bg-white border border-[#5CE1A5] rounded outline-none"
+            style={{ fontFamily: "var(--font-poppins)", fontWeight: 700 }}
           />
         ) : (
           <h3
-            {...(isOverlay || !canEdit ? {} : attributes)}
-            {...(isOverlay || !canEdit ? {} : listeners)}
-            className="flex-1 text-[14px] text-[#2D333A] truncate cursor-grab active:cursor-grabbing select-none"
-            style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}
-            title={canEdit ? "Drag to reorder column" : column.name}
+            className="flex-1 text-[15px] text-[#0F172A] truncate select-none"
+            style={{ fontFamily: "var(--font-poppins)", fontWeight: 700 }}
+            title={column.name}
           >
             {column.name}
           </h3>
         )}
         <span
-          className="text-[11px] text-[#9CA3AF] tabular-nums shrink-0"
+          className="text-[12px] text-[#94A3B8] tabular-nums shrink-0"
           style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}
         >
           {column.cards.length}
         </span>
+        {canEdit && !isOverlay && (
+          <button
+            type="button"
+            onClick={() => onAddCard(column.id)}
+            className="size-7 rounded-md flex items-center justify-center text-[#475569] hover:text-[#5CE1A5] hover:bg-white transition-colors"
+            aria-label="Add card"
+          >
+            <Plus className="size-3.5" />
+          </button>
+        )}
         {canEdit && !isOverlay && (
           <div ref={menuRef} className="relative">
             <button
@@ -146,7 +176,7 @@ export function KanbanColumn({
                 setMenuOpen((v) => !v);
                 setColorPickerOpen(false);
               }}
-              className="size-6 rounded-md flex items-center justify-center text-[#9CA3AF] hover:text-[#2D333A] hover:bg-[#F3F4F6] transition-colors"
+              className="size-7 rounded-md flex items-center justify-center text-[#475569] hover:text-[#0F172A] hover:bg-white transition-colors"
               aria-label="Column actions"
             >
               <MoreHorizontal className="size-3.5" />
@@ -248,14 +278,14 @@ export function KanbanColumn({
       {/* Body — droppable area */}
       <div
         ref={setDropRef}
-        className="px-3 pb-3 flex-1 transition-colors rounded-b-xl"
+        className="px-4 pb-4 flex-1 transition-colors rounded-b-2xl"
         style={{
           backgroundColor: isOver ? "rgba(92, 225, 165, 0.06)" : "transparent",
           minHeight: 40,
         }}
       >
         <SortableContext items={cardIds} strategy={verticalListSortingStrategy}>
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-3">
             <AnimatePresence initial={false}>
               {column.cards.map((card) => (
                 <motion.div
@@ -275,7 +305,7 @@ export function KanbanColumn({
 
         {column.cards.length === 0 && (
           <p
-            className="text-[12px] text-[#9CA3AF] px-1 py-2"
+            className="text-[12px] text-[#94A3B8] px-1 py-3 text-center"
             style={{ fontFamily: "var(--font-source-sans)" }}
           >
             No cards yet
@@ -286,7 +316,7 @@ export function KanbanColumn({
           <button
             type="button"
             onClick={() => onAddCard(column.id)}
-            className="mt-2 w-full flex items-center justify-center gap-1.5 h-8 rounded-lg border border-dashed border-[#D1D5DB] text-[12px] text-[#6B7280] hover:border-[#5CE1A5] hover:text-[#5CE1A5] hover:bg-white transition-colors"
+            className="mt-3 w-full flex items-center justify-center gap-1.5 py-2.5 rounded-lg border border-dashed border-[#CBD5E1] text-[12px] text-[#64748B] hover:border-[#5CE1A5] hover:text-[#5CE1A5] hover:bg-white transition-colors"
             style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}
           >
             <Plus className="size-3.5" />
@@ -312,37 +342,38 @@ export function StaticKanbanColumn({
 }) {
   return (
     <div
-      className="shrink-0 w-[280px] rounded-xl border bg-[#FAFBFC] flex flex-col"
+      className="shrink-0 w-[320px] rounded-2xl border border-[#E5E7EB] bg-[#F8FAFC] flex flex-col"
       data-column-id={column.id}
     >
-      <div className="flex items-center gap-2 px-3 pt-3 pb-2">
+      <div className="flex items-center gap-2 px-4 pt-4 pb-3">
+        <span className="size-4 shrink-0" aria-hidden />
         <span
-          className="size-2 rounded-full shrink-0"
+          className="size-2.5 rounded-full shrink-0"
           style={{ backgroundColor: column.color }}
           aria-hidden
         />
         <h3
-          className="flex-1 text-[14px] text-[#2D333A] truncate select-none"
-          style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}
+          className="flex-1 text-[15px] text-[#0F172A] truncate select-none"
+          style={{ fontFamily: "var(--font-poppins)", fontWeight: 700 }}
         >
           {column.name}
         </h3>
         <span
-          className="text-[11px] text-[#9CA3AF] tabular-nums shrink-0"
+          className="text-[12px] text-[#94A3B8] tabular-nums shrink-0"
           style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}
         >
           {column.cards.length}
         </span>
       </div>
-      <div className="px-3 pb-3 flex-1 rounded-b-xl" style={{ minHeight: 40 }}>
-        <div className="flex flex-col gap-2">
+      <div className="px-4 pb-4 flex-1 rounded-b-2xl" style={{ minHeight: 40 }}>
+        <div className="flex flex-col gap-3">
           {column.cards.map((card) => (
             <StaticKanbanCard key={card.id} card={card} />
           ))}
         </div>
         {column.cards.length === 0 && (
           <p
-            className="text-[12px] text-[#9CA3AF] px-1 py-2"
+            className="text-[12px] text-[#94A3B8] px-1 py-3 text-center"
             style={{ fontFamily: "var(--font-source-sans)" }}
           >
             No cards yet
@@ -350,7 +381,7 @@ export function StaticKanbanColumn({
         )}
         {canEdit && (
           <div
-            className="mt-2 w-full flex items-center justify-center gap-1.5 h-8 rounded-lg border border-dashed border-[#D1D5DB] text-[12px] text-[#6B7280]"
+            className="mt-3 w-full flex items-center justify-center gap-1.5 py-2.5 rounded-lg border border-dashed border-[#CBD5E1] text-[12px] text-[#64748B]"
             style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}
             aria-hidden
           >

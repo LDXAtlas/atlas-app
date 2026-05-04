@@ -48,7 +48,7 @@ export function AddColumnInput({
       <button
         type="button"
         onClick={onActivate}
-        className="shrink-0 w-[280px] h-12 self-start mt-1 inline-flex items-center justify-center gap-1.5 rounded-xl border border-dashed border-[#D1D5DB] text-[13px] text-[#6B7280] hover:border-[#5CE1A5] hover:text-[#5CE1A5] hover:bg-white transition-colors"
+        className="shrink-0 w-[320px] h-12 self-start mt-1 inline-flex items-center justify-center gap-1.5 rounded-xl border border-dashed border-[#D1D5DB] text-[13px] text-[#6B7280] hover:border-[#5CE1A5] hover:text-[#5CE1A5] hover:bg-white transition-colors"
         style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}
       >
         <Plus className="size-4" />
@@ -63,7 +63,7 @@ export function AddColumnInput({
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: 20 }}
       transition={{ duration: 0.25, ease: [0.23, 1, 0.32, 1] }}
-      className="shrink-0 w-[280px] rounded-xl bg-white border border-[#5CE1A5] p-3 flex flex-col gap-2 self-start mt-1"
+      className="shrink-0 w-[320px] rounded-xl bg-white border border-[#5CE1A5] p-3 flex flex-col gap-2 self-start mt-1"
     >
       <input
         ref={inputRef}

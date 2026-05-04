@@ -344,6 +344,15 @@ export function BoardView({
       <BoardDetailHeader
         board={{ ...board, columns }}
         onAddColumn={() => setShowAddColumn(true)}
+        onNewTask={() => {
+          // "+ New Task" opens the quick-add modal targeting the first column.
+          // If the board has no columns yet, prompt the add-column flow instead.
+          if (columns.length === 0) {
+            setShowAddColumn(true);
+            return;
+          }
+          setAdding({ columnId: columns[0].id });
+        }}
       />
 
       {/* Mobile fallback */}
@@ -386,7 +395,7 @@ export function BoardView({
             ))}
             {board.viewer_can_edit && (
               <div
-                className="shrink-0 w-[280px] h-12 self-start mt-1 inline-flex items-center justify-center gap-1.5 rounded-xl border border-dashed border-[#D1D5DB] text-[13px] text-[#6B7280]"
+                className="shrink-0 w-[320px] h-12 self-start mt-1 inline-flex items-center justify-center gap-1.5 rounded-xl border border-dashed border-[#CBD5E1] text-[13px] text-[#64748B]"
                 style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}
                 aria-hidden
               >
