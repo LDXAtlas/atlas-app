@@ -1,0 +1,184 @@
+"use client";
+
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { Calendar, MessageSquare, CheckSquare } from "lucide-react";
+import type { BoardCardWithMeta } from "@/app/actions/boards";
+
+interface KanbanCardProps {
+  card: BoardCardWithMeta;
+  /** When true, disables drag styling (used for DragOverlay rendering). */
+  isOverlay?: boolean;
+}
+
+function initialsOf(name: string): string {
+  return (
+    name
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase() || "?"
+  );
+}
+
+type DueTone = "overdue" | "soon" | "upcoming" | "neutral";
+
+function dueTone(due: string | null): DueTone {
+  if (!due) return "neutral";
+  const d = new Date(due);
+  const today = new Date();
+  const startToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const startDue = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const diffDays = Math.round(
+    (startDue.getTime() - startToday.getTime()) / (24 * 60 * 60 * 1000),
+  );
+  if (diffDays < 0) return "overdue";
+  if (diffDays <= 1) return "soon";
+  return "upcoming";
+}
+
+const DUE_STYLES: Record<DueTone, { bg: string; fg: string }> = {
+  overdue: { bg: "#FEE2E2", fg: "#DC2626" },
+  soon: { bg: "#FEF3C7", fg: "#D97706" },
+  upcoming: { bg: "#D1FAE5", fg: "#059669" },
+  neutral: { bg: "#F3F4F6", fg: "#6B7280" },
+};
+
+function formatDue(iso: string): string {
+  const d = new Date(iso);
+  const today = new Date();
+  const startToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const startDue = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const diff = Math.round(
+    (startDue.getTime() - startToday.getTime()) / (24 * 60 * 60 * 1000),
+  );
+  if (diff === 0) return "Today";
+  if (diff === 1) return "Tomorrow";
+  if (diff === -1) return "Yesterday";
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+export function KanbanCard({ card, isOverlay = false }: KanbanCardProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: card.id,
+    data: { type: "card", columnId: card.column_id, card },
+    disabled: isOverlay,
+  });
+
+  const tone = dueTone(card.due_date);
+  const dueStyle = DUE_STYLES[tone];
+  const hasMeta =
+    !!card.due_date ||
+    card.comment_count > 0 ||
+    card.checklist_total > 0 ||
+    card.label_count > 0 ||
+    !!card.assignee;
+
+  // Hide source while it's being picked up — DragOverlay shows the floating
+  // copy at full opacity.
+  const style: React.CSSProperties = isOverlay
+    ? { boxShadow: "0 18px 40px rgba(15, 23, 42, 0.18)", transform: "rotate(1deg)" }
+    : {
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.4 : 1,
+      };
+
+  return (
+    <div
+      ref={isOverlay ? undefined : setNodeRef}
+      {...(isOverlay ? {} : attributes)}
+      {...(isOverlay ? {} : listeners)}
+      style={style}
+      className={`group relative bg-white rounded-lg border border-[#E5E7EB] overflow-hidden ${
+        isOverlay
+          ? ""
+          : "hover:border-[#5CE1A5]/50 hover:shadow-[0_2px_8px_rgba(15,23,42,0.06)] cursor-grab active:cursor-grabbing transition-[border-color,box-shadow] duration-150"
+      }`}
+    >
+      {card.cover_color && (
+        <div
+          className="h-1 w-full"
+          style={{ backgroundColor: card.cover_color }}
+        />
+      )}
+      <div className="p-3">
+        <p
+          className="text-[14px] text-[#2D333A] leading-snug break-words"
+          style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}
+        >
+          {card.title}
+        </p>
+        {hasMeta && (
+          <div className="flex items-center flex-wrap gap-2 mt-2">
+            {card.due_date && (
+              <span
+                className="inline-flex items-center gap-1 px-1.5 h-5 rounded text-[11px]"
+                style={{
+                  fontFamily: "var(--font-poppins)",
+                  fontWeight: 600,
+                  backgroundColor: dueStyle.bg,
+                  color: dueStyle.fg,
+                }}
+              >
+                <Calendar className="size-3" />
+                {formatDue(card.due_date)}
+              </span>
+            )}
+            {card.label_count > 0 && (
+              <span
+                className="inline-flex items-center px-1.5 h-5 rounded text-[11px] bg-[#F3F4F6] text-[#6B7280]"
+                style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}
+                title={`${card.label_count} label${card.label_count === 1 ? "" : "s"}`}
+              >
+                {card.label_count} label{card.label_count === 1 ? "" : "s"}
+              </span>
+            )}
+            {card.checklist_total > 0 && (
+              <span
+                className="inline-flex items-center gap-1 text-[11px] text-[#6B7280]"
+                style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}
+                title="Checklist progress"
+              >
+                <CheckSquare className="size-3" />
+                {card.checklist_completed}/{card.checklist_total}
+              </span>
+            )}
+            {card.comment_count > 0 && (
+              <span
+                className="inline-flex items-center gap-1 text-[11px] text-[#6B7280]"
+                style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}
+                title={`${card.comment_count} comment${card.comment_count === 1 ? "" : "s"}`}
+              >
+                <MessageSquare className="size-3" />
+                {card.comment_count}
+              </span>
+            )}
+            {card.assignee && (
+              <span
+                className="size-[22px] rounded-full text-white text-[10px] flex items-center justify-center ml-auto shrink-0"
+                style={{
+                  fontFamily: "var(--font-poppins)",
+                  fontWeight: 600,
+                  backgroundColor: card.assignee.avatar_color,
+                }}
+                title={card.assignee.full_name}
+              >
+                {initialsOf(card.assignee.full_name)}
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

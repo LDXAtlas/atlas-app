@@ -66,6 +66,77 @@ export type ActionResult<T = unknown> =
   | { success: true; data?: T }
   | { success: false; error: string };
 
+// ─── Detail (single-board view) types ───────────────────────
+export type CardLabel = {
+  id: string;
+  board_id: string;
+  name: string;
+  color: string;
+};
+
+export type BoardMemberInfo = {
+  profile_id: string;
+  full_name: string;
+  avatar_url: string | null;
+  role: BoardMemberRole;
+};
+
+export type CardAssignee = {
+  id: string;
+  full_name: string;
+  /** Background color for the initials avatar. Mint fallback. */
+  avatar_color: string;
+};
+
+export type BoardCardWithMeta = {
+  id: string;
+  board_id: string;
+  column_id: string;
+  title: string;
+  description: string | null;
+  cover_color: string | null;
+  due_date: string | null;
+  assigned_to: string | null;
+  position: number;
+  is_completed: boolean;
+  assignee: CardAssignee | null;
+  label_count: number;
+  comment_count: number;
+  checklist_completed: number;
+  checklist_total: number;
+};
+
+export type BoardColumnWithCards = {
+  id: string;
+  board_id: string;
+  name: string;
+  color: string;
+  position: number;
+  cards: BoardCardWithMeta[];
+};
+
+export type BoardDetail = {
+  id: string;
+  organization_id: string;
+  name: string;
+  description: string | null;
+  color: string;
+  icon: string;
+  visibility: BoardVisibility;
+  is_archived: boolean;
+  department_id: string | null;
+  department_name: string | null;
+  department_color: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  columns: BoardColumnWithCards[];
+  members: BoardMemberInfo[];
+  labels: CardLabel[];
+  viewer_can_edit: boolean;
+  viewer_can_delete: boolean;
+};
+
 // ─── Templates ──────────────────────────────────────────────
 //
 // Column colors lean on tokens already used elsewhere in the app:
@@ -382,18 +453,344 @@ export async function getBoards(filters?: {
   return { data: summaries };
 }
 
-// ─── getBoard ───────────────────────────────────────────────
+// ─── Board access helper (server-only) ──────────────────────
 //
-// Phase 1 only needs minimal board metadata for things like the redirect
-// flow after createBoard. Full single-board view (columns + cards) lands
-// in Phase 2.
+// Centralizes the visibility + edit checks every column/card mutation
+// needs. Returns the board row when access is granted plus the viewer's
+// effective capability flags.
+type BoardAccessRow = {
+  id: string;
+  organization_id: string;
+  created_by: string;
+  visibility: BoardVisibility;
+  department_id: string | null;
+};
+
+async function loadBoardForViewer(
+  ctx: { userId: string; organizationId: string; role: Role },
+  boardId: string,
+): Promise<
+  | { ok: true; board: BoardAccessRow; canEdit: boolean; canDelete: boolean }
+  | { ok: false; error: string }
+> {
+  const { data: board } = await supabaseAdmin
+    .from("boards")
+    .select("id, organization_id, created_by, visibility, department_id")
+    .eq("id", boardId)
+    .maybeSingle();
+  if (!board || board.organization_id !== ctx.organizationId) {
+    return { ok: false, error: "Board not found." };
+  }
+
+  const { data: memberRow } = await supabaseAdmin
+    .from("board_members")
+    .select("role")
+    .eq("board_id", boardId)
+    .eq("profile_id", ctx.userId)
+    .maybeSingle();
+  const memberRole = memberRow?.role as BoardMemberRole | undefined;
+  const isMember = !!memberRole;
+
+  // Viewer's department assignments — relevant when visibility = department.
+  let isInDept = false;
+  if (board.visibility === "department" && board.department_id) {
+    const { data: deptRow } = await supabaseAdmin
+      .from("profile_departments")
+      .select("department_id")
+      .eq("profile_id", ctx.userId)
+      .eq("department_id", board.department_id)
+      .maybeSingle();
+    isInDept = !!deptRow;
+  }
+
+  const isCreator = board.created_by === ctx.userId;
+  const isAdmin = ctx.role === "admin";
+
+  // Visibility check — same logic as the SELECT RLS policy.
+  const canSee =
+    isCreator ||
+    isMember ||
+    board.visibility === "organization" ||
+    (board.visibility === "department" && isInDept);
+  if (!canSee) return { ok: false, error: "Board not found." };
+
+  const canEdit =
+    isCreator ||
+    isAdmin ||
+    memberRole === "owner" ||
+    memberRole === "editor";
+  const canDelete = isCreator || isAdmin;
+
+  return { ok: true, board, canEdit, canDelete };
+}
+
+// Convenience used by mutation actions that require edit privilege.
+async function requireEditAccess(
+  boardId: string,
+): Promise<
+  | { ok: true; ctx: { userId: string; organizationId: string; role: Role }; board: BoardAccessRow }
+  | { ok: false; error: string }
+> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { ok: false, error: "Not authenticated." };
+  const access = await loadBoardForViewer(ctx, boardId);
+  if (!access.ok) return access;
+  if (!access.canEdit)
+    return { ok: false, error: "You can't edit this board." };
+  return { ok: true, ctx, board: access.board };
+}
+
+// ─── getBoard (full detail) ─────────────────────────────────
 export async function getBoard(
   id: string,
-): Promise<{ data: BoardSummary | null; error?: string }> {
-  const { data, error } = await getBoards({ includeArchived: true });
-  if (error) return { data: null, error };
-  const found = data.find((b) => b.id === id);
-  return { data: found ?? null };
+): Promise<{ data: BoardDetail | null; error?: string }> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { data: null, error: "Not authenticated." };
+
+  const access = await loadBoardForViewer(ctx, id);
+  if (!access.ok) return { data: null, error: access.error };
+
+  // Fetch the full board row.
+  const { data: boardRow, error: boardErr } = await supabaseAdmin
+    .from("boards")
+    .select(
+      "id, organization_id, name, description, color, icon, visibility, is_archived, department_id, created_by, created_at, updated_at",
+    )
+    .eq("id", id)
+    .single();
+  if (boardErr || !boardRow) {
+    console.error("[getBoard] Board fetch error:", boardErr?.message);
+    return { data: null, error: boardErr?.message || "Board not found." };
+  }
+
+  // Department badge.
+  let department: { id: string; name: string; color: string } | null = null;
+  if (boardRow.department_id) {
+    const { data: dept } = await supabaseAdmin
+      .from("departments")
+      .select("id, name, color")
+      .eq("id", boardRow.department_id)
+      .maybeSingle();
+    if (dept) {
+      department = {
+        id: dept.id,
+        name: dept.name,
+        color: dept.color || "#6B7280",
+      };
+    }
+  }
+
+  // Columns ordered by position.
+  const { data: columnRows } = await supabaseAdmin
+    .from("board_columns")
+    .select("id, board_id, name, color, position, created_at")
+    .eq("board_id", id)
+    .order("position", { ascending: true });
+  const columns = columnRows ?? [];
+
+  // Cards ordered by position within each column.
+  const { data: cardRows } = await supabaseAdmin
+    .from("board_cards")
+    .select(
+      "id, board_id, column_id, title, description, cover_color, due_date, assigned_to, position, is_completed",
+    )
+    .eq("board_id", id)
+    .order("position", { ascending: true });
+  const cards = cardRows ?? [];
+  const cardIds = cards.map((c: { id: string }) => c.id);
+
+  // Aggregations: label counts, comment counts, checklist totals.
+  const labelCountByCard = new Map<string, number>();
+  const commentCountByCard = new Map<string, number>();
+  const checklistByCard = new Map<string, { total: number; completed: number }>();
+
+  if (cardIds.length > 0) {
+    const [labelRes, commentRes, checklistRes] = await Promise.all([
+      supabaseAdmin
+        .from("board_card_labels")
+        .select("card_id")
+        .in("card_id", cardIds),
+      supabaseAdmin
+        .from("card_comments")
+        .select("card_id")
+        .in("card_id", cardIds),
+      supabaseAdmin
+        .from("card_checklist_items")
+        .select("card_id, is_completed")
+        .in("card_id", cardIds),
+    ]);
+    (labelRes.data ?? []).forEach((r: { card_id: string }) => {
+      labelCountByCard.set(r.card_id, (labelCountByCard.get(r.card_id) ?? 0) + 1);
+    });
+    (commentRes.data ?? []).forEach((r: { card_id: string }) => {
+      commentCountByCard.set(
+        r.card_id,
+        (commentCountByCard.get(r.card_id) ?? 0) + 1,
+      );
+    });
+    (checklistRes.data ?? []).forEach(
+      (r: { card_id: string; is_completed: boolean | null }) => {
+        const cur = checklistByCard.get(r.card_id) ?? { total: 0, completed: 0 };
+        cur.total += 1;
+        if (r.is_completed) cur.completed += 1;
+        checklistByCard.set(r.card_id, cur);
+      },
+    );
+  }
+
+  // Members (with profile join).
+  const { data: memberRows } = await supabaseAdmin
+    .from("board_members")
+    .select("profile_id, role")
+    .eq("board_id", id);
+  const memberList = memberRows ?? [];
+
+  // Labels.
+  const { data: labelRows } = await supabaseAdmin
+    .from("card_labels")
+    .select("id, board_id, name, color")
+    .eq("board_id", id)
+    .order("name", { ascending: true });
+
+  // Profiles to enrich members + assignees + creator.
+  const profileIds = new Set<string>();
+  profileIds.add(boardRow.created_by);
+  memberList.forEach((m: { profile_id: string }) => profileIds.add(m.profile_id));
+  cards.forEach((c: { assigned_to: string | null }) => {
+    if (c.assigned_to) profileIds.add(c.assigned_to);
+  });
+  const profileMap = new Map<
+    string,
+    { full_name: string; avatar_url: string | null }
+  >();
+  if (profileIds.size > 0) {
+    const { data: profRows } = await supabaseAdmin
+      .from("profiles")
+      .select("id, full_name, email, avatar_url")
+      .in("id", Array.from(profileIds));
+    (profRows ?? []).forEach(
+      (p: {
+        id: string;
+        full_name: string | null;
+        email: string | null;
+        avatar_url: string | null;
+      }) => {
+        profileMap.set(p.id, {
+          full_name: p.full_name || p.email?.split("@")[0] || "Unnamed",
+          avatar_url: p.avatar_url,
+        });
+      },
+    );
+  }
+
+  // Assemble columns + cards.
+  const cardsByColumn = new Map<string, BoardCardWithMeta[]>();
+  cards.forEach(
+    (c: {
+      id: string;
+      board_id: string;
+      column_id: string;
+      title: string;
+      description: string | null;
+      cover_color: string | null;
+      due_date: string | null;
+      assigned_to: string | null;
+      position: number;
+      is_completed: boolean | null;
+    }) => {
+      const profile = c.assigned_to ? profileMap.get(c.assigned_to) : null;
+      const card: BoardCardWithMeta = {
+        id: c.id,
+        board_id: c.board_id,
+        column_id: c.column_id,
+        title: c.title,
+        description: c.description,
+        cover_color: c.cover_color,
+        due_date: c.due_date,
+        assigned_to: c.assigned_to,
+        position: c.position,
+        is_completed: !!c.is_completed,
+        assignee:
+          c.assigned_to && profile
+            ? {
+                id: c.assigned_to,
+                full_name: profile.full_name,
+                avatar_color: "#5CE1A5",
+              }
+            : null,
+        label_count: labelCountByCard.get(c.id) ?? 0,
+        comment_count: commentCountByCard.get(c.id) ?? 0,
+        checklist_completed:
+          checklistByCard.get(c.id)?.completed ?? 0,
+        checklist_total: checklistByCard.get(c.id)?.total ?? 0,
+      };
+      const arr = cardsByColumn.get(c.column_id) ?? [];
+      arr.push(card);
+      cardsByColumn.set(c.column_id, arr);
+    },
+  );
+
+  const columnsWithCards: BoardColumnWithCards[] = columns.map(
+    (col: {
+      id: string;
+      board_id: string;
+      name: string;
+      color: string | null;
+      position: number;
+    }) => ({
+      id: col.id,
+      board_id: col.board_id,
+      name: col.name,
+      color: col.color || "#9CA3AF",
+      position: col.position,
+      cards: cardsByColumn.get(col.id) ?? [],
+    }),
+  );
+
+  const members: BoardMemberInfo[] = memberList.map(
+    (m: { profile_id: string; role: BoardMemberRole }) => {
+      const p = profileMap.get(m.profile_id);
+      return {
+        profile_id: m.profile_id,
+        full_name: p?.full_name ?? "Unnamed",
+        avatar_url: p?.avatar_url ?? null,
+        role: m.role,
+      };
+    },
+  );
+
+  const labels: CardLabel[] = (labelRows ?? []).map(
+    (l: { id: string; board_id: string; name: string; color: string | null }) => ({
+      id: l.id,
+      board_id: l.board_id,
+      name: l.name,
+      color: l.color || "#5CE1A5",
+    }),
+  );
+
+  return {
+    data: {
+      id: boardRow.id,
+      organization_id: boardRow.organization_id,
+      name: boardRow.name,
+      description: boardRow.description,
+      color: boardRow.color || "#5CE1A5",
+      icon: boardRow.icon || "Folder",
+      visibility: boardRow.visibility as BoardVisibility,
+      is_archived: !!boardRow.is_archived,
+      department_id: boardRow.department_id,
+      department_name: department?.name ?? null,
+      department_color: department?.color ?? null,
+      created_by: boardRow.created_by,
+      created_at: boardRow.created_at,
+      updated_at: boardRow.updated_at,
+      columns: columnsWithCards,
+      members,
+      labels,
+      viewer_can_edit: access.canEdit,
+      viewer_can_delete: access.canDelete,
+    },
+  };
 }
 
 // ─── createBoard ────────────────────────────────────────────
@@ -549,4 +946,436 @@ export async function deleteBoard(
   }
   revalidatePath("/workspace/projects");
   return { success: true };
+}
+
+// ─── Columns ─────────────────────────────────────────────────
+export async function createColumn(
+  boardId: string,
+  data: { name: string; color?: string },
+): Promise<ActionResult<BoardColumnWithCards>> {
+  const access = await requireEditAccess(boardId);
+  if (!access.ok) return { success: false, error: access.error };
+  if (!data.name?.trim()) {
+    return { success: false, error: "Column name is required." };
+  }
+
+  // Position = current max + 1 (or 0 if empty)
+  const { data: existing } = await supabaseAdmin
+    .from("board_columns")
+    .select("position")
+    .eq("board_id", boardId)
+    .order("position", { ascending: false })
+    .limit(1);
+  const nextPos =
+    existing && existing.length > 0
+      ? (existing[0] as { position: number }).position + 1
+      : 0;
+
+  const { data: inserted, error } = await supabaseAdmin
+    .from("board_columns")
+    .insert({
+      board_id: boardId,
+      name: data.name.trim(),
+      color: data.color || "#9CA3AF",
+      position: nextPos,
+    })
+    .select("id, board_id, name, color, position")
+    .single();
+
+  if (error || !inserted) {
+    console.error("[createColumn] Insert error:", error?.message);
+    return { success: false, error: error?.message || "Failed to create column." };
+  }
+
+  await touchBoard(boardId);
+  revalidatePath(`/workspace/projects/${boardId}`);
+  return {
+    success: true,
+    data: {
+      id: inserted.id,
+      board_id: inserted.board_id,
+      name: inserted.name,
+      color: inserted.color || "#9CA3AF",
+      position: inserted.position,
+      cards: [],
+    },
+  };
+}
+
+export async function updateColumn(
+  columnId: string,
+  data: { name?: string; color?: string },
+): Promise<ActionResult> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated." };
+
+  const { data: col } = await supabaseAdmin
+    .from("board_columns")
+    .select("board_id")
+    .eq("id", columnId)
+    .maybeSingle();
+  if (!col) return { success: false, error: "Column not found." };
+
+  const access = await loadBoardForViewer(ctx, col.board_id);
+  if (!access.ok || !access.canEdit)
+    return { success: false, error: "You can't edit this column." };
+
+  const update: Record<string, unknown> = {};
+  if (typeof data.name === "string" && data.name.trim()) {
+    update.name = data.name.trim();
+  }
+  if (typeof data.color === "string") update.color = data.color;
+  if (Object.keys(update).length === 0) return { success: true };
+
+  const { error } = await supabaseAdmin
+    .from("board_columns")
+    .update(update)
+    .eq("id", columnId);
+  if (error) {
+    console.error("[updateColumn] Update error:", error.message);
+    return { success: false, error: error.message };
+  }
+  await touchBoard(col.board_id);
+  revalidatePath(`/workspace/projects/${col.board_id}`);
+  return { success: true };
+}
+
+export async function deleteColumn(
+  columnId: string,
+): Promise<ActionResult> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated." };
+
+  const { data: col } = await supabaseAdmin
+    .from("board_columns")
+    .select("board_id")
+    .eq("id", columnId)
+    .maybeSingle();
+  if (!col) return { success: false, error: "Column not found." };
+
+  const access = await loadBoardForViewer(ctx, col.board_id);
+  if (!access.ok || !access.canEdit)
+    return { success: false, error: "You can't delete this column." };
+
+  const { error } = await supabaseAdmin
+    .from("board_columns")
+    .delete()
+    .eq("id", columnId);
+  if (error) {
+    console.error("[deleteColumn] Delete error:", error.message);
+    return { success: false, error: error.message };
+  }
+  await touchBoard(col.board_id);
+  revalidatePath(`/workspace/projects/${col.board_id}`);
+  return { success: true };
+}
+
+export async function reorderColumns(
+  boardId: string,
+  columnIds: string[],
+): Promise<ActionResult> {
+  const access = await requireEditAccess(boardId);
+  if (!access.ok) return { success: false, error: access.error };
+  if (!Array.isArray(columnIds) || columnIds.length === 0) {
+    return { success: true };
+  }
+
+  // Update positions sequentially. Supabase JS doesn't expose multi-row
+  // CASE updates; we issue one PATCH per column. Cheap for small column
+  // counts (kanban boards rarely exceed ~10 columns).
+  for (let i = 0; i < columnIds.length; i++) {
+    const id = columnIds[i];
+    const { error } = await supabaseAdmin
+      .from("board_columns")
+      .update({ position: i })
+      .eq("id", id)
+      .eq("board_id", boardId);
+    if (error) {
+      console.error("[reorderColumns] Update error:", error.message);
+      return { success: false, error: error.message };
+    }
+  }
+  await touchBoard(boardId);
+  revalidatePath(`/workspace/projects/${boardId}`);
+  return { success: true };
+}
+
+// ─── Cards ──────────────────────────────────────────────────
+export type CreateCardInput = {
+  title: string;
+  description?: string | null;
+  cover_color?: string | null;
+  assigned_to?: string | null;
+  due_date?: string | null;
+};
+
+export async function createCard(
+  columnId: string,
+  data: CreateCardInput,
+): Promise<ActionResult<BoardCardWithMeta>> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated." };
+  if (!data.title?.trim()) {
+    return { success: false, error: "Card title is required." };
+  }
+
+  const { data: col } = await supabaseAdmin
+    .from("board_columns")
+    .select("id, board_id")
+    .eq("id", columnId)
+    .maybeSingle();
+  if (!col) return { success: false, error: "Column not found." };
+
+  const access = await loadBoardForViewer(ctx, col.board_id);
+  if (!access.ok || !access.canEdit)
+    return { success: false, error: "You can't add cards here." };
+
+  const { data: existing } = await supabaseAdmin
+    .from("board_cards")
+    .select("position")
+    .eq("column_id", columnId)
+    .order("position", { ascending: false })
+    .limit(1);
+  const nextPos =
+    existing && existing.length > 0
+      ? (existing[0] as { position: number }).position + 1
+      : 0;
+
+  const { data: inserted, error } = await supabaseAdmin
+    .from("board_cards")
+    .insert({
+      board_id: col.board_id,
+      column_id: columnId,
+      title: data.title.trim(),
+      description: data.description?.trim() || null,
+      cover_color: data.cover_color || null,
+      assigned_to: data.assigned_to || null,
+      due_date: data.due_date || null,
+      position: nextPos,
+      created_by: ctx.userId,
+    })
+    .select(
+      "id, board_id, column_id, title, description, cover_color, due_date, assigned_to, position, is_completed",
+    )
+    .single();
+
+  if (error || !inserted) {
+    console.error("[createCard] Insert error:", error?.message);
+    return { success: false, error: error?.message || "Failed to create card." };
+  }
+
+  // Resolve assignee for the immediate UI return.
+  let assignee: CardAssignee | null = null;
+  if (inserted.assigned_to) {
+    const { data: prof } = await supabaseAdmin
+      .from("profiles")
+      .select("id, full_name, email")
+      .eq("id", inserted.assigned_to)
+      .maybeSingle();
+    if (prof) {
+      assignee = {
+        id: prof.id,
+        full_name:
+          prof.full_name || prof.email?.split("@")[0] || "Unnamed",
+        avatar_color: "#5CE1A5",
+      };
+    }
+  }
+
+  await touchBoard(col.board_id);
+  revalidatePath(`/workspace/projects/${col.board_id}`);
+  return {
+    success: true,
+    data: {
+      id: inserted.id,
+      board_id: inserted.board_id,
+      column_id: inserted.column_id,
+      title: inserted.title,
+      description: inserted.description,
+      cover_color: inserted.cover_color,
+      due_date: inserted.due_date,
+      assigned_to: inserted.assigned_to,
+      position: inserted.position,
+      is_completed: !!inserted.is_completed,
+      assignee,
+      label_count: 0,
+      comment_count: 0,
+      checklist_completed: 0,
+      checklist_total: 0,
+    },
+  };
+}
+
+export type UpdateCardInput = Partial<{
+  title: string;
+  description: string | null;
+  cover_color: string | null;
+  assigned_to: string | null;
+  due_date: string | null;
+  is_completed: boolean;
+}>;
+
+export async function updateCard(
+  cardId: string,
+  data: UpdateCardInput,
+): Promise<ActionResult> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated." };
+
+  const { data: card } = await supabaseAdmin
+    .from("board_cards")
+    .select("board_id")
+    .eq("id", cardId)
+    .maybeSingle();
+  if (!card) return { success: false, error: "Card not found." };
+
+  const access = await loadBoardForViewer(ctx, card.board_id);
+  if (!access.ok || !access.canEdit)
+    return { success: false, error: "You can't edit this card." };
+
+  const update: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (typeof data.title === "string" && data.title.trim()) {
+    update.title = data.title.trim();
+  }
+  if (data.description !== undefined) {
+    update.description = data.description?.trim() || null;
+  }
+  if (data.cover_color !== undefined) update.cover_color = data.cover_color || null;
+  if (data.assigned_to !== undefined) update.assigned_to = data.assigned_to || null;
+  if (data.due_date !== undefined) update.due_date = data.due_date || null;
+  if (data.is_completed !== undefined) {
+    update.is_completed = data.is_completed;
+    update.completed_at = data.is_completed ? new Date().toISOString() : null;
+  }
+
+  const { error } = await supabaseAdmin
+    .from("board_cards")
+    .update(update)
+    .eq("id", cardId);
+  if (error) {
+    console.error("[updateCard] Update error:", error.message);
+    return { success: false, error: error.message };
+  }
+  await touchBoard(card.board_id);
+  revalidatePath(`/workspace/projects/${card.board_id}`);
+  return { success: true };
+}
+
+export async function moveCard(
+  cardId: string,
+  targetColumnId: string,
+  newPosition: number,
+): Promise<ActionResult> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated." };
+
+  const { data: card } = await supabaseAdmin
+    .from("board_cards")
+    .select("id, board_id, column_id")
+    .eq("id", cardId)
+    .maybeSingle();
+  if (!card) return { success: false, error: "Card not found." };
+
+  // Target column must belong to the same board.
+  const { data: targetCol } = await supabaseAdmin
+    .from("board_columns")
+    .select("id, board_id")
+    .eq("id", targetColumnId)
+    .maybeSingle();
+  if (!targetCol || targetCol.board_id !== card.board_id) {
+    return { success: false, error: "Target column not found." };
+  }
+
+  const access = await loadBoardForViewer(ctx, card.board_id);
+  if (!access.ok || !access.canEdit)
+    return { success: false, error: "You can't move this card." };
+
+  const { error } = await supabaseAdmin
+    .from("board_cards")
+    .update({
+      column_id: targetColumnId,
+      position: Math.max(0, Math.floor(newPosition)),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", cardId);
+  if (error) {
+    console.error("[moveCard] Update error:", error.message);
+    return { success: false, error: error.message };
+  }
+  await touchBoard(card.board_id);
+  revalidatePath(`/workspace/projects/${card.board_id}`);
+  return { success: true };
+}
+
+export async function reorderCardsInColumn(
+  columnId: string,
+  cardIds: string[],
+): Promise<ActionResult> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated." };
+
+  const { data: col } = await supabaseAdmin
+    .from("board_columns")
+    .select("id, board_id")
+    .eq("id", columnId)
+    .maybeSingle();
+  if (!col) return { success: false, error: "Column not found." };
+
+  const access = await loadBoardForViewer(ctx, col.board_id);
+  if (!access.ok || !access.canEdit)
+    return { success: false, error: "You can't reorder cards here." };
+
+  if (!Array.isArray(cardIds) || cardIds.length === 0) return { success: true };
+
+  for (let i = 0; i < cardIds.length; i++) {
+    const id = cardIds[i];
+    const { error } = await supabaseAdmin
+      .from("board_cards")
+      .update({ position: i, column_id: columnId })
+      .eq("id", id)
+      .eq("board_id", col.board_id);
+    if (error) {
+      console.error("[reorderCardsInColumn] Update error:", error.message);
+      return { success: false, error: error.message };
+    }
+  }
+  await touchBoard(col.board_id);
+  revalidatePath(`/workspace/projects/${col.board_id}`);
+  return { success: true };
+}
+
+export async function deleteCard(cardId: string): Promise<ActionResult> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated." };
+
+  const { data: card } = await supabaseAdmin
+    .from("board_cards")
+    .select("board_id")
+    .eq("id", cardId)
+    .maybeSingle();
+  if (!card) return { success: false, error: "Card not found." };
+
+  const access = await loadBoardForViewer(ctx, card.board_id);
+  if (!access.ok || !access.canEdit)
+    return { success: false, error: "You can't delete this card." };
+
+  const { error } = await supabaseAdmin
+    .from("board_cards")
+    .delete()
+    .eq("id", cardId);
+  if (error) {
+    console.error("[deleteCard] Delete error:", error.message);
+    return { success: false, error: error.message };
+  }
+  await touchBoard(card.board_id);
+  revalidatePath(`/workspace/projects/${card.board_id}`);
+  return { success: true };
+}
+
+// ─── Helper: bump board.updated_at ──────────────────────────
+async function touchBoard(boardId: string) {
+  await supabaseAdmin
+    .from("boards")
+    .update({ updated_at: new Date().toISOString() })
+    .eq("id", boardId);
 }
