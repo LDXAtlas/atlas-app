@@ -355,13 +355,8 @@ export function BoardView({
         }}
       />
 
-      {/* Mobile fallback */}
-      <div className="lg:hidden">
-        <MobileFallback />
-      </div>
-
-      {/* Kanban surface */}
-      <div className="hidden lg:block relative">
+      {/* Kanban surface — works at any width via horizontal scrolling. */}
+      <div className="block relative">
         <AnimatePresence>
           {error && (
             <motion.div
@@ -493,35 +488,6 @@ function sortByPosition(
       ...c,
       cards: [...c.cards].sort((a, b) => a.position - b.position),
     }));
-}
-
-// ─── Mobile fallback ────────────────────────────────────────
-function MobileFallback() {
-  return (
-    <div className="flex flex-col items-center text-center py-12 px-6 bg-white rounded-2xl border border-[#E5E7EB]">
-      <div
-        className="size-14 rounded-2xl flex items-center justify-center mb-4"
-        style={{ backgroundColor: "rgba(92, 225, 165, 0.12)" }}
-      >
-        <span className="text-[24px]" aria-hidden>
-          🖥️
-        </span>
-      </div>
-      <h2
-        className="text-[16px] text-[#2D333A] mb-1"
-        style={{ fontFamily: "var(--font-poppins)", fontWeight: 700 }}
-      >
-        Best on desktop
-      </h2>
-      <p
-        className="text-[13px] text-[#6B7280] max-w-sm"
-        style={{ fontFamily: "var(--font-source-sans)" }}
-      >
-        Project Boards work best on a larger screen. Open this on your computer
-        for the full kanban view with drag-and-drop.
-      </p>
-    </div>
-  );
 }
 
 // ─── Empty board ───────────────────────────────────────────

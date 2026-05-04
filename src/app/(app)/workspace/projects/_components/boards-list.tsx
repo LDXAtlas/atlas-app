@@ -99,16 +99,14 @@ export function BoardsListView({
       <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-5 mb-6">
         <div>
           <WorkspacePill />
-          <div className="flex items-baseline gap-3 mt-3">
-            <h1
-              className="text-3xl text-[#0F172A] leading-[1.1]"
-              style={{ fontFamily: "var(--font-poppins)", fontWeight: 800 }}
-            >
-              Project Boards
-            </h1>
-          </div>
+          <h1
+            className="text-[24px] text-[#2D333A] leading-tight mt-2"
+            style={{ fontFamily: "var(--font-poppins)", fontWeight: 700 }}
+          >
+            Project Boards
+          </h1>
           <p
-            className="text-[15px] text-[#6B7280] mt-2"
+            className="text-[14px] text-[#6B7280] mt-1"
             style={{ fontFamily: "var(--font-source-sans)" }}
           >
             Manage your ministry projects and staff workflows.
@@ -214,7 +212,7 @@ export function BoardsListView({
             <Section
               icon={
                 <Star
-                  className="size-5 text-[#F59E0B]"
+                  className="size-3.5 text-[#F59E0B]"
                   fill="#F59E0B"
                   strokeWidth={1.5}
                 />
@@ -234,7 +232,7 @@ export function BoardsListView({
 
           {others.length > 0 && (
             <Section
-              icon={<Folder className="size-5 text-[#3B82F6]" strokeWidth={1.6} />}
+              icon={<Folder className="size-3.5 text-[#3B82F6]" strokeWidth={1.7} />}
               label="All Projects"
               count={others.length}
             >
@@ -334,16 +332,16 @@ function Section({
 }) {
   return (
     <section>
-      <div className="flex items-center gap-2.5 mb-4">
+      <div className="flex items-center gap-2 mb-3">
         {icon}
         <h2
-          className="text-2xl text-[#0F172A] leading-tight"
-          style={{ fontFamily: "var(--font-poppins)", fontWeight: 800 }}
+          className="text-[15px] text-[#2D333A] leading-tight"
+          style={{ fontFamily: "var(--font-poppins)", fontWeight: 700 }}
         >
           {label}
         </h2>
         <span
-          className="text-[13px] text-[#9CA3AF] tabular-nums ml-1"
+          className="text-[12px] text-[#9CA3AF] tabular-nums ml-0.5"
           style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}
         >
           {count}

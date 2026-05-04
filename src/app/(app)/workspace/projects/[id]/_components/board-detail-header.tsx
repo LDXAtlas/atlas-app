@@ -152,22 +152,22 @@ export function BoardDetailHeader({
 
         {/* Identity */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
             <span
-              className="size-3 rounded-full shrink-0"
+              className="size-2.5 rounded-full shrink-0"
               style={{ backgroundColor: board.color }}
               aria-hidden
             />
             <h1
-              className="text-3xl lg:text-4xl text-[#0F172A] leading-tight truncate"
-              style={{ fontFamily: "var(--font-poppins)", fontWeight: 800 }}
+              className="text-[24px] text-[#2D333A] leading-tight truncate"
+              style={{ fontFamily: "var(--font-poppins)", fontWeight: 700 }}
             >
               {board.name}
             </h1>
             <button
               type="button"
               onClick={() => setStarred((v) => !v)}
-              className="size-8 rounded-md flex items-center justify-center hover:bg-[#F4F5F7] transition-colors shrink-0"
+              className="size-7 rounded-md flex items-center justify-center hover:bg-[#F4F5F7] transition-colors shrink-0"
               aria-label={starred ? "Unstar board" : "Star board"}
               aria-pressed={starred}
             >
@@ -179,7 +179,7 @@ export function BoardDetailHeader({
                 className="inline-flex"
               >
                 <Star
-                  className="size-6"
+                  className="size-4"
                   style={{
                     color: starred ? "#F59E0B" : "#CBD5E1",
                     fill: starred ? "#F59E0B" : "transparent",
@@ -191,7 +191,7 @@ export function BoardDetailHeader({
           </div>
           {board.description && (
             <p
-              className="text-[15px] text-[#6B7280] mt-1 truncate max-w-3xl"
+              className="text-[14px] text-[#6B7280] mt-1 truncate max-w-3xl"
               style={{ fontFamily: "var(--font-source-sans)" }}
             >
               {board.description}
