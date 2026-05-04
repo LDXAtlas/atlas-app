@@ -11,7 +11,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { Plus, MoreHorizontal, Pencil, Trash2, Palette } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import type { BoardColumnWithCards } from "@/app/actions/boards";
-import { KanbanCard } from "./kanban-card";
+import { KanbanCard, StaticKanbanCard } from "./kanban-card";
 
 const COLUMN_PRESET_COLORS = [
   "#9CA3AF", "#3B82F6", "#5CE1A5", "#F59E0B", "#F97316", "#EF4444",
@@ -292,6 +292,71 @@ export function KanbanColumn({
             <Plus className="size-3.5" />
             Add card
           </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── SSR-safe static column ─────────────────────────────────
+//
+// Mirrors KanbanColumn's visual but doesn't subscribe to dnd-kit hooks, so
+// the server render and the client first-paint produce identical HTML.
+// BoardView swaps in the live KanbanColumn after the client mounts.
+export function StaticKanbanColumn({
+  column,
+  canEdit,
+}: {
+  column: BoardColumnWithCards;
+  canEdit: boolean;
+}) {
+  return (
+    <div
+      className="shrink-0 w-[280px] rounded-xl border bg-[#FAFBFC] flex flex-col"
+      data-column-id={column.id}
+    >
+      <div className="flex items-center gap-2 px-3 pt-3 pb-2">
+        <span
+          className="size-2 rounded-full shrink-0"
+          style={{ backgroundColor: column.color }}
+          aria-hidden
+        />
+        <h3
+          className="flex-1 text-[14px] text-[#2D333A] truncate select-none"
+          style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}
+        >
+          {column.name}
+        </h3>
+        <span
+          className="text-[11px] text-[#9CA3AF] tabular-nums shrink-0"
+          style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}
+        >
+          {column.cards.length}
+        </span>
+      </div>
+      <div className="px-3 pb-3 flex-1 rounded-b-xl" style={{ minHeight: 40 }}>
+        <div className="flex flex-col gap-2">
+          {column.cards.map((card) => (
+            <StaticKanbanCard key={card.id} card={card} />
+          ))}
+        </div>
+        {column.cards.length === 0 && (
+          <p
+            className="text-[12px] text-[#9CA3AF] px-1 py-2"
+            style={{ fontFamily: "var(--font-source-sans)" }}
+          >
+            No cards yet
+          </p>
+        )}
+        {canEdit && (
+          <div
+            className="mt-2 w-full flex items-center justify-center gap-1.5 h-8 rounded-lg border border-dashed border-[#D1D5DB] text-[12px] text-[#6B7280]"
+            style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}
+            aria-hidden
+          >
+            <Plus className="size-3.5" />
+            Add card
+          </div>
         )}
       </div>
     </div>

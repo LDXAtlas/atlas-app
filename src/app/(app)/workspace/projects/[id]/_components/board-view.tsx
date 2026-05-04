@@ -34,7 +34,7 @@ import type {
 } from "@/app/actions/boards";
 import type { Role } from "@/lib/permissions";
 import { BoardDetailHeader } from "./board-detail-header";
-import { KanbanColumn } from "./kanban-column";
+import { KanbanColumn, StaticKanbanColumn } from "./kanban-column";
 import { KanbanCard } from "./kanban-card";
 import { AddColumnInput } from "./add-column-input";
 import { QuickAddCardModal } from "./quick-add-card-modal";
@@ -71,6 +71,15 @@ export function BoardView({
   useEffect(() => {
     setColumns(sortByPosition(board.columns));
   }, [board.columns]);
+
+  // dnd-kit's useSortable/useDroppable inject auto-generated aria IDs whose
+  // counter diverges between server and client, causing a hydration mismatch
+  // on first paint. Render a static (non-DnD) mirror of the kanban during
+  // SSR + the very first client render, then swap in the interactive version
+  // after mount. The static mirror matches the live version's visuals so
+  // there's no flash on the swap.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   const [active, setActive] = useState<ActiveDrag>(null);
   const [adding, setAdding] = useState<{ columnId: string | null }>({
@@ -365,8 +374,29 @@ export function BoardView({
             canEdit={board.viewer_can_edit}
             onAdd={() => setShowAddColumn(true)}
           />
+        ) : !mounted ? (
+          // SSR + first client render: static mirror, no DnD hooks.
+          <div className="flex items-start gap-4 overflow-x-auto pb-4 -mx-2 px-2">
+            {columns.map((col) => (
+              <StaticKanbanColumn
+                key={col.id}
+                column={col}
+                canEdit={board.viewer_can_edit}
+              />
+            ))}
+            {board.viewer_can_edit && (
+              <div
+                className="shrink-0 w-[280px] h-12 self-start mt-1 inline-flex items-center justify-center gap-1.5 rounded-xl border border-dashed border-[#D1D5DB] text-[13px] text-[#6B7280]"
+                style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}
+                aria-hidden
+              >
+                + Add column
+              </div>
+            )}
+          </div>
         ) : (
           <DndContext
+            id="board-dnd"
             sensors={sensors}
             collisionDetection={closestCorners}
             onDragStart={handleDragStart}
