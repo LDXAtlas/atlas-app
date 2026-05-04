@@ -3,8 +3,13 @@ import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { AnnouncementsView } from "./announcements-view";
 import type { Announcement } from "./announcements-view";
+import { MinistryFilterBanner } from "../../_components/ministry-filter-banner";
 
-export default async function AnnouncementsPage() {
+export default async function AnnouncementsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ ministry?: string; compose?: string }>;
+}) {
   await connection();
 
   const supabase = await createClient();
@@ -28,24 +33,37 @@ export default async function AnnouncementsPage() {
     return <AnnouncementsView announcements={[]} departments={[]} />;
   }
 
+  const { ministry: ministryId, compose: composeFlag } = await searchParams;
+  const autoOpenCompose = composeFlag === "1" || composeFlag === "true";
+
   // Fetch announcements + departments in parallel
+  const annQuery = supabaseAdmin
+    .from("announcements")
+    .select("id, title, content, category, is_pinned, is_published, published_at, created_at, updated_at, author_id, target_department_id, cover_image_url, cover_image_alt")
+    .eq("organization_id", orgId)
+    .eq("is_published", true);
+
+  if (ministryId) {
+    // Targeted to this ministry OR org-wide
+    annQuery.or(`target_department_id.eq.${ministryId},target_department_id.is.null`);
+  }
+
   const [announcementsRes, departmentsRes] = await Promise.all([
-    supabaseAdmin
-      .from("announcements")
-      .select("id, title, content, category, is_pinned, is_published, published_at, created_at, updated_at, author_id, target_department_id, cover_image_url, cover_image_alt")
-      .eq("organization_id", orgId)
-      .eq("is_published", true)
+    annQuery
       .order("is_pinned", { ascending: false })
       .order("published_at", { ascending: false }),
     supabaseAdmin
       .from("departments")
-      .select("id, name, color")
+      .select("id, name, color, icon")
       .eq("organization_id", orgId)
       .order("name", { ascending: true }),
   ]);
 
   const announcements = announcementsRes.data ?? [];
-  const departments = (departmentsRes.data ?? []) as { id: string; name: string; color: string }[];
+  const departments = (departmentsRes.data ?? []) as { id: string; name: string; color: string; icon: string | null }[];
+  const filterMinistry = ministryId
+    ? departments.find((d) => d.id === ministryId) ?? null
+    : null;
 
   // Build department lookup
   const deptMap: Record<string, { name: string; color: string }> = {};
@@ -130,11 +148,26 @@ export default async function AnnouncementsPage() {
   );
 
   return (
-    <AnnouncementsView
-      announcements={mapped}
-      departments={departments}
-      currentUserId={user.id}
-      currentUserRole={userProfile?.role || "member"}
-    />
+    <>
+      {filterMinistry && (
+        <MinistryFilterBanner
+          ministry={{
+            id: filterMinistry.id,
+            name: filterMinistry.name,
+            color: filterMinistry.color || "#5CE1A5",
+            icon: filterMinistry.icon || "Building",
+          }}
+          basePath="/workspace/announcements"
+        />
+      )}
+      <AnnouncementsView
+        announcements={mapped}
+        departments={departments}
+        currentUserId={user.id}
+        currentUserRole={userProfile?.role || "member"}
+        autoOpenCompose={autoOpenCompose}
+        defaultDepartmentId={ministryId ?? null}
+      />
+    </>
   );
 }

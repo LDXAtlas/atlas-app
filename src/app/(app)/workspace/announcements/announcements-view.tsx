@@ -135,14 +135,18 @@ export function AnnouncementsView({
   departments = [],
   currentUserId = "",
   currentUserRole = "member",
+  autoOpenCompose = false,
+  defaultDepartmentId = null,
 }: {
   announcements: Announcement[];
   departments?: { id: string; name: string; color: string }[];
   currentUserId?: string;
   currentUserRole?: string;
+  autoOpenCompose?: boolean;
+  defaultDepartmentId?: string | null;
 }) {
   const [activeTab, setActiveTab] = useState<FilterTab>("all");
-  const [showCompose, setShowCompose] = useState(false);
+  const [showCompose, setShowCompose] = useState(autoOpenCompose);
   const [editingAnnouncement, setEditingAnnouncement] = useState<Announcement | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(
@@ -398,6 +402,7 @@ export function AnnouncementsView({
         onClose={() => { setShowCompose(false); setEditingAnnouncement(null); }}
         departments={departments}
         editAnnouncement={editingAnnouncement}
+        defaultDepartmentId={defaultDepartmentId}
       />
     </div>
   );

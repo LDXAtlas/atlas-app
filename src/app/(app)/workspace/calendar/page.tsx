@@ -3,9 +3,15 @@ import { connection } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { CalendarView, type CalendarEvent } from "./calendar-view";
+import { MinistryFilterBanner } from "../../_components/ministry-filter-banner";
 
-export default async function CalendarPage() {
+export default async function CalendarPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ ministry?: string }>;
+}) {
   await connection();
+  const { ministry: ministryId } = await searchParams;
 
   const supabase = await createClient();
   const {
@@ -24,6 +30,7 @@ export default async function CalendarPage() {
   let events: CalendarEvent[] = [];
   let departments: { id: string; name: string; color: string }[] = [];
   let customEventTypes: { id: string; name: string; color: string }[] = [];
+  let filterMinistry: { id: string; name: string; color: string; icon: string } | null = null;
 
   if (organizationSlug) {
     const { data: org } = await supabaseAdmin
@@ -37,19 +44,34 @@ export default async function CalendarPage() {
       const rangeStart = new Date(currentYear, currentMonth - 2, 1).toISOString();
       const rangeEnd = new Date(currentYear, currentMonth + 3, 0).toISOString();
 
+      const eventsQuery = supabaseAdmin
+        .from("events")
+        .select(
+          "id, title, description, event_type, starts_at, ends_at, is_all_day, location, location_type, virtual_url, color, status, department_id, recurrence_rule",
+        )
+        .eq("organization_id", org.id)
+        .gte("starts_at", rangeStart)
+        .lte("starts_at", rangeEnd);
+
+      if (ministryId) {
+        // Either the primary department matches OR there's a row in event_departments
+        const { data: linkedRows } = await supabaseAdmin
+          .from("event_departments")
+          .select("event_id")
+          .eq("department_id", ministryId);
+        const linkedIds = (linkedRows ?? []).map((r: { event_id: string }) => r.event_id);
+        if (linkedIds.length > 0) {
+          eventsQuery.or(`department_id.eq.${ministryId},id.in.(${linkedIds.join(",")})`);
+        } else {
+          eventsQuery.eq("department_id", ministryId);
+        }
+      }
+
       const [eventsRes, departmentsRes, customTypesRes] = await Promise.all([
-        supabaseAdmin
-          .from("events")
-          .select(
-            "id, title, description, event_type, starts_at, ends_at, is_all_day, location, location_type, virtual_url, color, status, department_id, recurrence_rule",
-          )
-          .eq("organization_id", org.id)
-          .gte("starts_at", rangeStart)
-          .lte("starts_at", rangeEnd)
-          .order("starts_at", { ascending: true }),
+        eventsQuery.order("starts_at", { ascending: true }),
         supabaseAdmin
           .from("departments")
-          .select("id, name, color")
+          .select("id, name, color, icon")
           .eq("organization_id", org.id)
           .order("name", { ascending: true }),
         supabaseAdmin
@@ -58,6 +80,20 @@ export default async function CalendarPage() {
           .eq("organization_id", org.id)
           .order("name", { ascending: true }),
       ]);
+
+      if (ministryId) {
+        const dept = (departmentsRes.data ?? []).find(
+          (d: { id: string }) => d.id === ministryId,
+        );
+        if (dept) {
+          filterMinistry = {
+            id: dept.id,
+            name: dept.name,
+            color: dept.color || "#5CE1A5",
+            icon: dept.icon || "Building",
+          };
+        }
+      }
 
       departments = (departmentsRes.data ?? []).map((d) => ({
         id: d.id,
@@ -126,12 +162,17 @@ export default async function CalendarPage() {
   }
 
   return (
-    <CalendarView
-      events={events}
-      departments={departments}
-      customEventTypes={customEventTypes}
-      initialYear={currentYear}
-      initialMonth={currentMonth}
-    />
+    <>
+      {filterMinistry && (
+        <MinistryFilterBanner ministry={filterMinistry} basePath="/workspace/calendar" />
+      )}
+      <CalendarView
+        events={events}
+        departments={departments}
+        customEventTypes={customEventTypes}
+        initialYear={currentYear}
+        initialMonth={currentMonth}
+      />
+    </>
   );
 }

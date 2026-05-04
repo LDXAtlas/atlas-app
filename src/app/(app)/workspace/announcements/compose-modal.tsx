@@ -52,18 +52,27 @@ export function ComposeModal({
   onClose,
   departments = [],
   editAnnouncement,
+  defaultDepartmentId = null,
 }: {
   open: boolean;
   onClose: () => void;
   departments?: Department[];
   editAnnouncement?: Announcement | null;
+  /** When creating a new announcement, pre-select this department as the
+   *  audience. Ignored while editing. */
+  defaultDepartmentId?: string | null;
 }) {
   const isEditing = !!editAnnouncement;
+  const initialDeptId =
+    editAnnouncement?.target_department_id || defaultDepartmentId || "";
+  const initialAudience: "everyone" | "department" = initialDeptId
+    ? "department"
+    : "everyone";
   const [title, setTitle] = useState(editAnnouncement?.title || "");
   const [content, setContent] = useState(editAnnouncement?.content || "");
   const [category, setCategory] = useState<Category>((editAnnouncement?.category as Category) || "general");
-  const [audience, setAudience] = useState<"everyone" | "department">(editAnnouncement?.target_department_id ? "department" : "everyone");
-  const [selectedDeptId, setSelectedDeptId] = useState<string>(editAnnouncement?.target_department_id || "");
+  const [audience, setAudience] = useState<"everyone" | "department">(initialAudience);
+  const [selectedDeptId, setSelectedDeptId] = useState<string>(initialDeptId);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -93,8 +102,14 @@ export function ComposeModal({
       setError(null);
     } else if (open && !editAnnouncement) {
       resetForm();
+      // For a fresh compose with a pre-selected ministry, hydrate the audience
+      // controls so the user doesn't have to re-pick the department.
+      if (defaultDepartmentId) {
+        setAudience("department");
+        setSelectedDeptId(defaultDepartmentId);
+      }
     }
-  }, [open, editAnnouncement]);
+  }, [open, editAnnouncement, defaultDepartmentId]);
 
   function resetForm() {
     setTitle("");

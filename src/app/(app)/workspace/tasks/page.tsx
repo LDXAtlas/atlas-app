@@ -3,9 +3,15 @@ import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { TasksView } from "./tasks-view";
 import type { Task, TeamMember, Department } from "./tasks-view";
+import { MinistryFilterBanner } from "../../_components/ministry-filter-banner";
 
-export default async function TasksPage() {
+export default async function TasksPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ ministry?: string }>;
+}) {
   await connection();
+  const { ministry: ministryId } = await searchParams;
 
   const supabase = await createClient();
   const {
@@ -31,15 +37,22 @@ export default async function TasksPage() {
   }
 
   // Fetch tasks, team members, and departments in parallel
+  // When filtering by ministry, show all tasks for that department (not only mine).
+  const tasksQuery = supabaseAdmin
+    .from("tasks")
+    .select(
+      "id, title, description, status, priority, due_date, completed_at, assigned_to, assigned_by, department_id, position, created_at",
+    )
+    .eq("organization_id", orgId);
+
+  if (ministryId) {
+    tasksQuery.eq("department_id", ministryId);
+  } else {
+    tasksQuery.or(`assigned_to.eq.${user.id},assigned_by.eq.${user.id}`);
+  }
+
   const [tasksRes, profilesRes, departmentsRes] = await Promise.all([
-    supabaseAdmin
-      .from("tasks")
-      .select(
-        "id, title, description, status, priority, due_date, completed_at, assigned_to, assigned_by, department_id, position, created_at",
-      )
-      .eq("organization_id", orgId)
-      .or(`assigned_to.eq.${user.id},assigned_by.eq.${user.id}`)
-      .order("position", { ascending: true }),
+    tasksQuery.order("position", { ascending: true }),
     supabaseAdmin
       .from("profiles")
       .select("id, full_name")
@@ -47,14 +60,18 @@ export default async function TasksPage() {
       .order("full_name", { ascending: true }),
     supabaseAdmin
       .from("departments")
-      .select("id, name, color")
+      .select("id, name, color, icon")
       .eq("organization_id", orgId)
       .order("name", { ascending: true }),
   ]);
 
   const rawTasks = tasksRes.data ?? [];
   const profiles = (profilesRes.data ?? []) as TeamMember[];
-  const departments = (departmentsRes.data ?? []) as Department[];
+  const allDepartments = (departmentsRes.data ?? []) as (Department & { icon: string | null })[];
+  const departments = allDepartments as Department[];
+  const filterMinistry = ministryId
+    ? allDepartments.find((d) => d.id === ministryId) ?? null
+    : null;
 
   // Build lookups
   const profileMap: Record<string, string> = {};
@@ -108,10 +125,23 @@ export default async function TasksPage() {
   );
 
   return (
-    <TasksView
-      tasks={tasks}
-      teamMembers={profiles}
-      departments={departments}
-    />
+    <>
+      {filterMinistry && (
+        <MinistryFilterBanner
+          ministry={{
+            id: filterMinistry.id,
+            name: filterMinistry.name,
+            color: filterMinistry.color || "#5CE1A5",
+            icon: filterMinistry.icon || "Building",
+          }}
+          basePath="/workspace/tasks"
+        />
+      )}
+      <TasksView
+        tasks={tasks}
+        teamMembers={profiles}
+        departments={departments}
+      />
+    </>
   );
 }
