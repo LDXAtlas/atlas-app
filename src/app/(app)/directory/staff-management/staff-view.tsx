@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import {
   Building,
   Plus,
@@ -14,10 +14,7 @@ import {
   Blocks,
   UserPlus,
   Shield,
-  ShieldCheck,
-  Crown,
-  HandHelping,
-  User as UserIcon,
+  HelpCircle,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import {
@@ -28,11 +25,11 @@ import {
 import {
   bulkUpdateAssignments,
   removeProfileFromDepartment,
-  setPrimaryDepartment,
 } from "@/app/actions/profile-departments";
 import { getIconByName, MINISTRY_ICON_NAMES } from "@/lib/icons";
 import { can } from "@/lib/permissions";
 import type { Role } from "@/lib/permissions";
+import { ROLE_COLORS, ROLE_LABELS, getRoleIcon, getRoleStyle, getRoleLabel } from "@/lib/roles";
 import type {
   Department,
   StaffProfile,
@@ -47,20 +44,12 @@ const PRESET_COLORS = [
   "#64748B", "#6B7280", "#71717A", "#78716C", "#292524", "#18181B",
 ];
 
-const ROLE_BADGE_CONFIG: Record<string, { bg: string; text: string; border: string; icon: typeof Shield }> = {
-  admin: { bg: "rgba(92, 225, 165, 0.1)", text: "#5CE1A5", border: "rgba(92, 225, 165, 0.3)", icon: Crown },
-  staff: { bg: "#EFF6FF", text: "#2563EB", border: "#BFDBFE", icon: ShieldCheck },
-  leader: { bg: "#F5F3FF", text: "#7C3AED", border: "#DDD6FE", icon: Shield },
-  volunteer: { bg: "#F9FAFB", text: "#6B7280", border: "#E5E7EB", icon: HandHelping },
-  member: { bg: "#F9FAFB", text: "#9CA3AF", border: "#E5E7EB", icon: UserIcon },
-};
-
-const ROLE_DEFINITIONS = [
-  { role: "Admin", description: "Full access to all settings, billing, and team management. Can delete departments, remove members, and manage subscriptions." },
-  { role: "Staff", description: "Can create and edit departments, manage member assignments, create announcements, tasks, and events. Cannot delete departments or manage billing." },
-  { role: "Leader", description: "Can view members, create tasks and events, and manage volunteer schedules. Cannot create departments or manage assignments." },
-  { role: "Volunteer", description: "Limited access. Can view their assignments, respond to tasks, and access Ministry Hubs they belong to." },
-  { role: "Member", description: "Basic access only. Can view their own profile and public information." },
+const ROLE_DEFINITIONS: { role: Role; description: string }[] = [
+  { role: "admin", description: "Full access to all settings, billing, and team management. Can delete departments, remove members, and manage subscriptions." },
+  { role: "staff", description: "Can create and edit departments, manage member assignments, create announcements, tasks, and events. Cannot delete departments or manage billing." },
+  { role: "leader", description: "Can view members, create tasks and events, and manage volunteer schedules. Cannot create departments or manage assignments." },
+  { role: "volunteer", description: "Limited access. Can view their assignments, respond to tasks, and access Ministry Hubs they belong to." },
+  { role: "member", description: "Basic access only. Can view their own profile and public information." },
 ];
 
 // ─── Main Component ───────────────────────────────────
@@ -83,30 +72,25 @@ export function StaffManagementView({
   const [assignModal, setAssignModal] = useState<StaffProfile | null>(null);
   const [addToDeptModal, setAddToDeptModal] = useState<Department | null>(null);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const [openOverflow, setOpenOverflow] = useState<string | null>(null);
   const [rolesExpanded, setRolesExpanded] = useState(false);
 
   const canManage = can.manageDepartmentAssignments(currentUserRole);
   const canCreateDept = can.createDepartment(currentUserRole);
   const canDeleteDept = can.deleteDepartment(currentUserRole);
 
-  // Build lookup maps
-  const profileMap = useMemo(() => {
-    const map = new Map<string, StaffProfile>();
-    profiles.forEach((p) => map.set(p.id, p));
-    return map;
-  }, [profiles]);
-
-  const assignmentsByDept = useMemo(() => {
-    const map = new Map<string, (ProfileDepartmentAssignment & { profile: StaffProfile })[]>();
-    assignments.forEach((a) => {
-      const profile = profileMap.get(a.profile_id);
-      if (!profile) return;
-      const arr = map.get(a.department_id) || [];
-      arr.push({ ...a, profile });
-      map.set(a.department_id, arr);
-    });
-    return map;
-  }, [assignments, profileMap]);
+  // Close overflow popovers / menus on Escape
+  useEffect(() => {
+    if (!openOverflow && !openMenu) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setOpenOverflow(null);
+        setOpenMenu(null);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [openOverflow, openMenu]);
 
   const assignmentsByProfile = useMemo(() => {
     const map = new Map<string, ProfileDepartmentAssignment[]>();
@@ -117,6 +101,32 @@ export function StaffManagementView({
     });
     return map;
   }, [assignments]);
+
+  // Single placement: each profile appears once, under their primary department
+  const profilesByPrimaryDept = useMemo(() => {
+    const map = new Map<string, StaffProfile[]>();
+    profiles.forEach((p) => {
+      const profileAssignments = assignmentsByProfile.get(p.id) || [];
+      const primary = profileAssignments.find((a) => a.is_primary);
+      if (primary) {
+        const arr = map.get(primary.department_id) || [];
+        arr.push(p);
+        map.set(primary.department_id, arr);
+      }
+    });
+    // Stable alphabetical order within each dept
+    map.forEach((arr) => arr.sort((a, b) => a.full_name.localeCompare(b.full_name)));
+    return map;
+  }, [profiles, assignmentsByProfile]);
+
+  const unassignedProfiles = useMemo(() => {
+    return profiles
+      .filter((p) => {
+        const profileAssignments = assignmentsByProfile.get(p.id) || [];
+        return !profileAssignments.some((a) => a.is_primary);
+      })
+      .sort((a, b) => a.full_name.localeCompare(b.full_name));
+  }, [profiles, assignmentsByProfile]);
 
   function openEditDept(dept: Department) {
     setEditingDept(dept);
@@ -262,7 +272,7 @@ export function StaffManagementView({
       {/* ─── Department Sections ─── */}
       {departments.map((dept) => {
         const DeptIcon = getIconByName(dept.icon);
-        const members = assignmentsByDept.get(dept.id) || [];
+        const members = profilesByPrimaryDept.get(dept.id) || [];
 
         return (
           <section key={dept.id}>
@@ -294,210 +304,30 @@ export function StaffManagementView({
 
             {/* Members Table */}
             {members.length > 0 ? (
-              <div className="bg-white rounded-2xl border border-[#E5E7EB] overflow-visible">
-                {/* Table Header */}
-                <div className="grid grid-cols-[1fr_120px_1fr_48px] gap-4 px-5 py-3 border-b border-[#E5E7EB] bg-[#F9FAFB]">
-                  <span
-                    className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-wider"
-                    style={{ fontFamily: "var(--font-poppins)" }}
-                  >
-                    Team Member
-                  </span>
-                  <span
-                    className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-wider"
-                    style={{ fontFamily: "var(--font-poppins)" }}
-                  >
-                    Role
-                  </span>
-                  <span
-                    className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-wider"
-                    style={{ fontFamily: "var(--font-poppins)" }}
-                  >
-                    Ministry Tags
-                  </span>
-                  <span />
-                </div>
-
-                {/* Table Rows */}
-                {members.map((m) => {
-                  const profile = m.profile;
-                  const roleCfg = ROLE_BADGE_CONFIG[profile.role] || ROLE_BADGE_CONFIG.member;
-                  const RoleIcon = roleCfg.icon;
-                  const profileAssignments = assignmentsByProfile.get(profile.id) || [];
-                  const menuKey = `${dept.id}-${profile.id}`;
-
-                  return (
-                    <div
-                      key={profile.id}
-                      className="grid grid-cols-[1fr_120px_1fr_48px] gap-4 px-5 py-3 border-b border-[#F4F5F7] last:border-b-0 items-center hover:bg-[#FAFBFC] transition-colors"
-                    >
-                      {/* Member */}
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="size-8 rounded-full bg-[#F4F5F7] flex items-center justify-center shrink-0 text-[12px] font-semibold text-[#6B7280]" style={{ fontFamily: "var(--font-poppins)" }}>
-                          {profile.full_name
-                            .split(" ")
-                            .map((n) => n[0])
-                            .join("")
-                            .slice(0, 2)
-                            .toUpperCase()}
-                        </div>
-                        <div className="min-w-0">
-                          <p
-                            className="text-[13px] font-semibold text-[#2D333A] truncate"
-                            style={{ fontFamily: "var(--font-poppins)" }}
-                          >
-                            {profile.full_name}
-                          </p>
-                          <p
-                            className="text-[11px] text-[#9CA3AF] truncate"
-                            style={{ fontFamily: "var(--font-source-sans)" }}
-                          >
-                            {profile.email}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Role */}
-                      <div>
-                        <span
-                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold capitalize"
-                          style={{
-                            fontFamily: "var(--font-poppins)",
-                            backgroundColor: roleCfg.bg,
-                            color: roleCfg.text,
-                            border: `1px solid ${roleCfg.border}`,
-                          }}
-                        >
-                          <RoleIcon className="size-3" />
-                          {profile.role}
-                        </span>
-                      </div>
-
-                      {/* Ministry Tags */}
-                      <div className="flex flex-wrap gap-1.5">
-                        {profileAssignments.map((pa) => {
-                          const tagDept = departments.find(
-                            (d) => d.id === pa.department_id
-                          );
-                          if (!tagDept) return null;
-                          const TagIcon = getIconByName(tagDept.icon);
-
-                          if (pa.is_primary) {
-                            return (
-                              <span
-                                key={pa.department_id}
-                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold text-white"
-                                style={{
-                                  fontFamily: "var(--font-poppins)",
-                                  backgroundColor: tagDept.color,
-                                }}
-                              >
-                                <TagIcon className="size-3" />
-                                {tagDept.name}
-                              </span>
-                            );
-                          }
-
-                          return (
-                            <span
-                              key={pa.department_id}
-                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold"
-                              style={{
-                                fontFamily: "var(--font-poppins)",
-                                backgroundColor: "#FFFFFF",
-                                color: "#6B7280",
-                                border: `1px solid ${tagDept.color}`,
-                              }}
-                            >
-                              <TagIcon
-                                className="size-3"
-                                style={{ color: tagDept.color }}
-                              />
-                              {tagDept.name}
-                            </span>
-                          );
-                        })}
-                      </div>
-
-                      {/* Actions */}
-                      <div className="relative flex justify-end">
-                        {canManage && (
-                          <>
-                            <button
-                              onClick={() =>
-                                setOpenMenu(
-                                  openMenu === menuKey ? null : menuKey
-                                )
-                              }
-                              className="p-1.5 rounded-lg text-[#9CA3AF] hover:text-[#2D333A] hover:bg-[#F4F5F7] transition-colors"
-                            >
-                              <MoreHorizontal className="size-4" />
-                            </button>
-
-                            <AnimatePresence>
-                              {openMenu === menuKey && (
-                                <motion.div
-                                  initial={{ opacity: 0, scale: 0.95, y: -4 }}
-                                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                                  exit={{ opacity: 0, scale: 0.95, y: -4 }}
-                                  transition={{ duration: 0.15 }}
-                                  className="absolute right-0 top-full mt-1 z-[100] bg-white rounded-xl border border-[#E5E7EB] shadow-xl py-1.5 w-52"
-                                  style={{ boxShadow: "0 8px 30px rgba(0,0,0,0.12)" }}
-                                >
-                                  {!m.is_primary && (
-                                    <button
-                                      onClick={async () => {
-                                        setOpenMenu(null);
-                                        await setPrimaryDepartment(
-                                          profile.id,
-                                          dept.id
-                                        );
-                                      }}
-                                      className="w-full text-left px-3 py-2 text-[13px] text-[#2D333A] hover:bg-[#F4F5F7] transition-colors"
-                                      style={{
-                                        fontFamily: "var(--font-source-sans)",
-                                      }}
-                                    >
-                                      Set as Primary
-                                    </button>
-                                  )}
-                                  <button
-                                    onClick={() => {
-                                      setOpenMenu(null);
-                                      setAssignModal(profile);
-                                    }}
-                                    className="w-full text-left px-3 py-2 text-[13px] text-[#2D333A] hover:bg-[#F4F5F7] transition-colors"
-                                    style={{
-                                      fontFamily: "var(--font-source-sans)",
-                                    }}
-                                  >
-                                    Edit Assignments
-                                  </button>
-                                  <button
-                                    onClick={async () => {
-                                      setOpenMenu(null);
-                                      await removeProfileFromDepartment(
-                                        profile.id,
-                                        dept.id
-                                      );
-                                    }}
-                                    className="w-full text-left px-3 py-2 text-[13px] text-[#EF4444] hover:bg-[#FEF2F2] transition-colors"
-                                    style={{
-                                      fontFamily: "var(--font-source-sans)",
-                                    }}
-                                  >
-                                    Remove from Ministry
-                                  </button>
-                                </motion.div>
-                              )}
-                            </AnimatePresence>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+              <MembersTable>
+                {members.map((profile) => (
+                  <MemberRow
+                    key={profile.id}
+                    profile={profile}
+                    profileAssignments={assignmentsByProfile.get(profile.id) || []}
+                    departments={departments}
+                    sectionKey={dept.id}
+                    canManage={canManage}
+                    showRemoveAction
+                    openMenu={openMenu}
+                    setOpenMenu={setOpenMenu}
+                    openOverflow={openOverflow}
+                    setOpenOverflow={setOpenOverflow}
+                    onEditAssignments={setAssignModal}
+                    onRemoveFromDept={() =>
+                      removeProfileFromDepartment(profile.id, dept.id)
+                    }
+                  />
+                ))}
+                {canManage && (
+                  <AddTeamMemberRow onClick={() => setAddToDeptModal(dept)} />
+                )}
+              </MembersTable>
             ) : (
               <div className="bg-white rounded-2xl border border-[#E5E7EB] p-8 text-center">
                 <p
@@ -521,6 +351,51 @@ export function StaffManagementView({
           </section>
         );
       })}
+
+      {/* ─── Unassigned Section ─── */}
+      {unassignedProfiles.length > 0 && (
+        <section>
+          <div className="flex items-center gap-3 mb-4">
+            <div className="size-10 rounded-2xl flex items-center justify-center bg-[#F4F5F7] text-[#9CA3AF] shadow-sm">
+              <HelpCircle className="size-5" />
+            </div>
+            <div>
+              <h4
+                className="text-xl text-[#2D333A] leading-tight"
+                style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}
+              >
+                Unassigned
+              </h4>
+              <p
+                className="text-[13px] text-[#6B7280] mt-0.5"
+                style={{ fontFamily: "var(--font-source-sans)" }}
+              >
+                {unassignedProfiles.length} team member
+                {unassignedProfiles.length !== 1 ? "s" : ""} without a primary department
+              </p>
+            </div>
+          </div>
+
+          <MembersTable>
+            {unassignedProfiles.map((profile) => (
+              <MemberRow
+                key={profile.id}
+                profile={profile}
+                profileAssignments={assignmentsByProfile.get(profile.id) || []}
+                departments={departments}
+                sectionKey="unassigned"
+                canManage={canManage}
+                showRemoveAction={false}
+                openMenu={openMenu}
+                setOpenMenu={setOpenMenu}
+                openOverflow={openOverflow}
+                setOpenOverflow={setOpenOverflow}
+                onEditAssignments={setAssignModal}
+              />
+            ))}
+          </MembersTable>
+        </section>
+      )}
 
       {/* ─── Role Definitions Accordion ─── */}
       <section className="bg-white rounded-2xl border border-[#E5E7EB] overflow-hidden">
@@ -555,8 +430,7 @@ export function StaffManagementView({
             >
               <div className="px-5 pb-4 space-y-3">
                 {ROLE_DEFINITIONS.map((rd) => {
-                  const key = rd.role.toLowerCase();
-                  const cfg = ROLE_BADGE_CONFIG[key] || ROLE_BADGE_CONFIG.member;
+                  const cfg = ROLE_COLORS[rd.role];
                   return (
                     <div
                       key={rd.role}
@@ -571,7 +445,7 @@ export function StaffManagementView({
                           border: `1px solid ${cfg.border}`,
                         }}
                       >
-                        {rd.role}
+                        {ROLE_LABELS[rd.role]}
                       </span>
                       <p
                         className="text-[13px] text-[#6B7280] leading-relaxed"
@@ -648,6 +522,342 @@ export function StaffManagementView({
         />
       )}
     </div>
+  );
+}
+
+// ─── Members Table ────────────────────────────────────
+function MembersTable({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="bg-white rounded-2xl border border-[#E5E7EB] overflow-visible">
+      {/* Table Header */}
+      <div className="grid grid-cols-[1fr_120px_1fr_48px] gap-4 px-5 py-3 border-b border-[#E5E7EB] bg-[#F9FAFB]">
+        <span
+          className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-wider"
+          style={{ fontFamily: "var(--font-poppins)" }}
+        >
+          Team Member
+        </span>
+        <span
+          className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-wider"
+          style={{ fontFamily: "var(--font-poppins)" }}
+        >
+          Role
+        </span>
+        <span
+          className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-wider"
+          style={{ fontFamily: "var(--font-poppins)" }}
+        >
+          Ministry Tags
+        </span>
+        <span />
+      </div>
+      {children}
+    </div>
+  );
+}
+
+// ─── Add Team Member Row ──────────────────────────────
+function AddTeamMemberRow({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full flex items-center gap-2 px-5 py-3 border-t border-dashed border-[#E5E7EB] text-[#5CE1A5] hover:bg-[#5CE1A5]/5 transition-colors"
+      style={{ fontFamily: "var(--font-poppins)" }}
+    >
+      <div className="size-7 rounded-full bg-[#5CE1A5]/10 flex items-center justify-center">
+        <Plus className="size-3.5" />
+      </div>
+      <span className="text-[13px] font-semibold">Add team member</span>
+    </button>
+  );
+}
+
+// ─── Member Row ───────────────────────────────────────
+interface MemberRowProps {
+  profile: StaffProfile;
+  profileAssignments: ProfileDepartmentAssignment[];
+  departments: Department[];
+  sectionKey: string;
+  canManage: boolean;
+  showRemoveAction: boolean;
+  openMenu: string | null;
+  setOpenMenu: (key: string | null) => void;
+  openOverflow: string | null;
+  setOpenOverflow: (key: string | null) => void;
+  onEditAssignments: (profile: StaffProfile) => void;
+  onRemoveFromDept?: () => Promise<unknown>;
+}
+
+function MemberRow({
+  profile,
+  profileAssignments,
+  departments,
+  sectionKey,
+  canManage,
+  showRemoveAction,
+  openMenu,
+  setOpenMenu,
+  openOverflow,
+  setOpenOverflow,
+  onEditAssignments,
+  onRemoveFromDept,
+}: MemberRowProps) {
+  const roleCfg = getRoleStyle(profile.role);
+  const RoleIcon = getRoleIcon(profile.role);
+  const roleLabel = getRoleLabel(profile.role);
+  const menuKey = `menu-${sectionKey}-${profile.id}`;
+  const overflowKey = `overflow-${sectionKey}-${profile.id}`;
+
+  return (
+    <div className="grid grid-cols-[1fr_120px_1fr_48px] gap-4 px-5 py-3 border-b border-[#F4F5F7] last:border-b-0 items-center hover:bg-[#FAFBFC] transition-colors">
+      {/* Member */}
+      <div className="flex items-center gap-3 min-w-0">
+        <div
+          className="size-8 rounded-full bg-[#F4F5F7] flex items-center justify-center shrink-0 text-[12px] font-semibold text-[#6B7280]"
+          style={{ fontFamily: "var(--font-poppins)" }}
+        >
+          {profile.full_name
+            .split(" ")
+            .map((n) => n[0])
+            .join("")
+            .slice(0, 2)
+            .toUpperCase()}
+        </div>
+        <div className="min-w-0">
+          <p
+            className="text-[13px] font-semibold text-[#2D333A] truncate"
+            style={{ fontFamily: "var(--font-poppins)" }}
+          >
+            {profile.full_name}
+          </p>
+          <p
+            className="text-[11px] text-[#9CA3AF] truncate"
+            style={{ fontFamily: "var(--font-source-sans)" }}
+          >
+            {profile.email}
+          </p>
+        </div>
+      </div>
+
+      {/* Role */}
+      <div>
+        <span
+          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold"
+          style={{
+            fontFamily: "var(--font-poppins)",
+            backgroundColor: roleCfg.bg,
+            color: roleCfg.text,
+            border: `1px solid ${roleCfg.border}`,
+          }}
+        >
+          <RoleIcon className="size-3" />
+          {roleLabel}
+        </span>
+      </div>
+
+      {/* Ministry Tags */}
+      <MinistryTags
+        profileAssignments={profileAssignments}
+        departments={departments}
+        overflowKey={overflowKey}
+        openOverflow={openOverflow}
+        setOpenOverflow={setOpenOverflow}
+      />
+
+      {/* Actions */}
+      <div className="relative flex justify-end">
+        {canManage && (
+          <>
+            <button
+              onClick={() => setOpenMenu(openMenu === menuKey ? null : menuKey)}
+              className="p-1.5 rounded-lg text-[#9CA3AF] hover:text-[#2D333A] hover:bg-[#F4F5F7] transition-colors"
+            >
+              <MoreHorizontal className="size-4" />
+            </button>
+
+            <AnimatePresence>
+              {openMenu === menuKey && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95, y: -4 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: -4 }}
+                  transition={{ duration: 0.15 }}
+                  className="absolute right-0 top-full mt-1 z-[100] bg-white rounded-xl border border-[#E5E7EB] shadow-xl py-1.5 w-52"
+                  style={{ boxShadow: "0 8px 30px rgba(0,0,0,0.12)" }}
+                >
+                  <button
+                    onClick={() => {
+                      setOpenMenu(null);
+                      onEditAssignments(profile);
+                    }}
+                    className="w-full text-left px-3 py-2 text-[13px] text-[#2D333A] hover:bg-[#F4F5F7] transition-colors"
+                    style={{ fontFamily: "var(--font-source-sans)" }}
+                  >
+                    Edit Assignments
+                  </button>
+                  {showRemoveAction && onRemoveFromDept && (
+                    <button
+                      onClick={async () => {
+                        setOpenMenu(null);
+                        await onRemoveFromDept();
+                      }}
+                      className="w-full text-left px-3 py-2 text-[13px] text-[#EF4444] hover:bg-[#FEF2F2] transition-colors"
+                      style={{ fontFamily: "var(--font-source-sans)" }}
+                    >
+                      Remove from Department
+                    </button>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Ministry Tags (with overflow popover) ───────────
+interface MinistryTagsProps {
+  profileAssignments: ProfileDepartmentAssignment[];
+  departments: Department[];
+  overflowKey: string;
+  openOverflow: string | null;
+  setOpenOverflow: (key: string | null) => void;
+}
+
+function MinistryTags({
+  profileAssignments,
+  departments,
+  overflowKey,
+  openOverflow,
+  setOpenOverflow,
+}: MinistryTagsProps) {
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const isOpen = openOverflow === overflowKey;
+
+  // Resolve assignments → department records, drop missing departments
+  const resolved = useMemo(() => {
+    return profileAssignments
+      .map((pa) => {
+        const dept = departments.find((d) => d.id === pa.department_id);
+        return dept ? { dept, is_primary: pa.is_primary } : null;
+      })
+      .filter((x): x is { dept: Department; is_primary: boolean } => x !== null);
+  }, [profileAssignments, departments]);
+
+  // Sort: primary first, then secondaries alphabetically
+  const ordered = useMemo(() => {
+    const primary = resolved.filter((r) => r.is_primary);
+    const secondaries = resolved
+      .filter((r) => !r.is_primary)
+      .sort((a, b) => a.dept.name.localeCompare(b.dept.name));
+    return [...primary, ...secondaries];
+  }, [resolved]);
+
+  const primary = ordered.find((r) => r.is_primary);
+  const secondaries = ordered.filter((r) => !r.is_primary);
+  const visibleSecondaries = secondaries.slice(0, 2);
+  const overflowCount = secondaries.length - visibleSecondaries.length;
+
+  // Close on outside click
+  useEffect(() => {
+    if (!isOpen) return;
+    const onClick = (e: MouseEvent) => {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+        setOpenOverflow(null);
+      }
+    };
+    // Defer registration to avoid catching the opening click
+    const id = window.setTimeout(() => {
+      document.addEventListener("mousedown", onClick);
+    }, 0);
+    return () => {
+      window.clearTimeout(id);
+      document.removeEventListener("mousedown", onClick);
+    };
+  }, [isOpen, setOpenOverflow]);
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {primary && <PrimaryTag dept={primary.dept} />}
+      {visibleSecondaries.map((s) => (
+        <SecondaryTag key={s.dept.id} dept={s.dept} />
+      ))}
+      {overflowCount > 0 && (
+        <div ref={popoverRef} className="relative inline-flex">
+          <button
+            type="button"
+            onClick={() => setOpenOverflow(isOpen ? null : overflowKey)}
+            className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-[#F3F4F6] text-[#6B7280] border border-[#E5E7EB] hover:bg-[#E5E7EB] transition-colors"
+            style={{ fontFamily: "var(--font-poppins)" }}
+            aria-expanded={isOpen}
+          >
+            +{overflowCount} more
+          </button>
+          <AnimatePresence>
+            {isOpen && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: -4 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: -4 }}
+                transition={{ duration: 0.15 }}
+                className="absolute left-0 top-full mt-1.5 z-[110] bg-white rounded-xl border border-[#E5E7EB] shadow-xl p-3 min-w-[220px]"
+                style={{ boxShadow: "0 8px 30px rgba(0,0,0,0.12)" }}
+              >
+                <p
+                  className="text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF] mb-2"
+                  style={{ fontFamily: "var(--font-poppins)" }}
+                >
+                  All Ministries
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {primary && <PrimaryTag dept={primary.dept} />}
+                  {secondaries.map((s) => (
+                    <SecondaryTag key={s.dept.id} dept={s.dept} />
+                  ))}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PrimaryTag({ dept }: { dept: Department }) {
+  const Icon = getIconByName(dept.icon);
+  return (
+    <span
+      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold text-white"
+      style={{
+        fontFamily: "var(--font-poppins)",
+        backgroundColor: dept.color,
+      }}
+    >
+      <Icon className="size-3" />
+      {dept.name}
+    </span>
+  );
+}
+
+function SecondaryTag({ dept }: { dept: Department }) {
+  const Icon = getIconByName(dept.icon);
+  return (
+    <span
+      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold"
+      style={{
+        fontFamily: "var(--font-poppins)",
+        backgroundColor: "#FFFFFF",
+        color: "#6B7280",
+        border: `1px solid ${dept.color}`,
+      }}
+    >
+      <Icon className="size-3" style={{ color: dept.color }} />
+      {dept.name}
+    </span>
   );
 }
 
@@ -1094,8 +1304,8 @@ function AssignmentsModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const roleCfg =
-    ROLE_BADGE_CONFIG[profile.role] || ROLE_BADGE_CONFIG.member;
+  const roleCfg = getRoleStyle(profile.role);
+  const roleLabel = getRoleLabel(profile.role);
 
   function toggleDepartment(deptId: string) {
     const existing = localAssignments.find(
@@ -1192,7 +1402,7 @@ function AssignmentsModal({
               {profile.full_name}
             </p>
             <span
-              className="inline-flex items-center gap-1 px-1.5 py-0 rounded text-[10px] font-semibold capitalize"
+              className="inline-flex items-center gap-1 px-1.5 py-0 rounded text-[10px] font-semibold"
               style={{
                 fontFamily: "var(--font-poppins)",
                 backgroundColor: roleCfg.bg,
@@ -1200,7 +1410,7 @@ function AssignmentsModal({
                 border: `1px solid ${roleCfg.border}`,
               }}
             >
-              {profile.role}
+              {roleLabel}
             </span>
           </div>
         </div>
@@ -1468,7 +1678,7 @@ function AddToDepartmentModal({
                 Already in {department.name} ({assigned.length})
               </p>
               {assigned.map((p) => {
-                const roleCfg = ROLE_BADGE_CONFIG[p.role] || ROLE_BADGE_CONFIG.member;
+                const roleCfg = getRoleStyle(p.role);
                 const initials = p.full_name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase();
                 return (
                   <div key={p.id} className="flex items-center gap-3 px-2 py-2 rounded-xl opacity-50">
@@ -1479,8 +1689,8 @@ function AddToDepartmentModal({
                       <p className="text-[13px] text-[#2D333A] truncate" style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}>{p.full_name}</p>
                       <p className="text-[11px] text-[#9CA3AF] truncate" style={{ fontFamily: "var(--font-source-sans)" }}>{p.email}</p>
                     </div>
-                    <span className="text-[10px] px-2 py-0.5 rounded-md" style={{ fontFamily: "var(--font-poppins)", fontWeight: 600, backgroundColor: roleCfg.bg, color: roleCfg.text }}>
-                      {p.role.charAt(0).toUpperCase() + p.role.slice(1)}
+                    <span className="text-[10px] px-2 py-0.5 rounded-md border" style={{ fontFamily: "var(--font-poppins)", fontWeight: 600, backgroundColor: roleCfg.bg, color: roleCfg.text, borderColor: roleCfg.border }}>
+                      {getRoleLabel(p.role)}
                     </span>
                     <span className="text-[11px] text-[#5CE1A5]" style={{ fontFamily: "var(--font-source-sans)", fontWeight: 600 }}>Added</span>
                   </div>
@@ -1501,7 +1711,7 @@ function AddToDepartmentModal({
                 </p>
               )}
               {available.map((p) => {
-                const roleCfg = ROLE_BADGE_CONFIG[p.role] || ROLE_BADGE_CONFIG.member;
+                const roleCfg = getRoleStyle(p.role);
                 const initials = p.full_name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase();
                 const isSaving = saving === p.id;
                 return (
@@ -1513,8 +1723,8 @@ function AddToDepartmentModal({
                       <p className="text-[13px] text-[#2D333A] truncate" style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}>{p.full_name}</p>
                       <p className="text-[11px] text-[#9CA3AF] truncate" style={{ fontFamily: "var(--font-source-sans)" }}>{p.email}</p>
                     </div>
-                    <span className="text-[10px] px-2 py-0.5 rounded-md" style={{ fontFamily: "var(--font-poppins)", fontWeight: 600, backgroundColor: roleCfg.bg, color: roleCfg.text }}>
-                      {p.role.charAt(0).toUpperCase() + p.role.slice(1)}
+                    <span className="text-[10px] px-2 py-0.5 rounded-md border" style={{ fontFamily: "var(--font-poppins)", fontWeight: 600, backgroundColor: roleCfg.bg, color: roleCfg.text, borderColor: roleCfg.border }}>
+                      {getRoleLabel(p.role)}
                     </span>
                     <button
                       onClick={() => handleAdd(p.id)}

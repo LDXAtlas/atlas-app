@@ -2,6 +2,7 @@ import { connection } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { AnalyticsView } from "./analytics-view";
+import { DirectoryShell } from "../_components/directory-shell";
 
 export default async function AnalyticsPage() {
   await connection();
@@ -65,5 +66,9 @@ export default async function AnalyticsPage() {
     }
   }
 
-  return <AnalyticsView stats={stats} />;
+  return (
+    <DirectoryShell>
+      <AnalyticsView stats={stats} />
+    </DirectoryShell>
+  );
 }

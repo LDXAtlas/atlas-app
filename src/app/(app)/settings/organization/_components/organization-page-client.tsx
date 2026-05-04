@@ -5,9 +5,7 @@ import { motion, AnimatePresence } from "motion/react";
 import {
   UserPlus,
   Mail,
-  Shield,
   X,
-  ChevronDown,
   RotateCcw,
   XCircle,
   Check,
@@ -19,6 +17,9 @@ import {
   revokeInvitation,
   resendInvitation,
 } from "@/app/actions/invitations";
+import { RoleBadge } from "@/components/role-badge";
+import { ROLE_COLORS } from "@/lib/roles";
+import type { Role } from "@/lib/permissions";
 
 // ─── Types ───────────────────────────────────────────────
 interface TeamMember {
@@ -42,26 +43,6 @@ interface OrganizationPageClientProps {
   seatLimit: number;
   currentUserRole: string;
   currentUserEmail: string;
-}
-
-// ─── Role Badge ─────────────────────────────────────────
-function RoleBadge({ role }: { role: string }) {
-  const isAdmin = role === "admin";
-  return (
-    <span
-      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold"
-      style={{
-        fontFamily: "var(--font-poppins)",
-        color: isAdmin ? "#5CE1A5" : "#3B82F6",
-        backgroundColor: isAdmin
-          ? "rgba(92, 225, 165, 0.1)"
-          : "rgba(59, 130, 246, 0.1)",
-      }}
-    >
-      <Shield className="size-3" />
-      {role.charAt(0).toUpperCase() + role.slice(1)}
-    </span>
-  );
 }
 
 // ─── Avatar ─────────────────────────────────────────────
@@ -299,8 +280,8 @@ function InviteModal({
                     <div className="grid grid-cols-2 gap-3">
                       {roles.map((r) => {
                         const isSelected = role === r.value;
-                        const isAdmin = r.value === "admin";
-                        const accentColor = isAdmin ? "#5CE1A5" : "#3B82F6";
+                        const accentColor =
+                          ROLE_COLORS[r.value as Role]?.text ?? ROLE_COLORS.member.text;
                         return (
                           <button
                             key={r.value}
@@ -571,7 +552,7 @@ export function OrganizationPageClient({
                     {member.email}
                   </p>
                 </div>
-                <RoleBadge role={member.role} />
+                <RoleBadge role={member.role as Role} />
               </div>
             ))}
             {teamMembers.length === 0 && (
@@ -625,7 +606,7 @@ export function OrganizationPageClient({
                     })}
                   </p>
                 </div>
-                <RoleBadge role={invite.role} />
+                <RoleBadge role={invite.role as Role} />
                 {isAdmin && (
                   <div className="flex items-center gap-1">
                     <button

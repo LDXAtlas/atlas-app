@@ -1,8 +1,11 @@
 import { connection } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { DirectoryView } from "./directory-view";
-import type { Member } from "./types";
+import { getDirectoryPeople } from "@/app/actions/members";
+import { getRoleFromProfile } from "@/lib/permissions";
+import type { Role } from "@/lib/permissions";
+import type { DirectoryPerson } from "@/app/actions/members";
+import { PeopleList } from "./_components/people-list";
 
 export default async function DirectoryPage() {
   await connection();
@@ -11,30 +14,27 @@ export default async function DirectoryPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  let members: Member[] = [];
+  let people: DirectoryPerson[] = [];
+  let currentUserRole: Role = "member";
+  const currentUserEmail = user?.email ?? "";
 
   if (user) {
-    const slug = user.user_metadata?.organization_slug;
-    if (slug) {
-      const { data: org } = await supabaseAdmin
-        .from("organizations")
-        .select("id")
-        .eq("slug", slug)
-        .single();
+    const { data: currentProfile } = await supabaseAdmin
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+    currentUserRole = getRoleFromProfile(currentProfile);
 
-      if (org?.id) {
-        const { data, error } = await supabaseAdmin
-          .from("members")
-          .select("*")
-          .eq("organization_id", org.id)
-          .order("last_name", { ascending: true });
-
-        if (!error && data) {
-          members = data as Member[];
-        }
-      }
-    }
+    const { data } = await getDirectoryPeople();
+    people = data;
   }
 
-  return <DirectoryView members={members} />;
+  return (
+    <PeopleList
+      people={people}
+      currentUserRole={currentUserRole}
+      currentUserEmail={currentUserEmail}
+    />
+  );
 }

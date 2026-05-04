@@ -58,6 +58,173 @@ async function getAuthContext(): Promise<{
   return { userId: user.id, organizationId: org.id };
 }
 
+// ─── Unified directory ──────────────────────────────────
+export type DirectoryDepartment = {
+  id: string;
+  name: string;
+  color: string;
+  icon: string;
+};
+
+export type DirectoryPerson = {
+  id: string;
+  type: "profile" | "member";
+  first_name: string;
+  last_name: string;
+  full_name: string;
+  email: string | null;
+  phone: string | null;
+  avatar_url: string | null;
+  role: "admin" | "staff" | "leader" | "volunteer" | "member";
+  membership_status: string | null;
+  member_type: string | null;
+  primary_department: DirectoryDepartment | null;
+  secondary_departments: DirectoryDepartment[];
+  ministry_count: number;
+  created_at: string;
+};
+
+function splitName(fullName: string | null | undefined, fallbackEmail: string | null = null): { first: string; last: string } {
+  const trimmed = (fullName || "").trim();
+  if (!trimmed) {
+    const localPart = fallbackEmail?.split("@")[0] || "Unknown";
+    return { first: localPart, last: "" };
+  }
+  const parts = trimmed.split(/\s+/);
+  if (parts.length === 1) return { first: parts[0], last: "" };
+  return { first: parts[0], last: parts.slice(1).join(" ") };
+}
+
+function asRole(role: string | null | undefined): DirectoryPerson["role"] {
+  const allowed = ["admin", "staff", "leader", "volunteer", "member"] as const;
+  return (allowed as readonly string[]).includes(role || "")
+    ? (role as DirectoryPerson["role"])
+    : "member";
+}
+
+export async function getDirectoryPeople(): Promise<{
+  data: DirectoryPerson[];
+  error?: string;
+}> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { data: [], error: "Not authenticated" };
+
+  // Profiles (team members with app accounts)
+  const { data: profiles, error: profilesError } = await supabaseAdmin
+    .from("profiles")
+    .select("id, email, full_name, role, avatar_url, created_at")
+    .eq("organization_id", ctx.organizationId);
+
+  if (profilesError) return { data: [], error: profilesError.message };
+
+  // Department assignments + departments for those profiles
+  const profileIds = (profiles ?? []).map((p: { id: string }) => p.id);
+
+  let assignments: { profile_id: string; department_id: string; is_primary: boolean }[] = [];
+  if (profileIds.length > 0) {
+    const { data: a } = await supabaseAdmin
+      .from("profile_departments")
+      .select("profile_id, department_id, is_primary")
+      .in("profile_id", profileIds);
+    assignments = (a ?? []) as typeof assignments;
+  }
+
+  const { data: departments } = await supabaseAdmin
+    .from("departments")
+    .select("id, name, color, icon")
+    .eq("organization_id", ctx.organizationId);
+
+  const deptMap = new Map<string, DirectoryDepartment>();
+  (departments ?? []).forEach((d: { id: string; name: string; color: string; icon: string | null }) => {
+    deptMap.set(d.id, {
+      id: d.id,
+      name: d.name,
+      color: d.color || "#6B7280",
+      icon: d.icon || "Building",
+    });
+  });
+
+  const profilePeople: DirectoryPerson[] = (profiles ?? []).map(
+    (p: {
+      id: string;
+      email: string | null;
+      full_name: string | null;
+      role: string | null;
+      avatar_url: string | null;
+      created_at: string;
+    }) => {
+      const { first, last } = splitName(p.full_name, p.email);
+      const own = assignments.filter((a) => a.profile_id === p.id);
+      const primaryAssignment = own.find((a) => a.is_primary);
+      const primary = primaryAssignment ? (deptMap.get(primaryAssignment.department_id) ?? null) : null;
+      const secondaries = own
+        .filter((a) => !a.is_primary)
+        .map((a) => deptMap.get(a.department_id))
+        .filter((d): d is DirectoryDepartment => !!d)
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+      return {
+        id: p.id,
+        type: "profile",
+        first_name: first,
+        last_name: last,
+        full_name: p.full_name?.trim() || `${first} ${last}`.trim(),
+        email: p.email,
+        phone: null,
+        avatar_url: p.avatar_url,
+        role: asRole(p.role),
+        membership_status: null,
+        member_type: null,
+        primary_department: primary,
+        secondary_departments: secondaries,
+        ministry_count: own.length,
+        created_at: p.created_at,
+      };
+    },
+  );
+
+  // Members (congregation, no app account)
+  const { data: members, error: membersError } = await supabaseAdmin
+    .from("members")
+    .select(
+      "id, first_name, last_name, email, phone, membership_status, member_type, created_at",
+    )
+    .eq("organization_id", ctx.organizationId);
+
+  if (membersError) return { data: profilePeople, error: membersError.message };
+
+  const memberPeople: DirectoryPerson[] = (members ?? []).map(
+    (m: {
+      id: string;
+      first_name: string;
+      last_name: string;
+      email: string | null;
+      phone: string | null;
+      membership_status: string | null;
+      member_type: string | null;
+      created_at: string;
+    }) => ({
+      id: m.id,
+      type: "member",
+      first_name: m.first_name,
+      last_name: m.last_name,
+      full_name: `${m.first_name} ${m.last_name}`.trim(),
+      email: m.email,
+      phone: m.phone,
+      avatar_url: null,
+      role: "member",
+      membership_status: m.membership_status,
+      member_type: m.member_type,
+      primary_department: null,
+      secondary_departments: [],
+      ministry_count: 0,
+      created_at: m.created_at,
+    }),
+  );
+
+  return { data: [...profilePeople, ...memberPeople] };
+}
+
 // ─── Add Member ─────────────────────────────────────────
 export async function addMember(data: MemberInput): Promise<ActionResult> {
   console.log("[addMember] Starting with:", data.first_name, data.last_name);

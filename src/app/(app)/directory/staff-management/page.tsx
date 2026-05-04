@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getRoleFromProfile } from "@/lib/permissions";
 import { StaffManagementView } from "./staff-view";
+import { DirectoryShell } from "../_components/directory-shell";
 import type { Role } from "@/lib/permissions";
 
 export interface Department {
@@ -101,11 +102,13 @@ export default async function StaffManagementPage() {
   }
 
   return (
-    <StaffManagementView
-      departments={departments}
-      profiles={profiles}
-      assignments={assignments}
-      currentUserRole={currentUserRole}
-    />
+    <DirectoryShell>
+      <StaffManagementView
+        departments={departments}
+        profiles={profiles}
+        assignments={assignments}
+        currentUserRole={currentUserRole}
+      />
+    </DirectoryShell>
   );
 }
