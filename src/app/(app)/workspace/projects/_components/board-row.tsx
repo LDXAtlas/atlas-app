@@ -18,6 +18,7 @@ import { getIconByName } from "@/lib/icons";
 
 interface BoardCardProps {
   board: BoardSummary;
+  onToggleStar?: () => void;
 }
 
 function initialsOf(name: string): string {
@@ -56,15 +57,13 @@ function formatDate(iso: string): string {
 }
 
 // ─── Board card (new design) ────────────────────────────────
-export function BoardCard({ board }: BoardCardProps) {
+export function BoardCard({ board, onToggleStar }: BoardCardProps) {
   const router = useRouter();
   const Icon = getIconByName(board.icon);
   const href = `/workspace/projects/${board.id}`;
 
-  // Star toggle is local-only for now — we don't have a board_stars table
-  // and the spec explicitly forbids schema additions in this redesign.
-  // The visual toggles immediately; persistence comes with a future schema.
-  const [starred, setStarred] = useState<boolean>(board.is_starred);
+  
+  const starred = board.is_starred;
 
   const total = board.card_count;
   const done = board.completed_count;
@@ -106,7 +105,7 @@ export function BoardCard({ board }: BoardCardProps) {
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                setStarred((v) => !v);
+                if (onToggleStar) onToggleStar();
               }}
               className="size-7 rounded-md flex items-center justify-center text-[#9CA3AF] hover:bg-[#F4F5F7] transition-colors shrink-0"
               aria-label={starred ? "Unstar board" : "Star board"}

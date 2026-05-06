@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
 import {
   Plus,
@@ -58,10 +58,26 @@ export function BoardsListView({
   const [departmentId, setDepartmentId] = useState<string | "all">("all");
   const [view, setView] = useState<ViewMode>("grid");
 
+  // ADDED: Local state to make starring/unstarring instantly move cards and update counts
+  const [localBoards, setLocalBoards] = useState(boards);
+  
+  // Keep synced if a new board is created on the server
+  useEffect(() => {
+    setLocalBoards(boards);
+  }, [boards]);
+
+  const handleToggleStar = (boardId: string) => {
+    setLocalBoards((prev) =>
+      prev.map((b) =>
+        b.id === boardId ? { ...b, is_starred: !b.is_starred } : b
+      )
+    );
+  };
+
   const canCreate = can.createDepartment(viewerRole);
 
   const visible = useMemo(() => {
-    let list = boards;
+    let list = localBoards; // Changed to use localBoards
     if (filter === "active") list = list.filter((b) => !b.is_archived);
     else if (filter === "archived") list = list.filter((b) => b.is_archived);
     else if (filter === "mine") list = list.filter((b) => b.is_starred);
@@ -81,17 +97,19 @@ export function BoardsListView({
     }
 
     return list;
-  }, [boards, filter, departmentId, search]);
+  }, [localBoards, filter, departmentId, search]); // Updated dependencies
 
   const starred = visible.filter((b) => b.is_starred);
   const others = visible.filter((b) => !b.is_starred);
 
-  const lastActivity = boards.reduce<string | null>((acc, b) => {
+  const lastActivity = localBoards.reduce<string | null>((acc, b) => { // Changed to localBoards
     if (!acc) return b.updated_at;
     return new Date(b.updated_at).getTime() > new Date(acc).getTime()
       ? b.updated_at
       : acc;
   }, null);
+
+  // ... (keep the return statement and header JSX the same until the Sections)
 
   return (
     <div>
@@ -223,7 +241,7 @@ export function BoardsListView({
               <BoardGrid view={view}>
                 {starred.map((b, i) => (
                   <CardAnimated key={b.id} index={i}>
-                    <BoardCard board={b} />
+                    <BoardCard board={b} onToggleStar={() => handleToggleStar(b.id)} />
                   </CardAnimated>
                 ))}
               </BoardGrid>
@@ -233,13 +251,13 @@ export function BoardsListView({
           {others.length > 0 && (
             <Section
               icon={<Folder className="size-3.5 text-[#3B82F6]" strokeWidth={1.7} />}
-              label="All Projects"
+              label="Other Projects"
               count={others.length}
             >
               <BoardGrid view={view}>
                 {others.map((b, i) => (
                   <CardAnimated key={b.id} index={starred.length + i}>
-                    <BoardCard board={b} />
+                    <BoardCard board={b} onToggleStar={() => handleToggleStar(b.id)} />
                   </CardAnimated>
                 ))}
               </BoardGrid>
