@@ -32,6 +32,8 @@ interface KanbanColumnProps {
   onRename: (columnId: string, name: string) => void;
   onChangeColor: (columnId: string, color: string) => void;
   onDelete: (columnId: string) => void;
+  onEditCard?: (cardId: string) => void;
+  onToggleComplete?: (cardId: string, isCompleted: boolean) => void;
   /** True while this column itself is the dragged item (overlay rendering). */
   isOverlay?: boolean;
 }
@@ -43,6 +45,8 @@ export function KanbanColumn({
   onRename,
   onChangeColor,
   onDelete,
+  onEditCard,
+  onToggleComplete,
   isOverlay = false,
 }: KanbanColumnProps) {
   const {
@@ -296,7 +300,7 @@ export function KanbanColumn({
                   exit={{ opacity: 0, x: -10, transition: { duration: 0.18 } }}
                   transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
                 >
-                  <KanbanCard card={card} />
+                  <KanbanCard card={card} onEdit={onEditCard} onToggleComplete={onToggleComplete} />
                 </motion.div>
               ))}
             </AnimatePresence>
@@ -336,9 +340,13 @@ export function KanbanColumn({
 export function StaticKanbanColumn({
   column,
   canEdit,
+  onEditCard,
+  onToggleComplete,
 }: {
   column: BoardColumnWithCards;
   canEdit: boolean;
+  onEditCard?: (cardId: string) => void;
+  onToggleComplete?: (cardId: string, isCompleted: boolean) => void;
 }) {
   return (
     <div
@@ -368,7 +376,7 @@ export function StaticKanbanColumn({
       <div className="px-4 pb-4 flex-1 rounded-b-2xl" style={{ minHeight: 40 }}>
         <div className="flex flex-col gap-3">
           {column.cards.map((card) => (
-            <StaticKanbanCard key={card.id} card={card} />
+            <StaticKanbanCard key={card.id} card={card} onEdit={onEditCard} onToggleComplete={onToggleComplete} />
           ))}
         </div>
         {column.cards.length === 0 && (

@@ -26,6 +26,7 @@ import {
   reorderCardsInColumn,
   reorderColumns,
   updateColumn,
+  updateCard,
 } from "@/app/actions/boards";
 import type {
   BoardCardWithMeta,
@@ -36,8 +37,9 @@ import type { Role } from "@/lib/permissions";
 import { BoardDetailHeader } from "./board-detail-header";
 import { KanbanColumn, StaticKanbanColumn } from "./kanban-column";
 import { KanbanCard } from "./kanban-card";
-import { AddColumnInput } from "./add-column-input";
 import { QuickAddCardModal } from "./quick-add-card-modal";
+import { EditCardModal } from "./edit-card-modal";
+import { AddColumnInput } from "./add-column-input";
 
 interface BoardViewProps {
   board: BoardDetail;
@@ -85,6 +87,7 @@ export function BoardView({
   const [adding, setAdding] = useState<{ columnId: string | null }>({
     columnId: null,
   });
+  const [editingCardId, setEditingCardId] = useState<string | null>(null);
   const [showAddColumn, setShowAddColumn] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -331,13 +334,54 @@ export function BoardView({
     );
   }
 
+  function handleCardUpdated(updatedCard: BoardCardWithMeta) {
+    setColumns((prev) =>
+      prev.map((col) => {
+        if (col.id === updatedCard.column_id) {
+          return {
+            ...col,
+            cards: col.cards.map((card) =>
+              card.id === updatedCard.id ? updatedCard : card
+            ),
+          };
+        }
+        return col;
+      })
+    );
+  }
+
+  async function handleToggleComplete(cardId: string, isCompleted: boolean) {
+    // Optimistic update
+    setColumns((prev) =>
+      prev.map((col) => ({
+        ...col,
+        cards: col.cards.map((card) =>
+          card.id === cardId ? { ...card, is_completed: isCompleted } : card
+        ),
+      }))
+    );
+    
+    const result = await updateCard(cardId, { is_completed: isCompleted });
+    if (!result.success) {
+      showError(result.error);
+      // Revert optimistic update on failure by re-syncing from board prop (or let user refresh)
+    }
+  }
+
   // ─── Render ───────────────────────────────────────────────
   const columnIdsForSortable = useMemo(
     () => columns.map((c) => `column-${c.id}`),
     [columns],
   );
 
-  const addingColumn = columns.find((c) => c.id === adding.columnId);
+  const editingCard = useMemo(() => {
+    if (!editingCardId) return null;
+    for (const col of columns) {
+      const card = col.cards.find(c => c.id === editingCardId);
+      if (card) return card;
+    }
+    return null;
+  }, [editingCardId, columns]);
 
   return (
     <div className="flex flex-col h-full">
@@ -386,6 +430,8 @@ export function BoardView({
                 key={col.id}
                 column={col}
                 canEdit={board.viewer_can_edit}
+                onEditCard={board.viewer_can_edit ? setEditingCardId : undefined}
+                onToggleComplete={board.viewer_can_edit ? handleToggleComplete : undefined}
               />
             ))}
             {board.viewer_can_edit && (
@@ -430,6 +476,8 @@ export function BoardView({
                         onRename={handleRenameColumn}
                         onChangeColor={handleChangeColumnColor}
                         onDelete={handleDeleteColumn}
+                        onEditCard={board.viewer_can_edit ? setEditingCardId : undefined}
+                        onToggleComplete={board.viewer_can_edit ? handleToggleComplete : undefined}
                       />
                     </motion.div>
                   ))}
@@ -454,10 +502,10 @@ export function BoardView({
                 <KanbanColumn
                   column={active.column}
                   canEdit={false}
-                  onAddCard={() => {}}
-                  onRename={() => {}}
-                  onChangeColor={() => {}}
-                  onDelete={() => {}}
+                  onAddCard={() => { }}
+                  onRename={() => { }}
+                  onChangeColor={() => { }}
+                  onDelete={() => { }}
                   isOverlay
                 />
               )}
@@ -470,10 +518,18 @@ export function BoardView({
         open={!!adding.columnId}
         onClose={() => setAdding({ columnId: null })}
         columnId={adding.columnId}
-        columnName={addingColumn?.name ?? ""}
+        columns={columns.map(c => ({ id: c.id, name: c.name }))}
         orgProfiles={orgProfiles}
         defaultAssigneeId={viewerId}
         onCreated={handleCardCreated}
+      />
+
+      <EditCardModal
+        open={!!editingCardId}
+        onClose={() => setEditingCardId(null)}
+        card={editingCard}
+        orgProfiles={orgProfiles}
+        onUpdated={handleCardUpdated}
       />
     </div>
   );

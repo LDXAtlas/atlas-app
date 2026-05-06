@@ -9,6 +9,9 @@ import {
   Paperclip,
   Image as ImageIcon,
   Folder,
+  Pencil,
+  CheckCircle2,
+  Circle,
 } from "lucide-react";
 import type { BoardCardWithMeta } from "@/app/actions/boards";
 
@@ -18,6 +21,10 @@ interface KanbanCardProps {
   isOverlay?: boolean;
   /** Visual selected state (Phase 3 detail panel hook-up). */
   isSelected?: boolean;
+  /** Callback for when the edit button is clicked. */
+  onEdit?: (cardId: string) => void;
+  /** Callback for when the complete button is clicked. */
+  onToggleComplete?: (cardId: string, isCompleted: boolean) => void;
 }
 
 function initialsOf(name: string): string {
@@ -133,9 +140,13 @@ function HashtagPill({ tag }: { tag: string }) {
 function CardBody({
   card,
   isSelected,
+  onEdit,
+  onToggleComplete,
 }: {
   card: BoardCardWithMeta;
   isSelected: boolean;
+  onEdit?: (cardId: string) => void;
+  onToggleComplete?: (cardId: string, isCompleted: boolean) => void;
 }) {
   const priority = priorityFor(card);
   const pStyle = PRIORITY_STYLES[priority];
@@ -178,35 +189,71 @@ function CardBody({
               {formatShortDate(card.due_date)}
             </span>
           )}
-          <div className="ml-auto flex items-center -space-x-1">
-            {card.assignee && (
-              <span
-                className="size-6 rounded-full ring-2 ring-white text-white flex items-center justify-center shrink-0"
-                style={{
-                  fontFamily: "var(--font-poppins)",
-                  fontWeight: 600,
-                  fontSize: 10,
-                  backgroundColor: card.assignee.avatar_color,
+          <div className="ml-auto flex items-center gap-1.5">
+            <div className="flex items-center -space-x-1">
+              {card.assignee && (
+                <span
+                  className="size-6 rounded-full ring-2 ring-white text-white flex items-center justify-center shrink-0"
+                  style={{
+                    fontFamily: "var(--font-poppins)",
+                    fontWeight: 600,
+                    fontSize: 10,
+                    backgroundColor: card.assignee.avatar_color,
+                  }}
+                  title={card.assignee.full_name}
+                >
+                  {initialsOf(card.assignee.full_name)}
+                </span>
+              )}
+            </div>
+            {onEdit && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEdit(card.id);
                 }}
-                title={card.assignee.full_name}
+                className="size-6 rounded-md flex items-center justify-center text-[#9CA3AF] hover:text-[#2D333A] hover:bg-[#F3F4F6] transition-colors"
+                aria-label="Edit card"
               >
-                {initialsOf(card.assignee.full_name)}
-              </span>
+                <Pencil className="size-3" />
+              </button>
             )}
           </div>
         </div>
 
-        {/* Title */}
-        <p
-          className="text-[15px] leading-snug break-words line-clamp-2"
-          style={{
-            fontFamily: "var(--font-poppins)",
-            fontWeight: 700,
-            color: isSelected ? "#059669" : "#0F172A",
-          }}
-        >
-          {card.title}
-        </p>
+        {/* Title and Completion Button */}
+        <div className="flex items-start gap-2">
+          {onToggleComplete && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleComplete(card.id, !card.is_completed);
+              }}
+              className="mt-[3px] shrink-0 text-[#9CA3AF] hover:text-[#5CE1A5] transition-colors"
+              aria-label={card.is_completed ? "Mark as incomplete" : "Mark as complete"}
+            >
+              {card.is_completed ? (
+                <CheckCircle2 className="size-4 text-[#5CE1A5]" />
+              ) : (
+                <Circle className="size-4" />
+              )}
+            </button>
+          )}
+          <p
+            className="text-[15px] leading-snug break-words line-clamp-2"
+            style={{
+              fontFamily: "var(--font-poppins)",
+              fontWeight: 700,
+              color: isSelected ? "#059669" : "#0F172A",
+              textDecoration: card.is_completed ? "line-through" : "none",
+              opacity: card.is_completed ? 0.6 : 1,
+            }}
+          >
+            {card.title}
+          </p>
+        </div>
 
         {/* Description (with @mention / #hashtag pills) */}
         {card.description && (
@@ -277,6 +324,8 @@ export function KanbanCard({
   card,
   isOverlay = false,
   isSelected = false,
+  onEdit,
+  onToggleComplete,
 }: KanbanCardProps) {
   const {
     attributes,
@@ -315,16 +364,16 @@ export function KanbanCard({
           : `shadow-sm hover:shadow-md hover:border-[#5CE1A5]/50 cursor-grab active:cursor-grabbing transition-[border-color,box-shadow] duration-200`
       }`}
     >
-      <CardBody card={card} isSelected={isSelected} />
+      <CardBody card={card} isSelected={isSelected} onEdit={onEdit} onToggleComplete={onToggleComplete} />
     </div>
   );
 }
 
 // ─── Static (SSR + pre-mount) ─────────────────────────────
-export function StaticKanbanCard({ card }: { card: BoardCardWithMeta }) {
+export function StaticKanbanCard({ card, onEdit, onToggleComplete }: { card: BoardCardWithMeta, onEdit?: (cardId: string) => void, onToggleComplete?: (cardId: string, isCompleted: boolean) => void }) {
   return (
     <div className="relative bg-white rounded-xl border border-[#E5E7EB] overflow-hidden shadow-sm">
-      <CardBody card={card} isSelected={false} />
+      <CardBody card={card} isSelected={false} onEdit={onEdit} onToggleComplete={onToggleComplete} />
     </div>
   );
 }

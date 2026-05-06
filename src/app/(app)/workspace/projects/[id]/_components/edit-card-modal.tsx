@@ -2,8 +2,8 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { X, Loader2, AlertCircle, Calendar, User, Palette, ChevronDown } from "lucide-react";
-import { createCard } from "@/app/actions/boards";
+import { X, Loader2, AlertCircle, Calendar, User, Palette, CheckSquare } from "lucide-react";
+import { updateCard } from "@/app/actions/boards";
 import type { BoardCardWithMeta } from "@/app/actions/boards";
 
 const CARD_COVER_OPTIONS: { value: string | null; label: string; bg: string }[] = [
@@ -17,75 +17,86 @@ const CARD_COVER_OPTIONS: { value: string | null; label: string; bg: string }[] 
   { value: "#9CA3AF", label: "Gray", bg: "#9CA3AF" },
 ];
 
-interface QuickAddCardModalProps {
+interface EditCardModalProps {
   open: boolean;
   onClose: () => void;
-  columnId: string | null;
-  columns: { id: string; name: string }[];
+  card: BoardCardWithMeta | null;
   orgProfiles: { id: string; full_name: string }[];
-  defaultAssigneeId: string | null;
-  onCreated: (columnId: string, card: BoardCardWithMeta) => void;
+  onUpdated: (card: BoardCardWithMeta) => void;
 }
 
-export function QuickAddCardModal({
+export function EditCardModal({
   open,
   onClose,
-  columnId,
-  columns,
+  card,
   orgProfiles,
-  defaultAssigneeId,
-  onCreated,
-}: QuickAddCardModalProps) {
+  onUpdated,
+}: EditCardModalProps) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [assignee, setAssignee] = useState<string>("");
   const [dueDate, setDueDate] = useState<string>("");
   const [coverColor, setCoverColor] = useState<string | null>(null);
-  const [selectedColumnId, setSelectedColumnId] = useState<string | null>(null);
+  const [isCompleted, setIsCompleted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   useEffect(() => {
-    if (!open) return;
-    setTitle("");
-    setDescription("");
-    setAssignee(defaultAssigneeId ?? "");
-    setDueDate("");
-    setCoverColor(null);
-    setSelectedColumnId(columnId);
+    if (!open || !card) return;
+    setTitle(card.title || "");
+    setDescription(card.description || "");
+    setAssignee(card.assigned_to || "");
+    setDueDate(card.due_date ? card.due_date.split("T")[0] : "");
+    setCoverColor(card.cover_color || null);
+    setIsCompleted(!!card.is_completed);
     setError(null);
-  }, [open, defaultAssigneeId, columnId]);
+  }, [open, card]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!selectedColumnId) return;
+    if (!card) return;
     if (!title.trim()) {
       setError("Give the card a title.");
       return;
     }
     setError(null);
     startTransition(async () => {
-      const result = await createCard(selectedColumnId, {
+      const result = await updateCard(card.id, {
         title: title.trim(),
         description: description.trim() || null,
         assigned_to: assignee || null,
         due_date: dueDate ? new Date(dueDate).toISOString() : null,
         cover_color: coverColor,
+        is_completed: isCompleted,
       });
       if (!result.success) {
         setError(result.error);
         return;
       }
-      if (result.data) {
-        onCreated(selectedColumnId, result.data);
-      }
+      
+      const profile = assignee ? orgProfiles.find(p => p.id === assignee) : null;
+      
+      onUpdated({
+        ...card,
+        title: title.trim(),
+        description: description.trim() || null,
+        assigned_to: assignee || null,
+        due_date: dueDate ? new Date(dueDate).toISOString() : null,
+        cover_color: coverColor,
+        is_completed: isCompleted,
+        assignee: assignee && profile ? {
+          id: assignee,
+          full_name: profile.full_name,
+          avatar_color: card.assignee?.avatar_color || "#5CE1A5",
+        } : null,
+      });
       onClose();
     });
   }
 
   return (
     <AnimatePresence>
-      {open && selectedColumnId && (
+      {open && card && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -108,23 +119,14 @@ export function QuickAddCardModal({
                   className="text-[10px] uppercase tracking-[0.08em] text-[#9CA3AF]"
                   style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}
                 >
-                  New card in
+                  Edit card
                 </p>
-                <div className="relative inline-flex items-center group/select">
-                  <select
-                    value={selectedColumnId || ""}
-                    onChange={(e) => setSelectedColumnId(e.target.value)}
-                    className="text-[15px] text-[#2D333A] truncate bg-transparent outline-none cursor-pointer group-hover/select:bg-[#F4F5F7] rounded pl-1 pr-6 -ml-1 py-0.5 transition-colors appearance-none"
-                    style={{ fontFamily: "var(--font-poppins)", fontWeight: 700 }}
-                  >
-                    {columns.map((col) => (
-                      <option key={col.id} value={col.id}>
-                        {col.name}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="size-4 text-[#9CA3AF] pointer-events-none absolute right-1" />
-                </div>
+                <h2
+                  className="text-[15px] text-[#2D333A] truncate"
+                  style={{ fontFamily: "var(--font-poppins)", fontWeight: 700 }}
+                >
+                  {card.title}
+                </h2>
               </div>
               <button
                 onClick={onClose}
@@ -195,34 +197,51 @@ export function QuickAddCardModal({
                 </Field>
               </div>
 
-              <Field icon={<Palette className="size-3.5" />} label="Cover color">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  {CARD_COVER_OPTIONS.map((opt) => {
-                    const selected = coverColor === opt.value;
-                    return (
-                      <button
-                        key={opt.label}
-                        type="button"
-                        onClick={() => setCoverColor(opt.value)}
-                        className="size-7 rounded-md transition-transform hover:scale-105 flex items-center justify-center"
-                        style={{
-                          backgroundColor:
-                            opt.value === null ? "#F3F4F6" : opt.bg,
-                          boxShadow: selected
-                            ? "0 0 0 2px white, 0 0 0 4px #5CE1A5"
-                            : undefined,
-                          border:
-                            opt.value === null
-                              ? "1px dashed #D1D5DB"
-                              : undefined,
-                        }}
-                        aria-label={opt.label}
-                        title={opt.label}
-                      />
-                    );
-                  })}
+              <div className="flex items-center gap-4">
+                <div className="flex-1">
+                  <Field icon={<Palette className="size-3.5" />} label="Cover color">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {CARD_COVER_OPTIONS.map((opt) => {
+                        const selected = coverColor === opt.value;
+                        return (
+                          <button
+                            key={opt.label}
+                            type="button"
+                            onClick={() => setCoverColor(opt.value)}
+                            className="size-7 rounded-md transition-transform hover:scale-105 flex items-center justify-center"
+                            style={{
+                              backgroundColor:
+                                opt.value === null ? "#F3F4F6" : opt.bg,
+                              boxShadow: selected
+                                ? "0 0 0 2px white, 0 0 0 4px #5CE1A5"
+                                : undefined,
+                              border:
+                                opt.value === null
+                                  ? "1px dashed #D1D5DB"
+                                  : undefined,
+                            }}
+                            aria-label={opt.label}
+                            title={opt.label}
+                          />
+                        );
+                      })}
+                    </div>
+                  </Field>
                 </div>
-              </Field>
+                <div>
+                  <Field icon={<CheckSquare className="size-3.5" />} label="Status">
+                    <label className="flex items-center gap-2 mt-1 cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        checked={isCompleted} 
+                        onChange={(e) => setIsCompleted(e.target.checked)} 
+                        className="size-4 rounded text-[#5CE1A5] focus:ring-[#5CE1A5] border-[#E5E7EB]" 
+                      />
+                      <span className="text-[13px] text-[#2D333A]" style={{ fontFamily: "var(--font-source-sans)" }}>Completed</span>
+                    </label>
+                  </Field>
+                </div>
+              </div>
             </form>
 
             <div className="px-5 py-4 border-t border-[#E5E7EB] flex items-center justify-end gap-3 bg-white">
@@ -243,7 +262,7 @@ export function QuickAddCardModal({
                 style={{ fontFamily: "var(--font-poppins)" }}
               >
                 {pending && <Loader2 className="size-3.5 animate-spin" />}
-                {pending ? "Adding..." : "Add Card"}
+                {pending ? "Saving..." : "Save Changes"}
               </button>
             </div>
           </motion.div>
@@ -275,3 +294,4 @@ function Field({
     </div>
   );
 }
+
