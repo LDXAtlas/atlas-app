@@ -61,7 +61,7 @@ export type Department = {
 };
 
 type GroupKey = "today" | "tomorrow" | "this-week" | "later";
-type ViewFilter = "all" | "starred" | "high-priority";
+type ViewFilter = "all" | "starred";
 type ViewMode = "list" | "grid";
 type Priority = "high" | "medium" | "low" | "urgent" | "none";
 
@@ -420,15 +420,16 @@ function TaskRow({
   const isMenuOpen = menuOpenId === task.id;
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -6 }}
-      layout
-      className="group"
-    >
-      <div
-        className={`flex items-start gap-3 px-4 py-3 rounded-xl transition-all ${
+            <motion.div
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              layout
+              className="group relative"
+              style={{ zIndex: isMenuOpen ? 50 : 1 }}
+            >
+              <div
+                className={`flex items-start gap-3 px-4 py-3 rounded-xl transition-all ${
           isDone ? "bg-[#FAFBFC]" : "hover:bg-[#F4F5F7]/60"
         } border border-transparent hover:border-[#E5E7EB]/50`}
       >
@@ -477,7 +478,7 @@ function TaskRow({
 
           {task.description && (
             <p
-              className="text-[12px] text-[#6B7280] mt-0.5 truncate max-w-[400px]"
+              className="text-[13px] text-[#6B7280] mt-0.5 whitespace-pre-wrap"
               style={{ fontFamily: "var(--font-source-sans)" }}
             >
               {task.description}
@@ -592,7 +593,7 @@ function TaskGroup({
   onDelete,
   menuOpenId,
   onMenuToggle,
-  onAddInline,
+  onAddNewTask,
 }: {
   groupKey: GroupKey;
   tasks: Task[];
@@ -605,14 +606,11 @@ function TaskGroup({
   onDelete: (id: string) => void;
   menuOpenId: string | null;
   onMenuToggle: (id: string | null) => void;
-  onAddInline: (title: string, groupKey: GroupKey) => void;
+  onAddNewTask: () => void;
 }) {
   const config = GROUP_CONFIG[groupKey];
   const Icon = config.Icon;
   const [collapsed, setCollapsed] = useState(false);
-  const [isAdding, setIsAdding] = useState(false);
-  const [addTitle, setAddTitle] = useState("");
-  const addInputRef = useRef<HTMLInputElement>(null);
 
   const completedCount = tasks.filter((t) => t.status === "done").length;
   const pending = tasks.filter((t) => t.status !== "done");
@@ -673,11 +671,10 @@ function TaskGroup({
       <AnimatePresence>
         {!collapsed && (
           <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
+            initial={{ height: 0, opacity: 0, overflow: "hidden" }}
+            animate={{ height: "auto", opacity: 1, overflow: "visible" }}
+            exit={{ height: 0, opacity: 0, overflow: "hidden" }}
             transition={{ duration: 0.2 }}
-            className="overflow-hidden"
           >
             <div className="space-y-0.5 pb-2">
               {[...pending, ...completed].map((task) => (
@@ -686,13 +683,9 @@ function TaskGroup({
                   task={task}
                   isStarred={starredIds.has(task.id)}
                   onToggleStar={() => onToggleStar(task.id)}
-                  onToggleComplete={() =>
-                    onToggleComplete(task.id)
-                  }
+                  onToggleComplete={() => onToggleComplete(task.id)}
                   onEdit={() => onEdit(task)}
-                  onSetPriority={(p) =>
-                    onSetPriority(task.id, p)
-                  }
+                  onSetPriority={(p) => onSetPriority(task.id, p)}
                   onDuplicate={() => onDuplicate(task)}
                   onDelete={() => onDelete(task.id)}
                   menuOpenId={menuOpenId}
@@ -700,101 +693,21 @@ function TaskGroup({
                 />
               ))}
 
-              {/* Inline add task */}
-              <AnimatePresence mode="wait">
-                {isAdding ? (
-                  <motion.div
-                    key="adding"
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: "auto", opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.15 }}
-                    className="overflow-hidden"
-                  >
-                    <div className="flex items-center gap-2 px-4 py-2 mt-1">
-                      <div className="size-[22px] rounded-full border-2 border-[#5CE1A5]/30 flex-shrink-0" />
-                      <input
-                        ref={addInputRef}
-                        autoFocus
-                        type="text"
-                        placeholder={`Add to ${config.label.toLowerCase()}...`}
-                        value={addTitle}
-                        onChange={(e) =>
-                          setAddTitle(e.target.value)
-                        }
-                        onKeyDown={(e) => {
-                          if (
-                            e.key === "Enter" &&
-                            addTitle.trim()
-                          ) {
-                            onAddInline(addTitle, groupKey);
-                            setAddTitle("");
-                          }
-                          if (e.key === "Escape") {
-                            setIsAdding(false);
-                            setAddTitle("");
-                          }
-                        }}
-                        className="flex-1 bg-transparent text-[15px] text-[#2D333A] placeholder:text-[#9CA3AF] focus:outline-none"
-                        style={{
-                          fontFamily: "var(--font-source-sans)",
-                        }}
-                      />
-                      <button
-                        onClick={() => {
-                          if (addTitle.trim()) {
-                            onAddInline(addTitle, groupKey);
-                            setAddTitle("");
-                          }
-                        }}
-                        className="px-2.5 py-1 bg-[#5CE1A5] text-white rounded-lg text-[11px] hover:bg-[#4BD094] transition-colors"
-                        style={{
-                          fontFamily: "var(--font-poppins)",
-                          fontWeight: 600,
-                        }}
-                      >
-                        Add
-                      </button>
-                      <button
-                        onClick={() => {
-                          setIsAdding(false);
-                          setAddTitle("");
-                        }}
-                        className="p-1 text-[#9CA3AF] hover:text-[#6B7280] transition-colors"
-                      >
-                        <X className="size-3.5" />
-                      </button>
-                    </div>
-                  </motion.div>
-                ) : (
-                  <motion.button
-                    key="trigger"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    onClick={() => {
-                      setIsAdding(true);
-                      setTimeout(
-                        () => addInputRef.current?.focus(),
-                        50,
-                      );
-                    }}
-                    className="w-full flex items-center gap-2 px-4 py-2 mt-0.5 rounded-xl text-[#9CA3AF] hover:text-[#5CE1A5] transition-colors group/add"
-                  >
-                    <div className="size-[22px] rounded-full border-2 border-dashed border-[#E5E7EB] group-hover/add:border-[#5CE1A5]/40 flex items-center justify-center flex-shrink-0 transition-colors">
-                      <Plus className="size-3" />
-                    </div>
-                    <span
-                      className="text-[13px]"
-                      style={{
-                        fontFamily: "var(--font-source-sans)",
-                      }}
-                    >
-                      Add task
-                    </span>
-                  </motion.button>
-                )}
-              </AnimatePresence>
+              {/* Add Task Button (Opens Modal) */}
+              <button
+                onClick={onAddNewTask}
+                className="w-full flex items-center gap-2 px-4 py-2 mt-0.5 rounded-xl text-[#9CA3AF] hover:text-[#5CE1A5] transition-colors group/add"
+              >
+                <div className="size-[22px] rounded-full border-2 border-dashed border-[#E5E7EB] group-hover/add:border-[#5CE1A5]/40 flex items-center justify-center flex-shrink-0 transition-colors">
+                  <Plus className="size-3" />
+                </div>
+                <span
+                  className="text-[13px]"
+                  style={{ fontFamily: "var(--font-source-sans)" }}
+                >
+                  Add task
+                </span>
+              </button>
             </div>
           </motion.div>
         )}
@@ -810,16 +723,27 @@ function TaskGridCard({
   onToggleStar,
   onToggleComplete,
   onEdit,
+  onSetPriority,
+  onDuplicate,
+  onDelete,
+  menuOpenId,
+  onMenuToggle,
 }: {
   task: Task;
   isStarred: boolean;
   onToggleStar: () => void;
   onToggleComplete: () => void;
   onEdit: () => void;
+  onSetPriority: (p: string) => void;
+  onDuplicate: () => void;
+  onDelete: () => void;
+  menuOpenId: string | null;
+  onMenuToggle: (id: string | null) => void;
 }) {
   const isDone = task.status === "done";
   const pri = PRIORITY_CONFIG[task.priority] || PRIORITY_CONFIG.none;
   const dueTime = task.due_date ? formatDueTime(task.due_date) : null;
+  const isMenuOpen = menuOpenId === task.id;
 
   return (
     <motion.div
@@ -827,11 +751,13 @@ function TaskGridCard({
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.97 }}
       layout
-      className="group"
+      className="group relative"
+      style={{ zIndex: isMenuOpen ? 50 : 1 }}
     >
       <div
-        onClick={onEdit}
-        className={`relative bg-white rounded-[20px] overflow-hidden cursor-pointer transition-all duration-300 ${
+        className={`relative bg-white rounded-[20px] transition-all duration-300 ${
+          isMenuOpen ? "overflow-visible" : "overflow-hidden"
+        } ${
           isDone
             ? "opacity-55"
             : "hover:-translate-y-1 hover:shadow-[0_12px_30px_-8px_rgba(0,0,0,0.08)]"
@@ -848,7 +774,7 @@ function TaskGridCard({
           task.priority !== "low" &&
           !isDone && (
             <div
-              className="h-[3px] w-full"
+              className="h-[3px] w-full rounded-t-[20px]"
               style={{
                 background: `linear-gradient(90deg, ${pri.dot}, ${pri.dot}00)`,
               }}
@@ -857,7 +783,7 @@ function TaskGridCard({
 
         {/* Card body */}
         <div className="p-5 flex flex-col gap-3">
-          {/* Header: checkbox + title + star */}
+          {/* Header: checkbox + title + star/menu */}
           <div className="flex items-start gap-3">
             <button
               onClick={(e) => {
@@ -899,43 +825,62 @@ function TaskGridCard({
               style={{
                 fontFamily: "var(--font-poppins)",
                 fontWeight: 600,
-                display: "-webkit-box",
-                WebkitLineClamp: 2,
-                WebkitBoxOrient: "vertical",
-                overflow: "hidden",
               }}
             >
               {task.title}
             </h4>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggleStar();
-              }}
-              className={`p-1 rounded-lg transition-all flex-shrink-0 ${
-                isStarred
-                  ? "text-amber-400"
-                  : "text-transparent group-hover:text-gray-300 hover:!text-amber-400"
-              }`}
-            >
-              <Star
-                className="size-3.5"
-                fill={isStarred ? "currentColor" : "none"}
-              />
-            </button>
+            <div className="flex items-center gap-0.5 ml-auto flex-shrink-0">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleStar();
+                }}
+                className={`p-1.5 rounded-lg transition-all flex-shrink-0 ${
+                  isStarred
+                    ? "text-amber-400"
+                    : "text-transparent group-hover:text-gray-300 hover:!text-amber-400"
+                }`}
+              >
+                <Star
+                  className="size-4"
+                  fill={isStarred ? "currentColor" : "none"}
+                />
+              </button>
+              <div className="relative">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onMenuToggle(isMenuOpen ? null : task.id);
+                  }}
+                  className={`p-1.5 rounded-lg transition-all ${
+                    isMenuOpen
+                      ? "text-[#2D333A] bg-[#F4F5F7]"
+                      : "text-transparent group-hover:text-gray-400 hover:!text-[#2D333A]"
+                  }`}
+                >
+                  <MoreHorizontal className="size-4" />
+                </button>
+                <AnimatePresence>
+                  {isMenuOpen && (
+                    <TaskContextMenu
+                      task={task}
+                      onClose={() => onMenuToggle(null)}
+                      onEdit={onEdit}
+                      onSetPriority={onSetPriority}
+                      onDuplicate={onDuplicate}
+                      onDelete={onDelete}
+                    />
+                  )}
+                </AnimatePresence>
+              </div>
+            </div>
           </div>
 
           {/* Description */}
           {task.description && !isDone && (
             <p
-              className="text-[13px] text-[#9CA3AF] leading-relaxed -mt-0.5"
-              style={{
-                fontFamily: "var(--font-source-sans)",
-                display: "-webkit-box",
-                WebkitLineClamp: 2,
-                WebkitBoxOrient: "vertical",
-                overflow: "hidden",
-              }}
+              className="text-[13px] text-[#9CA3AF] leading-relaxed -mt-0.5 whitespace-pre-wrap"
+              style={{ fontFamily: "var(--font-source-sans)" }}
             >
               {task.description}
             </p>
@@ -986,8 +931,7 @@ function TaskGridCard({
                 <span
                   className="size-[5px] rounded-full flex-shrink-0"
                   style={{
-                    backgroundColor:
-                      task.department_color || "#8B5CF6",
+                    backgroundColor: task.department_color || "#8B5CF6",
                   }}
                 />
                 {task.department_name}
@@ -1008,7 +952,12 @@ function TaskGridGroup({
   onToggleStar,
   onToggleComplete,
   onEdit,
-  onAddInline,
+  onSetPriority,
+  onDuplicate,
+  onDelete,
+  menuOpenId,
+  onMenuToggle,
+  onAddNewTask,
 }: {
   groupKey: GroupKey;
   tasks: Task[];
@@ -1016,16 +965,18 @@ function TaskGridGroup({
   onToggleStar: (id: string) => void;
   onToggleComplete: (id: string) => void;
   onEdit: (task: Task) => void;
-  onAddInline: (title: string, groupKey: GroupKey) => void;
+  onSetPriority: (id: string, p: string) => void;
+  onDuplicate: (task: Task) => void;
+  onDelete: (id: string) => void;
+  menuOpenId: string | null;
+  onMenuToggle: (id: string | null) => void;
+  onAddNewTask: () => void;
 }) {
   const config = GROUP_CONFIG[groupKey];
   const Icon = config.Icon;
   const completedCount = tasks.filter((t) => t.status === "done").length;
   const pending = tasks.filter((t) => t.status !== "done");
   const completed = tasks.filter((t) => t.status === "done");
-  const [isAdding, setIsAdding] = useState(false);
-  const [addTitle, setAddTitle] = useState("");
-  const addInputRef = useRef<HTMLInputElement>(null);
 
   if (tasks.length === 0) return null;
 
@@ -1081,95 +1032,29 @@ function TaskGridGroup({
             onToggleStar={() => onToggleStar(task.id)}
             onToggleComplete={() => onToggleComplete(task.id)}
             onEdit={() => onEdit(task)}
+            onSetPriority={(p) => onSetPriority(task.id, p)}
+            onDuplicate={() => onDuplicate(task)}
+            onDelete={() => onDelete(task.id)}
+            menuOpenId={menuOpenId}
+            onMenuToggle={onMenuToggle}
           />
         ))}
 
-        {/* Inline add card */}
-        {isAdding ? (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.97 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.15 }}
-            className="flex rounded-xl border-2 border-[#5CE1A5]/30 bg-[#F4F5F7]/50 p-5"
+        {/* Add Task Card (Opens Modal) */}
+        <button
+          onClick={onAddNewTask}
+          className="flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[#E5E7EB] hover:border-[#5CE1A5]/40 py-10 text-[#9CA3AF] hover:text-[#5CE1A5] transition-all group/add cursor-pointer min-h-[120px]"
+        >
+          <div className="size-9 rounded-xl border-2 border-dashed border-[#E5E7EB] group-hover/add:border-[#5CE1A5]/40 flex items-center justify-center transition-colors">
+            <Plus className="size-4" />
+          </div>
+          <span
+            className="text-[13px]"
+            style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}
           >
-            <div className="flex-1 flex flex-col gap-3">
-              <input
-                ref={addInputRef}
-                autoFocus
-                type="text"
-                placeholder={`New task for ${config.label.toLowerCase()}...`}
-                value={addTitle}
-                onChange={(e) => setAddTitle(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && addTitle.trim()) {
-                    onAddInline(addTitle, groupKey);
-                    setAddTitle("");
-                  }
-                  if (e.key === "Escape") {
-                    setIsAdding(false);
-                    setAddTitle("");
-                  }
-                }}
-                className="w-full bg-white border border-[#E5E7EB] rounded-xl px-3.5 py-2.5 text-[14px] text-[#2D333A] placeholder:text-[#9CA3AF] focus:border-[#5CE1A5] focus:ring-2 focus:ring-[#5CE1A5]/10 focus:outline-none transition-all"
-                style={{
-                  fontFamily: "var(--font-poppins)",
-                  fontWeight: 600,
-                }}
-              />
-              <div className="flex items-center gap-2 mt-auto">
-                <button
-                  onClick={() => {
-                    if (addTitle.trim()) {
-                      onAddInline(addTitle, groupKey);
-                      setAddTitle("");
-                    }
-                  }}
-                  className="px-3.5 py-1.5 bg-[#5CE1A5] text-white rounded-lg text-[12px] hover:bg-[#4BD094] transition-colors"
-                  style={{
-                    fontFamily: "var(--font-poppins)",
-                    fontWeight: 600,
-                  }}
-                >
-                  Add
-                </button>
-                <button
-                  onClick={() => {
-                    setIsAdding(false);
-                    setAddTitle("");
-                  }}
-                  className="px-3 py-1.5 text-[#6B7280] rounded-lg text-[12px] hover:text-[#2D333A] transition-colors"
-                  style={{
-                    fontFamily: "var(--font-poppins)",
-                    fontWeight: 600,
-                  }}
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </motion.div>
-        ) : (
-          <button
-            onClick={() => {
-              setIsAdding(true);
-              setTimeout(() => addInputRef.current?.focus(), 50);
-            }}
-            className="flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[#E5E7EB] hover:border-[#5CE1A5]/40 py-10 text-[#9CA3AF] hover:text-[#5CE1A5] transition-all group/add cursor-pointer min-h-[120px]"
-          >
-            <div className="size-9 rounded-xl border-2 border-dashed border-[#E5E7EB] group-hover/add:border-[#5CE1A5]/40 flex items-center justify-center transition-colors">
-              <Plus className="size-4" />
-            </div>
-            <span
-              className="text-[13px]"
-              style={{
-                fontFamily: "var(--font-poppins)",
-                fontWeight: 600,
-              }}
-            >
-              Add task
-            </span>
-          </button>
-        )}
+            Add task
+          </span>
+        </button>
       </div>
     </motion.div>
   );
@@ -1178,10 +1063,18 @@ function TaskGridGroup({
 // ─── Insights Panel ────────────────────────────────────
 function InsightsPanel({
   tasks,
+  departments,
+  activePriorityFilter,
+  activeDepartmentFilter,
   onFilterPriority,
+  onFilterDepartment,
 }: {
   tasks: Task[];
-  onFilterPriority: (p: string) => void;
+  departments: Department[];
+  activePriorityFilter: string | null;
+  activeDepartmentFilter: string | null;
+  onFilterPriority: (p: string | null) => void;
+  onFilterDepartment: (id: string | null) => void;
 }) {
   // Priority breakdown (pending only)
   const pendingTasks = tasks.filter((t) => t.status !== "done");
@@ -1189,28 +1082,37 @@ function InsightsPanel({
   const mediumCount = pendingTasks.filter((t) => t.priority === "medium").length;
   const lowCount = pendingTasks.filter((t) => t.priority === "low").length;
 
-  // Department breakdown
+  // Department breakdown (using the actual departments from the database!)
   const deptMap = new Map<string, { name: string; color: string; total: number; done: number }>();
+  departments.forEach((d) => {
+    deptMap.set(d.id, { name: d.name, color: d.color || "#8B5CF6", total: 0, done: 0 });
+  });
+
   for (const t of tasks) {
-    if (t.department_name) {
-      const key = t.department_name;
-      if (!deptMap.has(key)) {
-        deptMap.set(key, {
-          name: t.department_name,
-          color: t.department_color || "#8B5CF6",
-          total: 0,
-          done: 0,
-        });
-      }
-      const entry = deptMap.get(key)!;
+    if (t.department_id && deptMap.has(t.department_id)) {
+      const entry = deptMap.get(t.department_id)!;
       entry.total++;
       if (t.status === "done") entry.done++;
     }
   }
-  const deptBreakdown = Array.from(deptMap.values());
+  const deptBreakdown = Array.from(deptMap.entries());
 
   return (
     <div className="space-y-6">
+      {/* Active Filters Clear Button */}
+      {(activePriorityFilter || activeDepartmentFilter) && (
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-[11px] text-[#5CE1A5] uppercase tracking-wider" style={{ fontFamily: "var(--font-poppins)", fontWeight: 700 }}>Active Filters</span>
+          <button 
+            onClick={() => { onFilterPriority(null); onFilterDepartment(null); }}
+            className="text-[11px] text-[#9CA3AF] hover:text-[#DC2626] transition-colors"
+            style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}
+          >
+            Clear all
+          </button>
+        </div>
+      )}
+
       {/* By Priority */}
       <div>
         <h4
@@ -1224,30 +1126,37 @@ function InsightsPanel({
             { key: "high", label: "High", dot: "#EF4444", count: highCount },
             { key: "medium", label: "Medium", dot: "#F59E0B", count: mediumCount },
             { key: "low", label: "Low", dot: "#3B82F6", count: lowCount },
-          ].map((item) => (
-            <button
-              key={item.key}
-              onClick={() => onFilterPriority(item.key)}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-[#F4F5F7] transition-all text-left"
-            >
-              <span
-                className="size-2 rounded-full flex-shrink-0"
-                style={{ backgroundColor: item.dot }}
-              />
-              <span
-                className="flex-1 text-[13px] text-[#2D333A]"
-                style={{ fontFamily: "var(--font-source-sans)" }}
+          ].map((item) => {
+            const isActive = activePriorityFilter === item.key;
+            return (
+              <button
+                key={item.key}
+                onClick={() => onFilterPriority(isActive ? null : item.key)}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-left border ${
+                  isActive 
+                    ? "bg-[#5CE1A5]/10 border-[#5CE1A5]/30 shadow-sm" 
+                    : "hover:bg-[#F4F5F7] border-transparent"
+                }`}
               >
-                {item.label}
-              </span>
-              <span
-                className="text-[12px] text-[#9CA3AF] tabular-nums px-2 py-0.5 bg-[#F4F5F7] rounded-lg"
-                style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}
-              >
-                {item.count}
-              </span>
-            </button>
-          ))}
+                <span
+                  className="size-2 rounded-full flex-shrink-0"
+                  style={{ backgroundColor: item.dot }}
+                />
+                <span
+                  className={`flex-1 text-[13px] ${isActive ? "text-[#059669] font-semibold" : "text-[#2D333A]"}`}
+                  style={{ fontFamily: "var(--font-source-sans)" }}
+                >
+                  {item.label}
+                </span>
+                <span
+                  className={`text-[12px] tabular-nums px-2 py-0.5 rounded-lg ${isActive ? "bg-white text-[#059669]" : "bg-[#F4F5F7] text-[#9CA3AF]"}`}
+                  style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}
+                >
+                  {item.count}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -1261,46 +1170,50 @@ function InsightsPanel({
             By Department
           </h4>
           <div className="space-y-2">
-            {deptBreakdown.map((dept) => (
-              <div
-                key={dept.name}
-                className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-[#F4F5F7] transition-all"
-              >
-                <span
-                  className="size-2 rounded-full flex-shrink-0"
-                  style={{ backgroundColor: dept.color }}
-                />
-                <div className="flex-1 min-w-0">
-                  <p
-                    className="text-[13px] text-[#2D333A] truncate"
-                    style={{ fontFamily: "var(--font-source-sans)" }}
-                  >
-                    {dept.name}
-                  </p>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <div className="flex-1 h-1 bg-[#E5E7EB] rounded-full overflow-hidden">
-                      <div
-                        className="h-full rounded-full transition-all"
-                        style={{
-                          backgroundColor: dept.color,
-                          width: `${
-                            dept.total > 0
-                              ? (dept.done / dept.total) * 100
-                              : 0
-                          }%`,
-                        }}
-                      />
-                    </div>
-                    <span
-                      className="text-[10px] text-[#9CA3AF]"
+            {deptBreakdown.map(([id, dept]) => {
+              const isActive = activeDepartmentFilter === id;
+              return (
+                <button
+                  key={id}
+                  onClick={() => onFilterDepartment(isActive ? null : id)}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-left border ${
+                    isActive 
+                      ? "bg-[#5CE1A5]/10 border-[#5CE1A5]/30 shadow-sm" 
+                      : "hover:bg-[#F4F5F7] border-transparent"
+                  }`}
+                >
+                  <span
+                    className="size-2 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: dept.color }}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p
+                      className={`text-[13px] truncate ${isActive ? "text-[#059669] font-semibold" : "text-[#2D333A]"}`}
                       style={{ fontFamily: "var(--font-source-sans)" }}
                     >
-                      {dept.done}/{dept.total}
-                    </span>
+                      {dept.name}
+                    </p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <div className="flex-1 h-1 bg-[#E5E7EB] rounded-full overflow-hidden">
+                        <div
+                          className="h-full rounded-full transition-all"
+                          style={{
+                            backgroundColor: dept.color,
+                            width: `${dept.total > 0 ? (dept.done / dept.total) * 100 : 0}%`,
+                          }}
+                        />
+                      </div>
+                      <span
+                        className={`text-[10px] ${isActive ? "text-[#059669]" : "text-[#9CA3AF]"}`}
+                        style={{ fontFamily: "var(--font-source-sans)" }}
+                      >
+                        {dept.done}/{dept.total}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              </div>
-            ))}
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
@@ -1312,7 +1225,6 @@ function InsightsPanel({
 const FILTER_TABS: { id: ViewFilter; label: string }[] = [
   { id: "all", label: "All" },
   { id: "starred", label: "Starred" },
-  { id: "high-priority", label: "High Priority" },
 ];
 
 // ─── Main View ──────────────────────────────────────────
@@ -1328,6 +1240,8 @@ export function TasksView({
   const [searchQuery, setSearchQuery] = useState("");
   const [viewFilter, setViewFilter] = useState<ViewFilter>("all");
   const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const [activePriorityFilter, setActivePriorityFilter] = useState<string | null>(null);
+  const [activeDepartmentFilter, setActiveDepartmentFilter] = useState<string | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -1443,12 +1357,20 @@ export function TasksView({
   if (viewFilter === "starred") {
     filtered = filtered.filter((t) => starredIds.has(t.id));
   }
-  if (viewFilter === "high-priority") {
-    filtered = filtered.filter(
-      (t) => t.priority === "high" || t.priority === "urgent",
-    );
+
+  // Apply new Sidebar Priority Filter
+  if (activePriorityFilter) {
+    if (activePriorityFilter === "high") {
+      filtered = filtered.filter((t) => t.priority === "high" || t.priority === "urgent");
+    } else {
+      filtered = filtered.filter((t) => t.priority === activePriorityFilter);
+    }
   }
 
+  // Apply new Sidebar Department Filter
+  if (activeDepartmentFilter) {
+    filtered = filtered.filter((t) => t.department_id === activeDepartmentFilter);
+  }
   const grouped = groupTasks(filtered);
   const completedCount = initialTasks.filter(
     (t) => t.status === "done",
@@ -1698,7 +1620,10 @@ export function TasksView({
                       onDelete={handleDelete}
                       menuOpenId={menuOpenId}
                       onMenuToggle={setMenuOpenId}
-                      onAddInline={handleAddInline}
+                      onAddNewTask={() => {
+                        setEditingTask(null);
+                        setShowModal(true);
+                      }}
                     />
                   ))}
                 </motion.div>
@@ -1719,7 +1644,15 @@ export function TasksView({
                       onToggleStar={toggleStar}
                       onToggleComplete={handleToggleComplete}
                       onEdit={handleEdit}
-                      onAddInline={handleAddInline}
+                      onSetPriority={handleSetPriority}
+                      onDuplicate={handleDuplicate}
+                      onDelete={handleDelete}
+                      menuOpenId={menuOpenId}
+                      onMenuToggle={setMenuOpenId}
+                      onAddNewTask={() => {
+                        setEditingTask(null);
+                        setShowModal(true);
+                      }}
                     />
                   ))}
                 </motion.div>
@@ -1732,13 +1665,11 @@ export function TasksView({
         <div className="w-[260px] shrink-0 hidden xl:block">
           <InsightsPanel
             tasks={initialTasks}
-            onFilterPriority={(p) => {
-              if (p === "high") {
-                setViewFilter("high-priority");
-              } else {
-                setViewFilter("all");
-              }
-            }}
+            departments={departments}
+            activePriorityFilter={activePriorityFilter}
+            activeDepartmentFilter={activeDepartmentFilter}
+            onFilterPriority={setActivePriorityFilter}
+            onFilterDepartment={setActiveDepartmentFilter}
           />
         </div>
       </div>
