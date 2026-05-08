@@ -17,14 +17,16 @@ const actions = [
     label: "New Task",
     icon: Target,
     color: "#3B82F6",
-    href: "/workspace/tasks",
+    // Added ?action=new to trigger the popup on the target page
+    href: "/workspace/tasks?action=new", 
   },
   {
     id: "new-event",
     label: "New Event",
     icon: Calendar,
     color: "#10B981",
-    href: "/workspace/events",
+    // Added ?action=new to trigger the popup on the target page
+    href: "/workspace/events?action=new",
   },
   {
     id: "send-message",
@@ -82,14 +84,11 @@ const itemVariants = {
 
 export function QuickActions() {
   return (
-    // Removed the background, borders, padding, and shadows from this wrapper
-    // Added a slight py-1 to ensure hover animations don't clip
     <div className="h-full flex flex-col w-full py-1">
       <motion.div 
         variants={containerVariants}
         initial="hidden"
         animate="show"
-        // Increased gap from 2.5 to gap-4 (mobile) and gap-5 (larger screens) to spread them out
         className="flex justify-between items-stretch gap-4 sm:gap-5 flex-1"
       >
         {actions.map((action) => {
