@@ -112,6 +112,36 @@ export async function createTask(data: TaskInput): Promise<ActionResult> {
     return { success: false, error: error.message };
   }
 
+  // Notify the assignee if it's someone other than the actor. Self-assign
+  // doesn't notify. Best-effort — failure here doesn't roll back the task.
+  const assigneeId = data.assigned_to || null;
+  if (task?.id && assigneeId && assigneeId !== ctx.userId) {
+    try {
+      const { createNotification } = await import("@/app/actions/notifications");
+      const { data: actor } = await supabaseAdmin
+        .from("profiles")
+        .select("full_name, email")
+        .eq("id", ctx.userId)
+        .maybeSingle();
+      const actorName =
+        actor?.full_name || actor?.email?.split("@")[0] || "A teammate";
+      const titleSnippet = data.title.trim().slice(0, 100);
+      await createNotification({
+        recipientId: assigneeId,
+        organizationId: ctx.organizationId,
+        actorId: ctx.userId,
+        type: "task_assigned",
+        title: `${actorName} assigned you a task`,
+        body: titleSnippet,
+        entityType: "task",
+        entityId: task.id,
+        actionUrl: `/workspace/tasks?taskId=${task.id}`,
+      });
+    } catch (err) {
+      console.error("[createTask] Notification send failed:", err);
+    }
+  }
+
   revalidatePath("/workspace/tasks");
   revalidatePath("/dashboard");
   return { success: true, id: task?.id };
@@ -128,6 +158,15 @@ export async function updateTask(
       success: false,
       error: "Not authenticated or no organization found.",
     };
+
+  // Pull the current assignment + title so we can both detect a real
+  // reassign and craft notification copy without an extra round-trip.
+  const { data: existing } = await supabaseAdmin
+    .from("tasks")
+    .select("title, assigned_to")
+    .eq("id", id)
+    .eq("organization_id", ctx.organizationId)
+    .maybeSingle();
 
   const updates: Record<string, unknown> = {
     updated_at: new Date().toISOString(),
@@ -153,6 +192,41 @@ export async function updateTask(
   if (error) {
     console.error("[updateTask] Error:", error.message);
     return { success: false, error: error.message };
+  }
+
+  // Notify the new assignee on a real reassign (and not a no-op self-save).
+  const newAssignee =
+    data.assigned_to !== undefined
+      ? data.assigned_to || null
+      : existing?.assigned_to ?? null;
+  const reassigned =
+    data.assigned_to !== undefined && newAssignee !== existing?.assigned_to;
+  if (reassigned && newAssignee && newAssignee !== ctx.userId) {
+    try {
+      const { createNotification } = await import("@/app/actions/notifications");
+      const { data: actor } = await supabaseAdmin
+        .from("profiles")
+        .select("full_name, email")
+        .eq("id", ctx.userId)
+        .maybeSingle();
+      const actorName =
+        actor?.full_name || actor?.email?.split("@")[0] || "A teammate";
+      const taskTitle =
+        (updates.title as string) || existing?.title || "a task";
+      await createNotification({
+        recipientId: newAssignee,
+        organizationId: ctx.organizationId,
+        actorId: ctx.userId,
+        type: "task_assigned",
+        title: `${actorName} assigned you a task`,
+        body: taskTitle.slice(0, 100),
+        entityType: "task",
+        entityId: id,
+        actionUrl: `/workspace/tasks?taskId=${id}`,
+      });
+    } catch (err) {
+      console.error("[updateTask] Notification send failed:", err);
+    }
   }
 
   revalidatePath("/workspace/tasks");

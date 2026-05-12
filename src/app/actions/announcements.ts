@@ -101,6 +101,58 @@ export async function createAnnouncement(
     return { success: false, error: error.message };
   }
 
+  // Fan-out notification — gather recipient IDs based on visibility, then
+  // a single batched insert. Best-effort: failures here log but don't
+  // roll back the announcement.
+  if (announcement?.id) {
+    try {
+      let recipientIds: string[] = [];
+      if (data.target_department_id) {
+        // Department-targeted: notify only profiles assigned to that dept.
+        const { data: rows } = await supabaseAdmin
+          .from("profile_departments")
+          .select("profile_id")
+          .eq("department_id", data.target_department_id);
+        recipientIds = (rows ?? []).map(
+          (r: { profile_id: string }) => r.profile_id,
+        );
+      } else {
+        // Org-wide: every profile in the org.
+        const { data: rows } = await supabaseAdmin
+          .from("profiles")
+          .select("id")
+          .eq("organization_id", ctx.organizationId);
+        recipientIds = (rows ?? []).map((r: { id: string }) => r.id);
+      }
+
+      if (recipientIds.length > 0) {
+        const { data: actor } = await supabaseAdmin
+          .from("profiles")
+          .select("full_name, email")
+          .eq("id", ctx.userId)
+          .maybeSingle();
+        const actorName =
+          actor?.full_name || actor?.email?.split("@")[0] || "A teammate";
+
+        const { createNotificationsBatch } = await import(
+          "@/app/actions/notifications"
+        );
+        await createNotificationsBatch(recipientIds, {
+          organizationId: ctx.organizationId,
+          actorId: ctx.userId,
+          type: "announcement_posted",
+          title: `${actorName} posted an announcement`,
+          body: data.title.trim().slice(0, 100),
+          entityType: "announcement",
+          entityId: announcement.id,
+          actionUrl: `/workspace/announcements?id=${announcement.id}`,
+        });
+      }
+    } catch (err) {
+      console.error("[createAnnouncement] Notification fan-out failed:", err);
+    }
+  }
+
   revalidatePath("/workspace/announcements");
   revalidatePath("/dashboard");
   return { success: true, id: announcement?.id };

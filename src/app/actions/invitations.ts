@@ -465,6 +465,38 @@ export async function acceptInvitation(
       .single();
 
     console.log("[Step 6] Verify profile exists:", verifyProfile ? JSON.stringify(verifyProfile) : "NOT FOUND — PROBLEM!");
+
+    // Step 7: Notify all admins in the org that someone joined. Best-effort.
+    try {
+      const { data: admins } = await supabaseAdmin
+        .from("profiles")
+        .select("id")
+        .eq("organization_id", invitation.organization_id)
+        .eq("role", "admin");
+      const adminIds = (admins ?? [])
+        .map((a: { id: string }) => a.id)
+        .filter((id: string) => id !== userId);
+      if (adminIds.length > 0) {
+        const { createNotificationsBatch } = await import(
+          "@/app/actions/notifications"
+        );
+        const roleLabel =
+          invitation.role.charAt(0).toUpperCase() + invitation.role.slice(1);
+        await createNotificationsBatch(adminIds, {
+          organizationId: invitation.organization_id,
+          actorId: userId,
+          type: "team_member_joined",
+          title: `${fullName} joined the team`,
+          body: roleLabel,
+          entityType: "profile",
+          entityId: userId,
+          actionUrl: "/directory",
+        });
+      }
+    } catch (notifyErr) {
+      console.error("[acceptInvitation] Notify admins failed:", notifyErr);
+    }
+
     console.log("=== ACCEPT INVITATION COMPLETE ===");
 
     revalidatePath("/settings/organization");

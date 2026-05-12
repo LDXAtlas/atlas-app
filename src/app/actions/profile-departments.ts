@@ -133,6 +133,20 @@ export async function bulkUpdateAssignments(
     return { error: "Only one department can be primary." };
   }
 
+  // Snapshot the existing assignments so we can detect which rows are
+  // genuinely new and only notify on those (this action does a wholesale
+  // delete + insert, so a no-op save would otherwise re-notify on every
+  // edit).
+  const { data: previousRows } = await supabaseAdmin
+    .from("profile_departments")
+    .select("department_id, is_primary")
+    .eq("profile_id", profileId);
+  const previousIds = new Set<string>(
+    (previousRows ?? []).map(
+      (r: { department_id: string }) => r.department_id,
+    ),
+  );
+
   // Delete existing assignments
   const { error: deleteError } = await supabaseAdmin
     .from("profile_departments")
@@ -155,6 +169,61 @@ export async function bulkUpdateAssignments(
       .insert(rows);
 
     if (insertError) return { error: insertError.message };
+  }
+
+  // Notify the user about any department they're newly assigned to —
+  // unless they're assigning themselves. Best-effort.
+  if (profileId !== ctx.userId) {
+    const newlyAdded = assignments.filter(
+      (a) => !previousIds.has(a.department_id),
+    );
+    if (newlyAdded.length > 0) {
+      try {
+        const deptIds = newlyAdded.map((a) => a.department_id);
+        const [{ data: deptRows }, { data: actor }] = await Promise.all([
+          supabaseAdmin
+            .from("departments")
+            .select("id, name")
+            .in("id", deptIds),
+          supabaseAdmin
+            .from("profiles")
+            .select("full_name, email")
+            .eq("id", ctx.userId)
+            .maybeSingle(),
+        ]);
+        const deptNameById = new Map(
+          (deptRows ?? []).map(
+            (d: { id: string; name: string }) => [d.id, d.name] as const,
+          ),
+        );
+        const actorName =
+          actor?.full_name || actor?.email?.split("@")[0] || "A teammate";
+        const { createNotification } = await import(
+          "@/app/actions/notifications"
+        );
+        // Send one notification per department added — keeps the deep link
+        // accurate and lets the user click straight into the right hub.
+        await Promise.all(
+          newlyAdded.map((a) =>
+            createNotification({
+              recipientId: profileId,
+              organizationId: ctx.orgId,
+              actorId: ctx.userId,
+              type: "department_assigned",
+              title: `${actorName} added you to ${
+                deptNameById.get(a.department_id) || "a department"
+              }`,
+              body: a.is_primary ? "Primary department" : "Secondary department",
+              entityType: "department",
+              entityId: a.department_id,
+              actionUrl: `/ministry-hub/${a.department_id}`,
+            }),
+          ),
+        );
+      } catch (err) {
+        console.error("[bulkUpdateAssignments] Notification send failed:", err);
+      }
+    }
   }
 
   revalidatePath("/directory/staff-management");

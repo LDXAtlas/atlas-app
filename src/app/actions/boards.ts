@@ -1180,8 +1180,24 @@ export async function addBoardMember(
     }
   }
 
-  // TODO: write into an in-app notifications table once that exists.
-  // Today the sidebar notification popover uses static placeholder data.
+  // In-app notification — best-effort. Same fail-soft posture as the email:
+  // the membership insert stands even if notify falls over.
+  try {
+    const { createNotification } = await import("@/app/actions/notifications");
+    await createNotification({
+      recipientId: target.id,
+      organizationId: board.organization_id,
+      actorId: ctx.userId,
+      type: "board_member_added",
+      title: `${inviterName} added you to ${boardName}`,
+      body: "You're now part of this project board.",
+      entityType: "board",
+      entityId: boardId,
+      actionUrl: `/workspace/projects/${boardId}`,
+    });
+  } catch (err) {
+    console.error("[addBoardMember] Notification send failed:", err);
+  }
 
   revalidatePath("/workspace/projects");
   revalidatePath(`/workspace/projects/${boardId}`);
@@ -1434,6 +1450,47 @@ export async function createCard(
     }
   }
 
+  // Notify the assignee (if any and not the creator). Best-effort.
+  if (
+    inserted.assigned_to &&
+    inserted.assigned_to !== ctx.userId &&
+    assignee
+  ) {
+    try {
+      const { createNotification } = await import("@/app/actions/notifications");
+      // Pull the actor + board name in parallel for the notification copy.
+      const [{ data: actor }, { data: boardRow }] = await Promise.all([
+        supabaseAdmin
+          .from("profiles")
+          .select("full_name, email")
+          .eq("id", ctx.userId)
+          .maybeSingle(),
+        supabaseAdmin
+          .from("boards")
+          .select("name, organization_id")
+          .eq("id", col.board_id)
+          .maybeSingle(),
+      ]);
+      const actorName =
+        actor?.full_name || actor?.email?.split("@")[0] || "A teammate";
+      const boardName = boardRow?.name || "a project board";
+      const organizationId = boardRow?.organization_id ?? ctx.organizationId;
+      await createNotification({
+        recipientId: inserted.assigned_to,
+        organizationId,
+        actorId: ctx.userId,
+        type: "board_card_assigned",
+        title: `${actorName} assigned you a card`,
+        body: `"${inserted.title}" on ${boardName}`,
+        entityType: "board_card",
+        entityId: inserted.id,
+        actionUrl: `/workspace/projects/${col.board_id}`,
+      });
+    } catch (err) {
+      console.error("[createCard] Notification send failed:", err);
+    }
+  }
+
   await touchBoard(col.board_id);
   revalidatePath(`/workspace/projects/${col.board_id}`);
   return {
@@ -1474,9 +1531,11 @@ export async function updateCard(
   const ctx = await getAuthContext();
   if (!ctx) return { success: false, error: "Not authenticated." };
 
+  // Fetch the existing assignment + title so we can detect a true change
+  // and craft the notification copy without an extra round-trip later.
   const { data: card } = await supabaseAdmin
     .from("board_cards")
-    .select("board_id")
+    .select("board_id, title, assigned_to")
     .eq("id", cardId)
     .maybeSingle();
   if (!card) return { success: false, error: "Card not found." };
@@ -1508,6 +1567,49 @@ export async function updateCard(
     console.error("[updateCard] Update error:", error.message);
     return { success: false, error: error.message };
   }
+
+  // Notify the new assignee on an actual change (not a no-op re-save) and
+  // only when it's not the actor themselves.
+  const newAssignee =
+    data.assigned_to !== undefined ? data.assigned_to || null : card.assigned_to;
+  const changed =
+    data.assigned_to !== undefined && newAssignee !== card.assigned_to;
+  if (changed && newAssignee && newAssignee !== ctx.userId) {
+    try {
+      const { createNotification } = await import("@/app/actions/notifications");
+      const [{ data: actor }, { data: boardRow }] = await Promise.all([
+        supabaseAdmin
+          .from("profiles")
+          .select("full_name, email")
+          .eq("id", ctx.userId)
+          .maybeSingle(),
+        supabaseAdmin
+          .from("boards")
+          .select("name, organization_id")
+          .eq("id", card.board_id)
+          .maybeSingle(),
+      ]);
+      const actorName =
+        actor?.full_name || actor?.email?.split("@")[0] || "A teammate";
+      const boardName = boardRow?.name || "a project board";
+      const organizationId = boardRow?.organization_id ?? ctx.organizationId;
+      const cardTitle = (update.title as string) || card.title;
+      await createNotification({
+        recipientId: newAssignee,
+        organizationId,
+        actorId: ctx.userId,
+        type: "board_card_assigned",
+        title: `${actorName} assigned you a card`,
+        body: `"${cardTitle}" on ${boardName}`,
+        entityType: "board_card",
+        entityId: cardId,
+        actionUrl: `/workspace/projects/${card.board_id}`,
+      });
+    } catch (err) {
+      console.error("[updateCard] Notification send failed:", err);
+    }
+  }
+
   await touchBoard(card.board_id);
   revalidatePath(`/workspace/projects/${card.board_id}`);
   return { success: true };

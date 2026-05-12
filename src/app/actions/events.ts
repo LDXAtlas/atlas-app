@@ -145,6 +145,72 @@ export async function createEvent(data: EventInput): Promise<ActionResult> {
     await supabaseAdmin.from("event_departments").insert(rows);
   }
 
+  // Notify department members that an event was scheduled for them. We
+  // only notify when the event is scoped to one or more departments — an
+  // org-wide event would otherwise spam every profile in the org. The
+  // single-department field and the multi-department array are both
+  // considered. Best-effort.
+  if (event?.id) {
+    try {
+      const allDeptIds = Array.from(
+        new Set(
+          [
+            data.department_id || null,
+            ...(data.department_ids ?? []),
+          ].filter((x): x is string => !!x),
+        ),
+      );
+      if (allDeptIds.length > 0) {
+        const { data: rows } = await supabaseAdmin
+          .from("profile_departments")
+          .select("profile_id")
+          .in("department_id", allDeptIds);
+        const recipientIds = Array.from(
+          new Set(
+            (rows ?? []).map((r: { profile_id: string }) => r.profile_id),
+          ),
+        );
+        if (recipientIds.length > 0) {
+          const { data: actor } = await supabaseAdmin
+            .from("profiles")
+            .select("full_name, email")
+            .eq("id", ctx.userId)
+            .maybeSingle();
+          const actorName =
+            actor?.full_name || actor?.email?.split("@")[0] || "A teammate";
+          const { createNotificationsBatch } = await import(
+            "@/app/actions/notifications"
+          );
+          const when = data.is_all_day
+            ? new Date(data.starts_at).toLocaleDateString("en-US", {
+                weekday: "short",
+                month: "short",
+                day: "numeric",
+              })
+            : new Date(data.starts_at).toLocaleString("en-US", {
+                weekday: "short",
+                month: "short",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+              });
+          await createNotificationsBatch(recipientIds, {
+            organizationId: ctx.organizationId,
+            actorId: ctx.userId,
+            type: "event_invited",
+            title: `${actorName} invited you to ${data.title.trim()}`,
+            body: when,
+            entityType: "event",
+            entityId: event.id,
+            actionUrl: `/workspace/calendar?eventId=${event.id}`,
+          });
+        }
+      }
+    } catch (err) {
+      console.error("[createEvent] Notification fan-out failed:", err);
+    }
+  }
+
   revalidatePath("/workspace/events");
   revalidatePath("/workspace/calendar");
   revalidatePath("/dashboard");
