@@ -16,6 +16,7 @@ import {
   Building,
 } from "lucide-react";
 import type { BoardSummary } from "@/app/actions/boards";
+import { toggleBoardStar } from "@/app/actions/boards";
 import { can } from "@/lib/permissions";
 import type { Role } from "@/lib/permissions";
 import { BoardCard } from "./board-row";
@@ -58,20 +59,50 @@ export function BoardsListView({
   const [departmentId, setDepartmentId] = useState<string | "all">("all");
   const [view, setView] = useState<ViewMode>("grid");
 
-  // ADDED: Local state to make starring/unstarring instantly move cards and update counts
+  // Local state lets the star fill/unfill instantly when clicked. The
+  // matching toggleBoardStar() server action persists the change in
+  // board_stars; on error we revert.
   const [localBoards, setLocalBoards] = useState(boards);
-  
-  // Keep synced if a new board is created on the server
+
+  // Keep in sync if the server prop changes (new board created, route refresh).
   useEffect(() => {
     setLocalBoards(boards);
   }, [boards]);
 
-  const handleToggleStar = (boardId: string) => {
+  // Brief inline error banner if persisting the star fails.
+  const [starError, setStarError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!starError) return;
+    const id = setTimeout(() => setStarError(null), 3000);
+    return () => clearTimeout(id);
+  }, [starError]);
+
+  const handleToggleStar = async (boardId: string) => {
+    const previous = localBoards.find((b) => b.id === boardId)?.is_starred;
+    // Optimistic flip.
     setLocalBoards((prev) =>
       prev.map((b) =>
-        b.id === boardId ? { ...b, is_starred: !b.is_starred } : b
-      )
+        b.id === boardId ? { ...b, is_starred: !b.is_starred } : b,
+      ),
     );
+    const result = await toggleBoardStar(boardId);
+    if (!result.success) {
+      // Revert local state and surface the error.
+      setLocalBoards((prev) =>
+        prev.map((b) =>
+          b.id === boardId ? { ...b, is_starred: !!previous } : b,
+        ),
+      );
+      setStarError(result.error || "Couldn't save your star. Try again.");
+      return;
+    }
+    // Sync to the server's truth in case anything raced.
+    if (result.data) {
+      const next = result.data.is_starred;
+      setLocalBoards((prev) =>
+        prev.map((b) => (b.id === boardId ? { ...b, is_starred: next } : b)),
+      );
+    }
   };
 
   const canCreate = can.createDepartment(viewerRole);
@@ -209,6 +240,16 @@ export function BoardsListView({
           )}
         </div>
       </div>
+
+      {starError && (
+        <div
+          role="status"
+          className="mb-4 px-3.5 py-2.5 rounded-xl border bg-red-50 border-red-100 text-red-700 text-[13px]"
+          style={{ fontFamily: "var(--font-source-sans)" }}
+        >
+          {starError}
+        </div>
+      )}
 
       {/* Sections */}
       {boards.length === 0 ? (

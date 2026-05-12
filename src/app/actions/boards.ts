@@ -331,6 +331,18 @@ export async function getBoards(filters?: {
   if (boards.length === 0) return { data: [] };
   const filteredIds = boards.map((b) => b.id);
 
+  // Stars for the current viewer. Reading the join up front means is_starred
+  // reflects what the user has actually starred (persisted across sessions),
+  // not the creator/member proxy we used before the board_stars table existed.
+  const { data: starRows } = await supabaseAdmin
+    .from("board_stars")
+    .select("board_id")
+    .eq("user_id", userId)
+    .in("board_id", filteredIds);
+  const myStarredBoardIds = new Set<string>(
+    (starRows ?? []).map((r: { board_id: string }) => r.board_id),
+  );
+
   // Card counts (total + completed) per board.
   const { data: cardRows } = await supabaseAdmin
     .from("board_cards")
@@ -444,7 +456,7 @@ export async function getBoards(filters?: {
       completed_count: counts.completed,
       member_count: members.length + (members.some((m) => m.profile_id === b.created_by) ? 0 : 1),
       member_avatars: memberAvatars,
-      is_starred: isCreator || isMember,
+      is_starred: myStarredBoardIds.has(b.id),
       viewer_can_edit: canEdit,
       viewer_can_delete: canDelete,
     };
@@ -1004,6 +1016,57 @@ export async function deleteBoard(
   }
   revalidatePath("/workspace/projects");
   return { success: true };
+}
+
+// ─── toggleBoardStar ────────────────────────────────────────
+//
+// Per-user favorite. If a (user, board) row exists in board_stars it's
+// deleted (unstar); otherwise it's inserted (star). Returns the resulting
+// is_starred so the client can sync against actual server state instead of
+// trusting its own optimistic flip.
+export async function toggleBoardStar(
+  boardId: string,
+): Promise<ActionResult<{ is_starred: boolean }>> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated." };
+
+  // Verify the user can actually see this board before we let them star it.
+  // We don't require edit access — anyone with visibility should be able to
+  // favorite a board for their own dashboard.
+  const access = await loadBoardForViewer(ctx, boardId);
+  if (!access.ok) return { success: false, error: access.error };
+
+  const { data: existing } = await supabaseAdmin
+    .from("board_stars")
+    .select("user_id")
+    .eq("user_id", ctx.userId)
+    .eq("board_id", boardId)
+    .maybeSingle();
+
+  if (existing) {
+    const { error } = await supabaseAdmin
+      .from("board_stars")
+      .delete()
+      .eq("user_id", ctx.userId)
+      .eq("board_id", boardId);
+    if (error) {
+      console.error("[toggleBoardStar] Delete error:", error.message);
+      return { success: false, error: error.message };
+    }
+    revalidatePath("/workspace/projects");
+    return { success: true, data: { is_starred: false } };
+  }
+
+  const { error } = await supabaseAdmin.from("board_stars").insert({
+    user_id: ctx.userId,
+    board_id: boardId,
+  });
+  if (error) {
+    console.error("[toggleBoardStar] Insert error:", error.message);
+    return { success: false, error: error.message };
+  }
+  revalidatePath("/workspace/projects");
+  return { success: true, data: { is_starred: true } };
 }
 
 // ─── Columns ─────────────────────────────────────────────────
