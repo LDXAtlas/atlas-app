@@ -14,20 +14,13 @@ Before you start a coding session:
 
 ## Lucas (last updated: 2026-05-12)
 
-Wiring up backend for Ben's three pending UI tasks:
+Free / between tasks. Shipped the three pending backend items for Ben:
 
-- Board star persistence (`board_stars` table + `toggleBoardStar`)
-- Add Member modal backend (`searchProfiles` + `addBoardMember`)
-- Board Overview description save (`updateBoard` wiring)
+- ✅ Board Overview description save (`updateBoard` action + Overview wiring)
+- ✅ Board star persistence (`board_stars` migration + `toggleBoardStar` + `getBoards` join + frontend wire)
+- ✅ Add Member modal backend (`searchProfiles` + `addBoardMember` + Resend email + modal wire)
 
-Files to avoid touching while this is in flight:
-
-- `src/app/actions/boards.ts`
-- `src/app/actions/profiles.ts` (new)
-- `src/app/(app)/workspace/projects/[id]/_components/board-view.tsx` (Overview section only)
-- `src/app/(app)/workspace/projects/[id]/_components/board-detail-header.tsx` (Add Member modal only)
-- `src/app/(app)/workspace/projects/_components/boards-list.tsx` (star toggle only)
-- `supabase/migrations/` (will add `board_stars`)
+See `BACKEND_NOTES.md → DONE` for details. Open to take the next thing — leave a note in `BACKEND_NOTES.md → PENDING` when there's something queued.
 
 ---
 
