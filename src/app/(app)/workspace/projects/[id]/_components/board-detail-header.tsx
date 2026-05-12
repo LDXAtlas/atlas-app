@@ -28,7 +28,9 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import type { BoardDetail } from "@/app/actions/boards";
-import { archiveBoard, deleteBoard } from "@/app/actions/boards";
+import { addBoardMember, archiveBoard, deleteBoard } from "@/app/actions/boards";
+import { searchProfiles } from "@/app/actions/profiles";
+import type { ProfileSearchResult } from "@/app/actions/profiles";
 import { WorkspacePill } from "../../_components/boards-list";
 import type { SortOption } from "./board-view";
 
@@ -81,6 +83,74 @@ export function BoardDetailHeader({
   const filterRef = useRef<HTMLDivElement>(null);
 
   const [starred, setStarred] = useState(true);
+
+  // ── Add Member modal state ──────────────────────────────────
+  const [memberQuery, setMemberQuery] = useState("");
+  const [memberResults, setMemberResults] = useState<ProfileSearchResult[]>([]);
+  const [memberSearching, setMemberSearching] = useState(false);
+  const [addingProfileId, setAddingProfileId] = useState<string | null>(null);
+  const [justAdded, setJustAdded] = useState<ProfileSearchResult[]>([]);
+  const [addError, setAddError] = useState<string | null>(null);
+
+  // Reset modal state whenever it opens.
+  useEffect(() => {
+    if (!addMemberOpen) return;
+    setMemberQuery("");
+    setMemberResults([]);
+    setJustAdded([]);
+    setAddError(null);
+  }, [addMemberOpen]);
+
+  // Auto-dismiss the add error.
+  useEffect(() => {
+    if (!addError) return;
+    const id = setTimeout(() => setAddError(null), 3500);
+    return () => clearTimeout(id);
+  }, [addError]);
+
+  // Debounced search. Fires 300ms after the user stops typing.
+  useEffect(() => {
+    if (!addMemberOpen) return;
+    // Empty input: show an empty prompt area, don't hit the server.
+    if (!memberQuery.trim()) {
+      setMemberResults([]);
+      setMemberSearching(false);
+      return;
+    }
+    setMemberSearching(true);
+    const handle = setTimeout(async () => {
+      const result = await searchProfiles(memberQuery, board.id);
+      // Hide anyone we just added from the visible results so the list
+      // updates instantly even before the parent re-fetches.
+      const justAddedIds = new Set(justAdded.map((p) => p.id));
+      setMemberResults(
+        (result.data || []).filter((p) => !justAddedIds.has(p.id)),
+      );
+      setMemberSearching(false);
+    }, 300);
+    return () => clearTimeout(handle);
+  }, [memberQuery, addMemberOpen, board.id, justAdded]);
+
+  async function handleAddMember(profile: ProfileSearchResult) {
+    setAddingProfileId(profile.id);
+    setAddError(null);
+    const result = await addBoardMember(board.id, profile.id, "member");
+    setAddingProfileId(null);
+    if (!result.success) {
+      setAddError(result.error || "Couldn't add that person. Try again.");
+      return;
+    }
+    // Move to "just added" so the modal can stay open and add more.
+    setJustAdded((prev) => [profile, ...prev]);
+    setMemberResults((prev) => prev.filter((p) => p.id !== profile.id));
+  }
+
+  // Refresh the parent board view when the modal closes so the new avatars
+  // appear in the header stack and member panel.
+  function closeAddMember() {
+    setAddMemberOpen(false);
+    if (justAdded.length > 0) router.refresh();
+  }
 
   // Close menus when clicking outside
   useEffect(() => {
@@ -494,7 +564,7 @@ export function BoardDetailHeader({
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
             className="fixed inset-0 z-[100] flex items-center justify-center bg-black/30 p-4"
-            onClick={() => setAddMemberOpen(false)}
+            onClick={closeAddMember}
           >
             <motion.div
               initial={{ opacity: 0, scale: 0.96, y: 6 }}
@@ -512,42 +582,183 @@ export function BoardDetailHeader({
                   Add Members
                 </h3>
                 <button
-                  onClick={() => setAddMemberOpen(false)}
+                  onClick={closeAddMember}
                   className="size-8 rounded-lg flex items-center justify-center text-[#9CA3AF] hover:text-[#2D333A] hover:bg-[#F4F5F7] transition-colors"
                 >
                   <X className="size-4" />
                 </button>
               </div>
-              
+
               <div className="relative mb-4">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-[#9CA3AF]" />
                 <input
                   type="text"
+                  value={memberQuery}
+                  onChange={(e) => setMemberQuery(e.target.value)}
                   placeholder="Search name or email..."
                   autoFocus
                   className="w-full h-10 pl-9 pr-3 rounded-xl border border-[#E5E7EB] text-[13px] text-[#2D333A] outline-none focus:border-[#5CE1A5] transition-colors"
                   style={{ fontFamily: "var(--font-source-sans)" }}
                 />
               </div>
-              
-              <div className="border border-[#E5E7EB] bg-[#F8FAFC] rounded-xl overflow-hidden mb-5">
-                <div className="px-3 py-6 text-center">
-                  <div className="size-10 rounded-full bg-white border border-[#E5E7EB] flex items-center justify-center mx-auto mb-3 shadow-sm">
-                    <Users className="size-5 text-[#9CA3AF]" />
-                  </div>
-                  <p className="text-[13px] text-[#475569] font-medium" style={{ fontFamily: "var(--font-source-sans)" }}>
-                    Search for teammates to invite
-                  </p>
-                  <p className="text-[12px] text-[#9CA3AF] mt-1" style={{ fontFamily: "var(--font-source-sans)" }}>
-                    They will get an email notification.
-                  </p>
+
+              {addError && (
+                <div
+                  role="status"
+                  className="mb-3 px-3 py-2 rounded-lg border bg-red-50 border-red-100 text-[12px] text-red-700"
+                  style={{ fontFamily: "var(--font-source-sans)" }}
+                >
+                  {addError}
                 </div>
+              )}
+
+              {/* Just-added confirmation list — lets the user see who they've
+                  added in this session before closing the modal. */}
+              {justAdded.length > 0 && (
+                <div className="mb-3 border border-[#E5E7EB] bg-[#F0FDF4] rounded-xl overflow-hidden">
+                  {justAdded.map((p) => (
+                    <div
+                      key={p.id}
+                      className="flex items-center gap-3 px-3 py-2.5 border-b border-emerald-100 last:border-b-0"
+                    >
+                      <span
+                        className="size-8 rounded-full text-white text-[11px] flex items-center justify-center shrink-0"
+                        style={{
+                          fontFamily: "var(--font-poppins)",
+                          fontWeight: 600,
+                          backgroundColor: p.avatar_color || "#5CE1A5",
+                        }}
+                      >
+                        {initialsOf(p.full_name)}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p
+                          className="text-[13px] text-[#0F172A] truncate"
+                          style={{
+                            fontFamily: "var(--font-poppins)",
+                            fontWeight: 600,
+                          }}
+                        >
+                          {p.full_name}
+                        </p>
+                        <p
+                          className="text-[11px] text-[#475569] truncate"
+                          style={{ fontFamily: "var(--font-source-sans)" }}
+                        >
+                          {p.email}
+                        </p>
+                      </div>
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700">
+                        <Check className="size-3.5" /> Added
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Results / states. */}
+              <div className="border border-[#E5E7EB] bg-[#F8FAFC] rounded-xl overflow-hidden mb-5 max-h-[260px] overflow-y-auto">
+                {memberQuery.trim() === "" ? (
+                  <div className="px-3 py-6 text-center">
+                    <div className="size-10 rounded-full bg-white border border-[#E5E7EB] flex items-center justify-center mx-auto mb-3 shadow-sm">
+                      <Users className="size-5 text-[#9CA3AF]" />
+                    </div>
+                    <p
+                      className="text-[13px] text-[#475569] font-medium"
+                      style={{ fontFamily: "var(--font-source-sans)" }}
+                    >
+                      Search for teammates to invite
+                    </p>
+                    <p
+                      className="text-[12px] text-[#9CA3AF] mt-1"
+                      style={{ fontFamily: "var(--font-source-sans)" }}
+                    >
+                      They&apos;ll get an email notification.
+                    </p>
+                  </div>
+                ) : memberSearching ? (
+                  <div className="flex items-center justify-center gap-2 px-3 py-6 text-[12px] text-[#6B7280]">
+                    <Loader2 className="size-4 animate-spin" />
+                    Searching...
+                  </div>
+                ) : memberResults.length === 0 ? (
+                  <div className="px-3 py-6 text-center">
+                    <p
+                      className="text-[13px] text-[#475569]"
+                      style={{ fontFamily: "var(--font-source-sans)" }}
+                    >
+                      No matches for &ldquo;{memberQuery}&rdquo;.
+                    </p>
+                    <p
+                      className="text-[12px] text-[#9CA3AF] mt-1"
+                      style={{ fontFamily: "var(--font-source-sans)" }}
+                    >
+                      Existing board members are hidden.
+                    </p>
+                  </div>
+                ) : (
+                  <ul>
+                    {memberResults.map((p) => {
+                      const isAdding = addingProfileId === p.id;
+                      return (
+                        <li key={p.id} className="border-b border-[#E5E7EB] last:border-b-0">
+                          <button
+                            type="button"
+                            onClick={() => handleAddMember(p)}
+                            disabled={isAdding}
+                            className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-white transition-colors disabled:opacity-60"
+                          >
+                            <span
+                              className="size-8 rounded-full text-white text-[11px] flex items-center justify-center shrink-0"
+                              style={{
+                                fontFamily: "var(--font-poppins)",
+                                fontWeight: 600,
+                                backgroundColor: p.avatar_color || "#5CE1A5",
+                              }}
+                            >
+                              {initialsOf(p.full_name)}
+                            </span>
+                            <div className="flex-1 min-w-0">
+                              <p
+                                className="text-[13px] text-[#0F172A] truncate"
+                                style={{
+                                  fontFamily: "var(--font-poppins)",
+                                  fontWeight: 600,
+                                }}
+                              >
+                                {p.full_name}
+                              </p>
+                              <p
+                                className="text-[11px] text-[#475569] truncate"
+                                style={{
+                                  fontFamily: "var(--font-source-sans)",
+                                }}
+                              >
+                                {p.email}
+                              </p>
+                            </div>
+                            {isAdding ? (
+                              <Loader2 className="size-4 animate-spin text-[#9CA3AF]" />
+                            ) : (
+                              <span
+                                className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#059669]"
+                                style={{ fontFamily: "var(--font-poppins)" }}
+                              >
+                                <Plus className="size-3.5" /> Add
+                              </span>
+                            )}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
               </div>
-              
+
               <div className="flex justify-end gap-2">
                 <button
                   type="button"
-                  onClick={() => setAddMemberOpen(false)}
+                  onClick={closeAddMember}
                   className="h-10 px-5 rounded-xl bg-[#0F172A] text-white text-[13px] font-semibold hover:bg-[#1E293B] transition-colors"
                   style={{ fontFamily: "var(--font-poppins)" }}
                 >

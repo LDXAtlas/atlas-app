@@ -1069,6 +1069,137 @@ export async function toggleBoardStar(
   return { success: true, data: { is_starred: true } };
 }
 
+// ─── addBoardMember ─────────────────────────────────────────
+//
+// Adds a profile to a board with the given role. Caller needs edit access
+// to the board (creator, admin, or existing owner/editor). Target must be
+// in the same organization. Sends a notification email; the in-app
+// notifications table doesn't exist yet, so the in-app piece is a TODO.
+export type AddBoardMemberResult = {
+  member: {
+    profile_id: string;
+    full_name: string;
+    email: string;
+    avatar_url: string | null;
+    role: BoardMemberRole;
+  };
+};
+
+export async function addBoardMember(
+  boardId: string,
+  profileId: string,
+  role: BoardMemberRole = "member",
+): Promise<ActionResult<AddBoardMemberResult>> {
+  const access = await requireEditAccess(boardId);
+  if (!access.ok) return { success: false, error: access.error };
+  const { ctx, board } = access;
+
+  if (!["owner", "editor", "member", "viewer"].includes(role)) {
+    return { success: false, error: "Unknown member role." };
+  }
+
+  // Target profile must exist and be in the same org.
+  const { data: target } = await supabaseAdmin
+    .from("profiles")
+    .select("id, full_name, email, avatar_url, organization_id, role")
+    .eq("id", profileId)
+    .maybeSingle();
+  if (!target || target.organization_id !== ctx.organizationId) {
+    return { success: false, error: "That person isn't in your organization." };
+  }
+
+  // Insert the membership. Unique constraint on (board_id, profile_id)
+  // gives us a nice "already a member" failure mode.
+  const { error: insertError } = await supabaseAdmin
+    .from("board_members")
+    .insert({
+      board_id: boardId,
+      profile_id: profileId,
+      role,
+    });
+
+  if (insertError) {
+    // 23505 = unique_violation. Surface a friendly message instead of leaking
+    // the constraint name.
+    if ((insertError as { code?: string }).code === "23505") {
+      return { success: false, error: "They're already on this board." };
+    }
+    console.error("[addBoardMember] Insert error:", insertError.message);
+    return { success: false, error: insertError.message };
+  }
+
+  // Resolve display names for the email template.
+  const [{ data: inviterProfile }, { data: orgRow }] = await Promise.all([
+    supabaseAdmin
+      .from("profiles")
+      .select("full_name, email")
+      .eq("id", ctx.userId)
+      .maybeSingle(),
+    supabaseAdmin
+      .from("organizations")
+      .select("name")
+      .eq("id", board.organization_id)
+      .maybeSingle(),
+  ]);
+
+  const inviterName =
+    inviterProfile?.full_name ||
+    inviterProfile?.email?.split("@")[0] ||
+    "A teammate";
+  const recipientName =
+    target.full_name || target.email?.split("@")[0] || "there";
+  const organizationName = orgRow?.name || "your organization";
+
+  // Fetch the board name for the email subject/body. We have access to
+  // board.id/board_id but the BoardAccessRow shape doesn't include name.
+  const { data: boardRow } = await supabaseAdmin
+    .from("boards")
+    .select("name")
+    .eq("id", boardId)
+    .maybeSingle();
+  const boardName = boardRow?.name || "a project board";
+
+  // Notification email — best-effort. Email failure shouldn't roll back the
+  // membership insert; we just log it and continue.
+  if (target.email) {
+    try {
+      const { sendBoardMemberAddedEmail } = await import(
+        "@/lib/email/send-board-member-added"
+      );
+      await sendBoardMemberAddedEmail({
+        to: target.email,
+        recipientName,
+        inviterName,
+        boardName,
+        boardId,
+        organizationName,
+        role,
+      });
+    } catch (err) {
+      console.error("[addBoardMember] Email send failed:", err);
+    }
+  }
+
+  // TODO: write into an in-app notifications table once that exists.
+  // Today the sidebar notification popover uses static placeholder data.
+
+  revalidatePath("/workspace/projects");
+  revalidatePath(`/workspace/projects/${boardId}`);
+
+  return {
+    success: true,
+    data: {
+      member: {
+        profile_id: target.id,
+        full_name: recipientName,
+        email: target.email || "",
+        avatar_url: target.avatar_url,
+        role,
+      },
+    },
+  };
+}
+
 // ─── Columns ─────────────────────────────────────────────────
 export async function createColumn(
   boardId: string,
