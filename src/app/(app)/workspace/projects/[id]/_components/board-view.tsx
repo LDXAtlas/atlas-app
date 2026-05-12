@@ -25,6 +25,7 @@ import {
   moveCard,
   reorderCardsInColumn,
   reorderColumns,
+  updateBoard,
   updateColumn,
   updateCard,
 } from "@/app/actions/boards";
@@ -560,11 +561,42 @@ function BoardOverview({ board }: { board: BoardDetail }) {
   const [isEditing, setIsEditing] = useState(false);
   const [description, setDescription] = useState(board.description || "");
   const [draft, setDraft] = useState(description);
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState<{
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
 
-  const handleSave = () => {
-    setDescription(draft);
+  // Auto-dismiss the toast 3s after it appears — matches the
+  // setActionMessage pattern in settings/organization.
+  useEffect(() => {
+    if (!toast) return;
+    const id = setTimeout(() => setToast(null), 3000);
+    return () => clearTimeout(id);
+  }, [toast]);
+
+  const handleSave = async () => {
+    if (saving) return;
+    const previous = description;
+    const next = draft;
+    // Optimistic: flip the UI immediately so it feels instant.
+    setDescription(next);
     setIsEditing(false);
-    // (Backend Dev will add the save-to-database function here in Phase 3)
+    setSaving(true);
+    const result = await updateBoard(board.id, { description: next });
+    setSaving(false);
+    if (!result.success) {
+      // Revert and surface the error.
+      setDescription(previous);
+      setDraft(previous);
+      setIsEditing(true);
+      setToast({
+        type: "error",
+        text: result.error || "Couldn't save the description. Try again.",
+      });
+      return;
+    }
+    setToast({ type: "success", text: "Description saved." });
   };
 
   const handleCancel = () => {
@@ -581,6 +613,30 @@ function BoardOverview({ board }: { board: BoardDetail }) {
     >
       {/* Left Column: Project Brief */}
       <div className="w-full lg:w-3/4 min-w-0 space-y-6">
+        <AnimatePresence>
+          {toast && (
+            <motion.div
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.15 }}
+              role="status"
+              className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl border text-[13px] ${
+                toast.type === "success"
+                  ? "bg-emerald-50 border-emerald-100 text-emerald-700"
+                  : "bg-red-50 border-red-100 text-red-700"
+              }`}
+              style={{ fontFamily: "var(--font-source-sans)" }}
+            >
+              {toast.type === "success" ? (
+                <Check className="size-4" />
+              ) : (
+                <span aria-hidden>!</span>
+              )}
+              {toast.text}
+            </motion.div>
+          )}
+        </AnimatePresence>
         <section className="bg-white rounded-2xl border border-[#E5E7EB] p-8 shadow-sm transition-all">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-[18px] text-[#0F172A]" style={{ fontFamily: "var(--font-poppins)", fontWeight: 700 }}>Project Brief</h2>
@@ -619,10 +675,11 @@ function BoardOverview({ board }: { board: BoardDetail }) {
                 </button>
                 <button
                   onClick={handleSave}
-                  className="inline-flex items-center gap-1.5 h-8 px-4 rounded-lg bg-[#5CE1A5] text-[#060C09] text-[12px] font-semibold hover:shadow-md transition-all"
+                  disabled={saving}
+                  className="inline-flex items-center gap-1.5 h-8 px-4 rounded-lg bg-[#5CE1A5] text-[#060C09] text-[12px] font-semibold hover:shadow-md transition-all disabled:opacity-60"
                   style={{ fontFamily: "var(--font-poppins)" }}
                 >
-                  <Check className="size-3.5" /> Save
+                  <Check className="size-3.5" /> {saving ? "Saving..." : "Save"}
                 </button>
               </div>
             </motion.div>

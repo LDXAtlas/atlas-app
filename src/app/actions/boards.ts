@@ -888,6 +888,64 @@ export async function createBoard(
   return { success: true, data: { id: inserted.id } };
 }
 
+// ─── updateBoard ────────────────────────────────────────────
+export type UpdateBoardInput = Partial<{
+  name: string;
+  description: string | null;
+  color: string;
+  icon: string;
+  department_id: string | null;
+  visibility: BoardVisibility;
+}>;
+
+export async function updateBoard(
+  id: string,
+  data: UpdateBoardInput,
+): Promise<ActionResult> {
+  const access = await requireEditAccess(id);
+  if (!access.ok) return { success: false, error: access.error };
+
+  const update: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+  };
+  if (typeof data.name === "string") {
+    const trimmed = data.name.trim();
+    if (!trimmed) return { success: false, error: "Board name can't be empty." };
+    update.name = trimmed;
+  }
+  if (data.description !== undefined) {
+    update.description = data.description?.trim() || null;
+  }
+  if (typeof data.color === "string") update.color = data.color;
+  if (typeof data.icon === "string") update.icon = data.icon;
+  if (data.department_id !== undefined) {
+    update.department_id = data.department_id || null;
+  }
+  if (data.visibility !== undefined) {
+    if (
+      !["organization", "department", "private", "invitees_only"].includes(
+        data.visibility,
+      )
+    ) {
+      return { success: false, error: "Unknown visibility setting." };
+    }
+    update.visibility = data.visibility;
+  }
+
+  // Only updated_at and we'd still no-op the user-visible state — fine to apply.
+  const { error } = await supabaseAdmin
+    .from("boards")
+    .update(update)
+    .eq("id", id);
+  if (error) {
+    console.error("[updateBoard] Update error:", error.message);
+    return { success: false, error: error.message };
+  }
+  revalidatePath("/workspace/projects");
+  revalidatePath(`/workspace/projects/${id}`);
+  return { success: true };
+}
+
 // ─── archiveBoard ───────────────────────────────────────────
 export async function archiveBoard(
   id: string,
