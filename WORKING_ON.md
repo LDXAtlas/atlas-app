@@ -14,13 +14,9 @@ Before you start a coding session:
 
 ## Lucas (last updated: 2026-05-12)
 
-Free / between tasks. Shipped the three pending backend items for Ben:
+Free / between tasks. Most recent ship: full in-app notifications system (schema migration in source control, 9 server actions, integration into 6 existing action files, bell dropdown + Realtime, and a `/settings/notifications` preferences page).
 
-- ✅ Board Overview description save (`updateBoard` action + Overview wiring)
-- ✅ Board star persistence (`board_stars` migration + `toggleBoardStar` + `getBoards` join + frontend wire)
-- ✅ Add Member modal backend (`searchProfiles` + `addBoardMember` + Resend email + modal wire)
-
-See `BACKEND_NOTES.md → DONE` for details. Open to take the next thing — leave a note in `BACKEND_NOTES.md → PENDING` when there's something queued.
+See `BACKEND_NOTES.md → DONE` for the running history and `BACKEND_NOTES.md → PENDING` for what's queued next (mostly Phase-2 notification follow-ups: task comments, more email templates, due-soon / reminder timers).
 
 ---
 

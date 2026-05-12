@@ -4,7 +4,10 @@ import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "@/app/actions/auth";
+import { getUnreadNotificationCount } from "@/app/actions/notifications";
+import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { motion, AnimatePresence } from "motion/react";
+import { NotificationsDropdown } from "./notifications-dropdown";
 import {
   LayoutGrid,
   Blocks,
@@ -213,13 +216,15 @@ function getUpgradePath(moduleId: string, itemHref?: string): string {
 // ─── Shell ───────────────────────────────────────────────
 interface AppShellProps {
   userName: string;
+  userId: string;
   tier: SubscriptionTier;
   children: React.ReactNode;
 }
 
-export function AppShell({ userName, tier, children }: AppShellProps) {
+export function AppShell({ userName, userId, tier, children }: AppShellProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
   const notificationsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -231,6 +236,47 @@ export function AppShell({ userName, tier, children }: AppShellProps) {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  // Bell badge state. Live updates via Supabase Realtime; a 60s poll runs
+  // as a fallback in case the channel ever misses an event.
+  useEffect(() => {
+    let cancelled = false;
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+    let channel: ReturnType<ReturnType<typeof createBrowserClient>["channel"]> | null = null;
+
+    async function refresh() {
+      const result = await getUnreadNotificationCount();
+      if (!cancelled) setUnreadCount(result.count);
+    }
+
+    refresh();
+
+    const supabase = createBrowserClient();
+    channel = supabase
+      .channel(`shell:notifications:${userId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "notifications",
+          filter: `recipient_id=eq.${userId}`,
+        },
+        () => {
+          // INSERT / UPDATE / DELETE — re-read count from the RPC.
+          refresh();
+        },
+      )
+      .subscribe();
+
+    intervalId = setInterval(refresh, 60_000);
+
+    return () => {
+      cancelled = true;
+      if (intervalId) clearInterval(intervalId);
+      if (channel) supabase.removeChannel(channel);
+    };
+  }, [userId]);
 
   const pathname = usePathname();
   const breadcrumbs = getBreadcrumbs(pathname);
@@ -419,59 +465,34 @@ export function AppShell({ userName, tier, children }: AppShellProps) {
 
           <div className="flex items-center gap-4">
             <div className="relative" ref={notificationsRef}>
-              <button 
+              <button
                 onClick={() => setNotificationsOpen(!notificationsOpen)}
                 className="relative text-[#6B7280] hover:text-[#5CE1A5] transition-colors p-2"
+                aria-label={
+                  unreadCount > 0
+                    ? `Notifications, ${unreadCount} unread`
+                    : "Notifications"
+                }
               >
                 <Bell className="size-5" />
-                <span className="absolute top-1 right-1 size-4 bg-[#5CE1A5] text-white text-[9px] font-semibold rounded-full flex items-center justify-center border-2 border-white">
-                  3
-                </span>
+                {unreadCount > 0 && (
+                  <span
+                    className="absolute top-0.5 right-0.5 min-w-[16px] h-4 px-1 bg-red-500 text-white text-[9px] font-semibold rounded-full flex items-center justify-center border-2 border-white tabular-nums"
+                    style={{ fontFamily: "var(--font-poppins)" }}
+                  >
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                )}
               </button>
 
               <AnimatePresence>
                 {notificationsOpen && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                    transition={{ duration: 0.2 }}
-                    className="absolute right-0 top-[calc(100%+8px)] w-80 bg-white border border-[#E5E7EB] shadow-2xl rounded-2xl z-[100] overflow-hidden"
-                  >
-                    <div className="px-4 py-3 border-b border-[#E5E7EB] flex items-center justify-between bg-[#F4F5F7]/50">
-                      <h3 className="text-[14px] text-[#2D333A]" style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}>Notifications</h3>
-                      <button className="text-[11px] text-[#5CE1A5] hover:text-[#3DB882] transition-colors font-medium">Mark all as read</button>
-                    </div>
-                    <div className="max-h-[300px] overflow-y-auto">
-                      <div className="px-4 py-3 border-b border-[#E5E7EB] hover:bg-[#F4F5F7] transition-colors cursor-pointer relative group">
-                        <div className="absolute left-0 top-0 bottom-0 w-1 bg-[#5CE1A5]" />
-                        <p className="text-[13px] text-[#2D333A] leading-snug mb-1" style={{ fontFamily: "var(--font-source-sans)" }}>
-                          <span className="font-semibold">Sarah Jenkins</span> mentioned you in <span className="font-semibold text-[#5CE1A5]">Sunday Service Planning</span>
-                        </p>
-                        <p className="text-[11px] text-[#9CA3AF]" style={{ fontFamily: "var(--font-source-sans)" }}>10 minutes ago</p>
-                      </div>
-                      
-                      <div className="px-4 py-3 border-b border-[#E5E7EB] hover:bg-[#F4F5F7] transition-colors cursor-pointer relative group">
-                        <div className="absolute left-0 top-0 bottom-0 w-1 bg-[#5CE1A5]" />
-                        <p className="text-[13px] text-[#2D333A] leading-snug mb-1" style={{ fontFamily: "var(--font-source-sans)" }}>
-                          <span className="font-semibold">Youth Group Retreat</span> was rescheduled to next week.
-                        </p>
-                        <p className="text-[11px] text-[#9CA3AF]" style={{ fontFamily: "var(--font-source-sans)" }}>1 hour ago</p>
-                      </div>
-                      
-                      <div className="px-4 py-3 hover:bg-[#F4F5F7] transition-colors cursor-pointer relative group opacity-70">
-                        <p className="text-[13px] text-[#2D333A] leading-snug mb-1" style={{ fontFamily: "var(--font-source-sans)" }}>
-                          <span className="font-semibold">Pastor Mike</span> assigned a task to you: <span className="font-semibold text-[#5CE1A5]">Review sermon notes</span>
-                        </p>
-                        <p className="text-[11px] text-[#9CA3AF]" style={{ fontFamily: "var(--font-source-sans)" }}>Yesterday</p>
-                      </div>
-                    </div>
-                    <div className="px-4 py-2 border-t border-[#E5E7EB] text-center bg-[#F4F5F7]/50">
-                      <button className="text-[12px] text-[#9CA3AF] hover:text-[#5CE1A5] transition-colors" style={{ fontFamily: "var(--font-source-sans)" }}>
-                        View all notifications
-                      </button>
-                    </div>
-                  </motion.div>
+                  <NotificationsDropdown
+                    userId={userId}
+                    unreadCount={unreadCount}
+                    onUnreadCountChange={setUnreadCount}
+                    onClose={() => setNotificationsOpen(false)}
+                  />
                 )}
               </AnimatePresence>
             </div>

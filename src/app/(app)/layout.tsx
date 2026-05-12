@@ -48,7 +48,7 @@ export default async function AppLayout({
   console.log("[AppLayout] Tier passed to AppShell:", tier);
 
   return (
-    <AppShell userName={userName} tier={tier}>
+    <AppShell userName={userName} userId={user.id} tier={tier}>
       {children}
     </AppShell>
   );
