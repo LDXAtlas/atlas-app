@@ -1,6 +1,7 @@
 "use server";
 
 import sharp from "sharp";
+import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getRoleFromProfile } from "@/lib/permissions";
@@ -28,7 +29,8 @@ export type Attachment = {
   id: string;
   organization_id: string;
   entity_type: AttachmentEntityType;
-  entity_id: string;
+  // Nullable for direct-library uploads (entity_type='library' + entity_id=null).
+  entity_id: string | null;
   name: string;
   description: string | null;
   file_type: FileCategory;
@@ -730,4 +732,556 @@ async function resolveUploader(
     full_name: data.full_name || data.email?.split("@")[0] || "Unnamed",
     avatar_color: "#5CE1A5",
   };
+}
+
+// ============================================================
+//  Phase 3 — Library page (folders, tags, browse, detail)
+// ============================================================
+
+// ─── Phase 3 types ─────────────────────────────────────────
+
+export type LibraryFolderVisibility = "organization" | "department" | "private";
+
+export type LibraryFolder = {
+  id: string;
+  organization_id: string;
+  name: string;
+  parent_folder_id: string | null;
+  description: string | null;
+  color: string;
+  icon: string;
+  visibility: LibraryFolderVisibility;
+  department_id: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type LibraryFolderWithCount = LibraryFolder & { file_count: number };
+
+export type LibraryTag = {
+  id: string;
+  organization_id: string;
+  name: string;
+  color: string;
+  created_by: string;
+  created_at: string;
+};
+
+export type LibraryTagWithUsage = LibraryTag & { usage_count: number };
+
+// Extended attachment row exposed to the library page. Carries the Phase 3
+// columns plus joined tags and uploader, ready for the file card / row UI.
+export type LibraryFile = {
+  id: string;
+  organization_id: string;
+  entity_type: AttachmentEntityType;
+  entity_id: string | null;
+  folder_id: string | null;
+  name: string;
+  description: string | null;
+  file_type: FileCategory;
+  file_extension: string | null;
+  size_bytes: number;
+  storage_path: string;
+  thumbnail_path: string | null;
+  mime_type: string | null;
+  uploaded_by: string;
+  uploaded_at: string;
+  is_pinned: boolean;
+  view_count: number;
+  download_count: number;
+  last_accessed_at: string | null;
+  uploader: { id: string; full_name: string; avatar_color: string } | null;
+  tags: LibraryTag[];
+};
+
+export type LibraryParent =
+  | { kind: "task"; id: string; title: string; href: string }
+  | { kind: "announcement"; id: string; title: string; href: string }
+  | { kind: "event"; id: string; title: string; href: string }
+  | { kind: "board_card"; id: string; title: string; board_id: string; board_name: string; href: string }
+  | { kind: "library"; folder: LibraryFolder | null };
+
+export type LibraryFileDetail = LibraryFile & {
+  folder: LibraryFolder | null;
+  parent: LibraryParent;
+};
+
+export type LibraryVirtualFolder =
+  | "all"
+  | "recent"
+  | "pinned"
+  | "from_tasks"
+  | "from_announcements"
+  | "from_events"
+  | "from_boards";
+
+export type LibraryFilter = LibraryVirtualFolder;
+
+// ─── Internal helpers ──────────────────────────────────────
+
+// Visibility gate applied client-side to folder rows. We mirror the RLS
+// SELECT policy in JS because we read with the service-role key.
+async function loadVisibleFolders(ctx: {
+  userId: string;
+  organizationId: string;
+  role: Role;
+}): Promise<LibraryFolder[]> {
+  const { data, error } = await supabaseAdmin
+    .from("library_folders")
+    .select(
+      "id, organization_id, name, parent_folder_id, description, color, icon, visibility, department_id, created_by, created_at, updated_at",
+    )
+    .eq("organization_id", ctx.organizationId);
+  if (error || !data) {
+    if (error) console.error("[loadVisibleFolders] Select error:", error.message);
+    return [];
+  }
+  // Resolve department memberships once for the department filter.
+  const { data: deptRows } = await supabaseAdmin
+    .from("profile_departments")
+    .select("department_id")
+    .eq("profile_id", ctx.userId);
+  const myDepartments = new Set(
+    (deptRows ?? []).map((r: { department_id: string }) => r.department_id),
+  );
+  return (data as LibraryFolder[]).filter((f) => {
+    if (f.visibility === "organization") return true;
+    if (f.visibility === "private") return f.created_by === ctx.userId;
+    if (f.visibility === "department")
+      return f.department_id ? myDepartments.has(f.department_id) : false;
+    return false;
+  });
+}
+
+async function loadFolderForViewer(
+  ctx: { userId: string; organizationId: string; role: Role },
+  folderId: string,
+): Promise<{ ok: true; folder: LibraryFolder } | { ok: false; error: string }> {
+  const { data } = await supabaseAdmin
+    .from("library_folders")
+    .select(
+      "id, organization_id, name, parent_folder_id, description, color, icon, visibility, department_id, created_by, created_at, updated_at",
+    )
+    .eq("id", folderId)
+    .maybeSingle();
+  if (!data || data.organization_id !== ctx.organizationId)
+    return { ok: false, error: "Folder not found." };
+  const folder = data as LibraryFolder;
+  // Mirror the SELECT visibility rule.
+  if (folder.visibility === "organization") return { ok: true, folder };
+  if (folder.visibility === "private")
+    return folder.created_by === ctx.userId
+      ? { ok: true, folder }
+      : { ok: false, error: "Folder not found." };
+  if (folder.visibility === "department" && folder.department_id) {
+    const { data: dept } = await supabaseAdmin
+      .from("profile_departments")
+      .select("profile_id")
+      .eq("profile_id", ctx.userId)
+      .eq("department_id", folder.department_id)
+      .maybeSingle();
+    return dept
+      ? { ok: true, folder }
+      : { ok: false, error: "Folder not found." };
+  }
+  return { ok: false, error: "Folder not found." };
+}
+
+// Tile of access semantics: only the creator or an admin can mutate a folder.
+function canMutateFolder(
+  folder: LibraryFolder,
+  ctx: { userId: string; role: Role },
+): boolean {
+  return folder.created_by === ctx.userId || ctx.role === "admin";
+}
+
+// Joined uploader + tags hydrator for a batch of attachment rows.
+async function hydrateLibraryFiles(
+  rows: {
+    id: string;
+    organization_id: string;
+    entity_type: AttachmentEntityType;
+    entity_id: string | null;
+    folder_id: string | null;
+    name: string;
+    description: string | null;
+    file_type: FileCategory;
+    file_extension: string | null;
+    size_bytes: number;
+    storage_path: string;
+    thumbnail_path: string | null;
+    mime_type: string | null;
+    uploaded_by: string;
+    uploaded_at: string;
+    is_pinned: boolean | null;
+    view_count: number | null;
+    download_count: number | null;
+    last_accessed_at: string | null;
+  }[],
+): Promise<LibraryFile[]> {
+  if (rows.length === 0) return [];
+  const ids = rows.map((r) => r.id);
+  const uploaderIds = Array.from(new Set(rows.map((r) => r.uploaded_by)));
+
+  const [{ data: profiles }, { data: tagJoins }] = await Promise.all([
+    supabaseAdmin
+      .from("profiles")
+      .select("id, full_name, email")
+      .in("id", uploaderIds),
+    supabaseAdmin
+      .from("attachment_tags")
+      .select(
+        "attachment_id, library_tags(id, organization_id, name, color, created_by, created_at)",
+      )
+      .in("attachment_id", ids),
+  ]);
+
+  const uploaderById = new Map<
+    string,
+    { id: string; full_name: string; avatar_color: string }
+  >();
+  (profiles ?? []).forEach(
+    (p: { id: string; full_name: string | null; email: string | null }) => {
+      uploaderById.set(p.id, {
+        id: p.id,
+        full_name:
+          p.full_name || p.email?.split("@")[0] || "Unnamed",
+        avatar_color: "#5CE1A5",
+      });
+    },
+  );
+
+  const tagsByAttachment = new Map<string, LibraryTag[]>();
+  (tagJoins ?? []).forEach(
+    (j: {
+      attachment_id: string;
+      library_tags: LibraryTag | LibraryTag[] | null;
+    }) => {
+      const t = Array.isArray(j.library_tags)
+        ? j.library_tags[0]
+        : j.library_tags;
+      if (!t) return;
+      const arr = tagsByAttachment.get(j.attachment_id) ?? [];
+      arr.push(t);
+      tagsByAttachment.set(j.attachment_id, arr);
+    },
+  );
+
+  return rows.map((r) => ({
+    id: r.id,
+    organization_id: r.organization_id,
+    entity_type: r.entity_type,
+    entity_id: r.entity_id,
+    folder_id: r.folder_id,
+    name: r.name,
+    description: r.description,
+    file_type: r.file_type,
+    file_extension: r.file_extension,
+    size_bytes: Number(r.size_bytes),
+    storage_path: r.storage_path,
+    thumbnail_path: r.thumbnail_path,
+    mime_type: r.mime_type,
+    uploaded_by: r.uploaded_by,
+    uploaded_at: r.uploaded_at,
+    is_pinned: !!r.is_pinned,
+    view_count: r.view_count ?? 0,
+    download_count: r.download_count ?? 0,
+    last_accessed_at: r.last_accessed_at,
+    uploader: uploaderById.get(r.uploaded_by) ?? null,
+    tags: tagsByAttachment.get(r.id) ?? [],
+  }));
+}
+
+// ─── Folder management ─────────────────────────────────────
+
+export async function getLibraryFolders(): Promise<
+  ActionResult<LibraryFolder[]>
+> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated." };
+  const folders = await loadVisibleFolders(ctx);
+  return { success: true, data: folders };
+}
+
+// Returns folders plus a count of (non-deleted) attachments per folder.
+// Used by the sidebar tree to render badges.
+export async function getFolderTree(): Promise<
+  ActionResult<LibraryFolderWithCount[]>
+> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated." };
+  const folders = await loadVisibleFolders(ctx);
+  if (folders.length === 0) return { success: true, data: [] };
+
+  const { data: rows } = await supabaseAdmin
+    .from("attachments")
+    .select("folder_id")
+    .in("folder_id", folders.map((f) => f.id))
+    .is("deleted_at", null);
+  const counts = new Map<string, number>();
+  (rows ?? []).forEach((r: { folder_id: string | null }) => {
+    if (!r.folder_id) return;
+    counts.set(r.folder_id, (counts.get(r.folder_id) ?? 0) + 1);
+  });
+
+  return {
+    success: true,
+    data: folders.map((f) => ({ ...f, file_count: counts.get(f.id) ?? 0 })),
+  };
+}
+
+export async function createLibraryFolder(input: {
+  name: string;
+  parentFolderId?: string | null;
+  color?: string | null;
+  icon?: string | null;
+  description?: string | null;
+  visibility?: LibraryFolderVisibility;
+  departmentId?: string | null;
+}): Promise<ActionResult<LibraryFolder>> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated." };
+  if (!["admin", "staff", "leader"].includes(ctx.role))
+    return {
+      success: false,
+      error: "Only admins, staff, and leaders can create library folders.",
+      code: "FORBIDDEN",
+    };
+
+  const name = input.name.trim();
+  if (!name)
+    return { success: false, error: "Folder name is required.", code: "BAD_INPUT" };
+
+  // Validate parent (if any) is visible to the user.
+  if (input.parentFolderId) {
+    const parent = await loadFolderForViewer(ctx, input.parentFolderId);
+    if (!parent.ok)
+      return { success: false, error: "Parent folder not found.", code: "NOT_FOUND" };
+  }
+
+  const visibility: LibraryFolderVisibility = input.visibility ?? "organization";
+  const departmentId =
+    visibility === "department" ? input.departmentId ?? null : null;
+  if (visibility === "department" && !departmentId)
+    return {
+      success: false,
+      error: "Pick a department for a department-scoped folder.",
+      code: "BAD_INPUT",
+    };
+
+  const { data, error } = await supabaseAdmin
+    .from("library_folders")
+    .insert({
+      organization_id: ctx.organizationId,
+      name,
+      parent_folder_id: input.parentFolderId ?? null,
+      description: input.description?.trim() || null,
+      color: input.color || "#6B7280",
+      icon: input.icon || "Folder",
+      visibility,
+      department_id: departmentId,
+      created_by: ctx.userId,
+    })
+    .select(
+      "id, organization_id, name, parent_folder_id, description, color, icon, visibility, department_id, created_by, created_at, updated_at",
+    )
+    .single();
+  if (error || !data) {
+    console.error("[createLibraryFolder] Insert error:", error?.message);
+    return { success: false, error: error?.message || "Couldn't create folder." };
+  }
+  revalidatePath("/workspace/library");
+  return { success: true, data: data as LibraryFolder };
+}
+
+export async function updateLibraryFolder(
+  folderId: string,
+  data: {
+    name?: string;
+    description?: string | null;
+    color?: string;
+    icon?: string;
+    visibility?: LibraryFolderVisibility;
+    departmentId?: string | null;
+  },
+): Promise<ActionResult<LibraryFolder>> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated." };
+  const access = await loadFolderForViewer(ctx, folderId);
+  if (!access.ok) return { success: false, error: access.error };
+  if (!canMutateFolder(access.folder, ctx))
+    return { success: false, error: "You can't edit this folder.", code: "FORBIDDEN" };
+
+  const update: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+  };
+  if (typeof data.name === "string" && data.name.trim())
+    update.name = data.name.trim();
+  if ("description" in data)
+    update.description = data.description?.trim() || null;
+  if (typeof data.color === "string") update.color = data.color;
+  if (typeof data.icon === "string") update.icon = data.icon;
+  if (data.visibility) {
+    update.visibility = data.visibility;
+    update.department_id =
+      data.visibility === "department"
+        ? data.departmentId ?? access.folder.department_id
+        : null;
+    if (data.visibility === "department" && !update.department_id)
+      return {
+        success: false,
+        error: "Pick a department for a department-scoped folder.",
+        code: "BAD_INPUT",
+      };
+  } else if ("departmentId" in data) {
+    update.department_id = data.departmentId ?? null;
+  }
+
+  const { data: row, error } = await supabaseAdmin
+    .from("library_folders")
+    .update(update)
+    .eq("id", folderId)
+    .select(
+      "id, organization_id, name, parent_folder_id, description, color, icon, visibility, department_id, created_by, created_at, updated_at",
+    )
+    .single();
+  if (error || !row) {
+    console.error("[updateLibraryFolder] Update error:", error?.message);
+    return { success: false, error: error?.message || "Couldn't save." };
+  }
+  revalidatePath("/workspace/library");
+  return { success: true, data: row as LibraryFolder };
+}
+
+// Folder delete with two cascade options:
+//  - 'move_to_root': files inside the folder lose their folder_id (set to
+//    null) but are otherwise untouched.
+//  - 'delete_files': soft-delete every attachment that lives in this folder.
+//    Storage usage is decremented manually because the trigger only fires
+//    on hard DELETE.
+export async function deleteLibraryFolder(
+  folderId: string,
+  options: { cascade: "move_to_root" | "delete_files" },
+): Promise<ActionResult> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated." };
+  const access = await loadFolderForViewer(ctx, folderId);
+  if (!access.ok) return { success: false, error: access.error };
+  if (!canMutateFolder(access.folder, ctx))
+    return {
+      success: false,
+      error: "You can't delete this folder.",
+      code: "FORBIDDEN",
+    };
+
+  if (options.cascade === "move_to_root") {
+    // Children of this folder also lose their parent_folder_id via the
+    // ON DELETE CASCADE pattern would nuke them — set parent to null first.
+    await supabaseAdmin
+      .from("library_folders")
+      .update({ parent_folder_id: null })
+      .eq("parent_folder_id", folderId);
+    // Files lose folder_id automatically thanks to ON DELETE SET NULL.
+  } else {
+    // Soft-delete every non-deleted file in this folder + recurse children.
+    // We only handle one level here; UI prevents deleting non-empty trees
+    // without confirmation. A deeper recursion is doable but out of scope.
+    const { data: files } = await supabaseAdmin
+      .from("attachments")
+      .select("id, size_bytes")
+      .eq("folder_id", folderId)
+      .is("deleted_at", null);
+    if (files && files.length > 0) {
+      const ids = (files as { id: string }[]).map((f) => f.id);
+      await supabaseAdmin
+        .from("attachments")
+        .update({ deleted_at: new Date().toISOString() })
+        .in("id", ids);
+      const totalBytes = (
+        files as { size_bytes: number }[]
+      ).reduce((s, f) => s + Number(f.size_bytes ?? 0), 0);
+      if (totalBytes > 0) {
+        // Recompute used_bytes safely via two-step read + update.
+        const { data: org } = await supabaseAdmin
+          .from("organizations")
+          .select("storage_used_bytes")
+          .eq("id", ctx.organizationId)
+          .single();
+        const next = Math.max(0, (org?.storage_used_bytes ?? 0) - totalBytes);
+        await supabaseAdmin
+          .from("organizations")
+          .update({ storage_used_bytes: next })
+          .eq("id", ctx.organizationId);
+      }
+    }
+  }
+
+  const { error } = await supabaseAdmin
+    .from("library_folders")
+    .delete()
+    .eq("id", folderId);
+  if (error) {
+    console.error("[deleteLibraryFolder] Delete error:", error.message);
+    return { success: false, error: error.message };
+  }
+  revalidatePath("/workspace/library");
+  return { success: true };
+}
+
+export async function moveLibraryFolder(
+  folderId: string,
+  newParentFolderId: string | null,
+): Promise<ActionResult<LibraryFolder>> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated." };
+  const access = await loadFolderForViewer(ctx, folderId);
+  if (!access.ok) return { success: false, error: access.error };
+  if (!canMutateFolder(access.folder, ctx))
+    return { success: false, error: "You can't move this folder.", code: "FORBIDDEN" };
+
+  if (newParentFolderId) {
+    if (newParentFolderId === folderId)
+      return { success: false, error: "A folder can't be its own parent." };
+    const parent = await loadFolderForViewer(ctx, newParentFolderId);
+    if (!parent.ok)
+      return { success: false, error: "Parent folder not found.", code: "NOT_FOUND" };
+    // Cycle detection: walk up the parent chain.
+    let cursor: string | null = parent.folder.parent_folder_id;
+    const seen = new Set<string>([newParentFolderId]);
+    while (cursor) {
+      if (cursor === folderId)
+        return {
+          success: false,
+          error: "Can't move a folder into one of its own descendants.",
+        };
+      if (seen.has(cursor)) break;
+      seen.add(cursor);
+      const { data: row } = await supabaseAdmin
+        .from("library_folders")
+        .select("parent_folder_id")
+        .eq("id", cursor)
+        .maybeSingle();
+      cursor = (row?.parent_folder_id as string | null) ?? null;
+    }
+  }
+
+  const { data: row, error } = await supabaseAdmin
+    .from("library_folders")
+    .update({
+      parent_folder_id: newParentFolderId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", folderId)
+    .select(
+      "id, organization_id, name, parent_folder_id, description, color, icon, visibility, department_id, created_by, created_at, updated_at",
+    )
+    .single();
+  if (error || !row) {
+    console.error("[moveLibraryFolder] Update error:", error?.message);
+    return { success: false, error: error?.message || "Couldn't move." };
+  }
+  revalidatePath("/workspace/library");
+  return { success: true, data: row as LibraryFolder };
 }
