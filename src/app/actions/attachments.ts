@@ -1285,3 +1285,237 @@ export async function moveLibraryFolder(
   revalidatePath("/workspace/library");
   return { success: true, data: row as LibraryFolder };
 }
+
+// ─── Library tags ──────────────────────────────────────────
+
+export async function getLibraryTags(): Promise<
+  ActionResult<LibraryTagWithUsage[]>
+> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated." };
+
+  const [{ data: tags, error }, { data: junctions }] = await Promise.all([
+    supabaseAdmin
+      .from("library_tags")
+      .select(
+        "id, organization_id, name, color, created_by, created_at",
+      )
+      .eq("organization_id", ctx.organizationId)
+      .order("name", { ascending: true }),
+    // Restrict the count to attachments inside the same org so the
+    // service-role read doesn't leak any cross-org noise.
+    supabaseAdmin
+      .from("attachment_tags")
+      .select("tag_id, attachments!inner(organization_id)")
+      .eq("attachments.organization_id", ctx.organizationId),
+  ]);
+  if (error) {
+    console.error("[getLibraryTags] Select error:", error.message);
+    return { success: false, error: error.message };
+  }
+  const counts = new Map<string, number>();
+  (junctions ?? []).forEach((r: { tag_id: string }) => {
+    counts.set(r.tag_id, (counts.get(r.tag_id) ?? 0) + 1);
+  });
+  return {
+    success: true,
+    data: (tags ?? []).map((t) => ({
+      ...(t as LibraryTag),
+      usage_count: counts.get(t.id) ?? 0,
+    })),
+  };
+}
+
+export async function createLibraryTag(
+  name: string,
+  color: string,
+): Promise<ActionResult<LibraryTag>> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated." };
+  if (!["admin", "staff", "leader"].includes(ctx.role))
+    return {
+      success: false,
+      error: "Only admins, staff, and leaders can manage tags.",
+      code: "FORBIDDEN",
+    };
+
+  const trimmed = name.trim();
+  if (!trimmed)
+    return { success: false, error: "Tag name is required.", code: "BAD_INPUT" };
+
+  const { data, error } = await supabaseAdmin
+    .from("library_tags")
+    .insert({
+      organization_id: ctx.organizationId,
+      name: trimmed,
+      color: color || "#6B7280",
+      created_by: ctx.userId,
+    })
+    .select("id, organization_id, name, color, created_by, created_at")
+    .single();
+  if (error || !data) {
+    // 23505 = unique violation on (organization_id, name).
+    if (error?.code === "23505")
+      return {
+        success: false,
+        error: "A tag with that name already exists.",
+        code: "DUPLICATE",
+      };
+    console.error("[createLibraryTag] Insert error:", error?.message);
+    return { success: false, error: error?.message || "Couldn't create tag." };
+  }
+  revalidatePath("/workspace/library");
+  return { success: true, data: data as LibraryTag };
+}
+
+export async function updateLibraryTag(
+  tagId: string,
+  data: { name?: string; color?: string },
+): Promise<ActionResult<LibraryTag>> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated." };
+  if (!["admin", "staff", "leader"].includes(ctx.role))
+    return {
+      success: false,
+      error: "Only admins, staff, and leaders can manage tags.",
+      code: "FORBIDDEN",
+    };
+
+  const update: Record<string, unknown> = {};
+  if (typeof data.name === "string" && data.name.trim())
+    update.name = data.name.trim();
+  if (typeof data.color === "string") update.color = data.color;
+  if (Object.keys(update).length === 0)
+    return { success: false, error: "Nothing to update.", code: "BAD_INPUT" };
+
+  const { data: row, error } = await supabaseAdmin
+    .from("library_tags")
+    .update(update)
+    .eq("id", tagId)
+    .eq("organization_id", ctx.organizationId)
+    .select("id, organization_id, name, color, created_by, created_at")
+    .single();
+  if (error || !row) {
+    if (error?.code === "23505")
+      return {
+        success: false,
+        error: "A tag with that name already exists.",
+        code: "DUPLICATE",
+      };
+    console.error("[updateLibraryTag] Update error:", error?.message);
+    return { success: false, error: error?.message || "Couldn't save." };
+  }
+  revalidatePath("/workspace/library");
+  return { success: true, data: row as LibraryTag };
+}
+
+export async function deleteLibraryTag(
+  tagId: string,
+): Promise<ActionResult> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated." };
+  if (!["admin", "staff", "leader"].includes(ctx.role))
+    return {
+      success: false,
+      error: "Only admins, staff, and leaders can manage tags.",
+      code: "FORBIDDEN",
+    };
+
+  // FK ON DELETE CASCADE on attachment_tags.tag_id handles the junctions.
+  const { error } = await supabaseAdmin
+    .from("library_tags")
+    .delete()
+    .eq("id", tagId)
+    .eq("organization_id", ctx.organizationId);
+  if (error) {
+    console.error("[deleteLibraryTag] Delete error:", error.message);
+    return { success: false, error: error.message };
+  }
+  revalidatePath("/workspace/library");
+  return { success: true };
+}
+
+export async function addTagToAttachment(
+  attachmentId: string,
+  tagId: string,
+): Promise<ActionResult> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated." };
+
+  // Confirm both attachment + tag live in the caller's org.
+  const [{ data: att }, { data: tag }] = await Promise.all([
+    supabaseAdmin
+      .from("attachments")
+      .select("id, organization_id, uploaded_by, deleted_at")
+      .eq("id", attachmentId)
+      .maybeSingle(),
+    supabaseAdmin
+      .from("library_tags")
+      .select("id, organization_id")
+      .eq("id", tagId)
+      .maybeSingle(),
+  ]);
+  if (!att || att.organization_id !== ctx.organizationId || att.deleted_at)
+    return { success: false, error: "Attachment not found." };
+  if (!tag || tag.organization_id !== ctx.organizationId)
+    return { success: false, error: "Tag not found." };
+  // Mirror the RLS rule on attachment_tags.INSERT — uploader, admin, or
+  // staff can tag.
+  if (
+    att.uploaded_by !== ctx.userId &&
+    !["admin", "staff"].includes(ctx.role)
+  )
+    return {
+      success: false,
+      error: "You can't tag this file.",
+      code: "FORBIDDEN",
+    };
+
+  const { error } = await supabaseAdmin
+    .from("attachment_tags")
+    .insert({ attachment_id: attachmentId, tag_id: tagId });
+  if (error) {
+    if (error.code === "23505") return { success: true }; // already tagged
+    console.error("[addTagToAttachment] Insert error:", error.message);
+    return { success: false, error: error.message };
+  }
+  revalidatePath("/workspace/library");
+  return { success: true };
+}
+
+export async function removeTagFromAttachment(
+  attachmentId: string,
+  tagId: string,
+): Promise<ActionResult> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated." };
+
+  const { data: att } = await supabaseAdmin
+    .from("attachments")
+    .select("id, organization_id, uploaded_by")
+    .eq("id", attachmentId)
+    .maybeSingle();
+  if (!att || att.organization_id !== ctx.organizationId)
+    return { success: false, error: "Attachment not found." };
+  if (
+    att.uploaded_by !== ctx.userId &&
+    !["admin", "staff"].includes(ctx.role)
+  )
+    return {
+      success: false,
+      error: "You can't untag this file.",
+      code: "FORBIDDEN",
+    };
+
+  const { error } = await supabaseAdmin
+    .from("attachment_tags")
+    .delete()
+    .eq("attachment_id", attachmentId)
+    .eq("tag_id", tagId);
+  if (error) {
+    console.error("[removeTagFromAttachment] Delete error:", error.message);
+    return { success: false, error: error.message };
+  }
+  revalidatePath("/workspace/library");
+  return { success: true };
+}
