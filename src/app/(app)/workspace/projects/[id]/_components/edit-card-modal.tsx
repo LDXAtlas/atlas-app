@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { X, Loader2, AlertCircle, Calendar, User, Palette, CheckSquare } from "lucide-react";
 import { updateCard } from "@/app/actions/boards";
 import type { BoardCardWithMeta } from "@/app/actions/boards";
+import { AttachmentsSection } from "@/components/attachments-section";
 
 const CARD_COVER_OPTIONS: { value: string | null; label: string; bg: string }[] = [
   { value: null, label: "No color", bg: "transparent" },
@@ -168,6 +169,14 @@ export function EditCardModal({
                 className="w-full px-3 py-2.5 rounded-xl border border-[#E5E7EB] bg-white text-[13px] text-[#2D333A] placeholder-[#9CA3AF] outline-none focus:border-[#5CE1A5] transition-colors resize-none"
                 style={{ fontFamily: "var(--font-source-sans)" }}
               />
+
+              {card && (
+                <AttachmentsSection
+                  entityType="board_card"
+                  entityId={card.id}
+                  canUpload
+                />
+              )}
 
               {/* Quick metadata */}
               <div className="grid grid-cols-2 gap-3">

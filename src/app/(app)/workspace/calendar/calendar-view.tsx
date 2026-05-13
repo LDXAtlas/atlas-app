@@ -13,11 +13,9 @@ import {
   Trash2,
   Pencil,
   Copy,
-  Link as LinkIcon,
   Repeat,
   Video,
   Check,
-  FileText,
 } from "lucide-react";
 import {
   EventModal,
@@ -27,6 +25,7 @@ import {
 } from "../events/event-modal";
 import { deleteEvent } from "@/app/actions/events";
 import { useRouter } from "next/navigation";
+import { AttachmentsSection } from "@/components/attachments-section";
 
 // ─── Types ──────────────────────────────────────────────
 
@@ -518,55 +517,15 @@ function EventDetailPanel({
             </div>
           )}
 
-          {/* Linked Files */}
+          {/* Attachments */}
           <div className="pt-2 border-t border-[#E5E7EB]">
-            <div className="flex items-center justify-between mb-3">
-              <h4
-                className="text-[12px] text-[#9CA3AF] uppercase tracking-wider"
-                style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}
-              >
-                Linked Files
-              </h4>
-              <button
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] text-[#2D333A] hover:bg-[#F4F5F7] border border-[#E5E7EB] transition-all"
-                style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}
-              >
-                <LinkIcon className="size-3" />
-                Link File
-              </button>
-            </div>
-            
-            <div className="space-y-2">
-              <div className="flex items-center justify-between p-3 rounded-xl border border-[#E5E7EB] hover:border-[#D1D5DB] transition-all group cursor-pointer">
-                <div className="flex items-center gap-3">
-                  <div className="size-8 rounded-lg bg-[#F4F5F7] flex items-center justify-center shrink-0">
-                    <FileText className="size-4 text-[#6B7280]" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[13px] text-[#2D333A] truncate" style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}>Service_Run_Sheet.pdf</p>
-                    <p className="text-[11px] text-[#9CA3AF]" style={{ fontFamily: "var(--font-source-sans)" }}>Added today &middot; 2.4 MB</p>
-                  </div>
-                </div>
-                <button className="opacity-0 group-hover:opacity-100 p-1.5 text-[#9CA3AF] hover:text-[#EF4444] rounded-md hover:bg-[#FEF2F2] transition-all">
-                  <X className="size-3.5" />
-                </button>
-              </div>
-
-              <div className="flex items-center justify-between p-3 rounded-xl border border-[#E5E7EB] hover:border-[#D1D5DB] transition-all group cursor-pointer">
-                <div className="flex items-center gap-3">
-                  <div className="size-8 rounded-lg bg-[#F4F5F7] flex items-center justify-center shrink-0">
-                    <FileText className="size-4 text-[#6B7280]" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[13px] text-[#2D333A] truncate" style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}>Sermon_Notes.docx</p>
-                    <p className="text-[11px] text-[#9CA3AF]" style={{ fontFamily: "var(--font-source-sans)" }}>Added yesterday &middot; 1.1 MB</p>
-                  </div>
-                </div>
-                <button className="opacity-0 group-hover:opacity-100 p-1.5 text-[#9CA3AF] hover:text-[#EF4444] rounded-md hover:bg-[#FEF2F2] transition-all">
-                  <X className="size-3.5" />
-                </button>
-              </div>
-            </div>
+            <AttachmentsSection
+              entityType="event"
+              entityId={event.id}
+              canUpload
+              collapsible={false}
+              title="Files"
+            />
           </div>
 
           {/* Department badges */}

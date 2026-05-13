@@ -20,6 +20,7 @@ import {
   togglePin,
   deleteAnnouncement,
 } from "@/app/actions/announcements";
+import { AttachmentsSection } from "@/components/attachments-section";
 
 // ─── Types ──────────────────────────────────────────────
 export type Announcement = {
@@ -542,6 +543,20 @@ function AnnouncementCard({
               </motion.p>
             )}
           </AnimatePresence>
+
+          {/* Attachments — only loaded when the card is expanded so the
+              feed stays light. */}
+          {isExpanded && (
+            <div className="mb-3">
+              <AttachmentsSection
+                entityType="announcement"
+                entityId={ann.id}
+                canUpload={canEdit}
+                canDeleteAny={canEdit}
+                collapsible={false}
+              />
+            </div>
+          )}
 
           {/* Footer */}
           <div className="flex items-center justify-between pt-3 border-t border-[#E5E7EB]/50">

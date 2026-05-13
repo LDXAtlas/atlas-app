@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { X, Clock, ChevronDown } from "lucide-react";
 import { createTask, updateTask } from "@/app/actions/tasks";
 import type { Task, TeamMember, Department } from "./tasks-view";
+import { AttachmentsSection } from "@/components/attachments-section";
 
 type Priority = "high" | "medium" | "low" | "urgent";
 
@@ -267,6 +268,19 @@ export function TaskModal({
                     }}
                   />
                 </div>
+
+                {/* Attachments — only available once the task exists, since
+                    the attachments table requires a real entity_id. New
+                    tasks get attachments after the first save. */}
+                {isEditing && task?.id && (
+                  <div className="mb-5">
+                    <AttachmentsSection
+                      entityType="task"
+                      entityId={task.id}
+                      canUpload
+                    />
+                  </div>
+                )}
 
                 {/* Priority */}
                 <div className="mb-5">

@@ -8,6 +8,7 @@ import {
   type Attachment,
   type AttachmentEntityType,
 } from "@/app/actions/attachments";
+import { createClient } from "@/lib/supabase/client";
 import { FilePreview } from "./file-preview";
 import { FileUploader } from "./file-uploader";
 import { LightboxModal } from "./lightbox-modal";
@@ -22,8 +23,6 @@ interface AttachmentsSectionProps {
   /** Override: true when the viewer can delete every attachment. Per-row
    *  delete still falls back to "uploader OR admin" server-side. */
   canDeleteAny?: boolean;
-  /** Current user id, used to decide whether to show the per-row Delete. */
-  viewerId?: string | null;
   /** When true (default), the section can be collapsed/expanded. */
   collapsible?: boolean;
   /** Optional override on visual header — default "Attachments". */
@@ -35,10 +34,22 @@ export function AttachmentsSection({
   entityId,
   canUpload = false,
   canDeleteAny = false,
-  viewerId = null,
   collapsible = true,
   title = "Attachments",
 }: AttachmentsSectionProps) {
+  // Resolved on mount so callers don't have to thread it through every
+  // parent. Stays null until ready; FilePreview falls back to canDeleteAny.
+  const [viewerId, setViewerId] = useState<string | null>(null);
+  useEffect(() => {
+    const supabase = createClient();
+    let cancelled = false;
+    supabase.auth.getUser().then(({ data }) => {
+      if (!cancelled) setViewerId(data.user?.id ?? null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(true);
