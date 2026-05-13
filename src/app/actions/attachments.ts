@@ -1519,3 +1519,758 @@ export async function removeTagFromAttachment(
   revalidatePath("/workspace/library");
   return { success: true };
 }
+
+// ─── File browsing ─────────────────────────────────────────
+
+export type LibraryFileOptions = {
+  /** null = root (folder_id IS NULL + entity_type='library'). undefined = no folder filter. */
+  folderId?: string | null;
+  filter?: LibraryFilter;
+  tagIds?: string[];
+  fileTypes?: FileCategory[];
+  search?: string;
+  uploadedBy?: string;
+  sortBy?:
+    | "name_asc"
+    | "name_desc"
+    | "date_newest"
+    | "date_oldest"
+    | "size_largest"
+    | "size_smallest";
+  limit?: number;
+  cursor?: string;
+};
+
+export type LibraryFilesPage = {
+  files: LibraryFile[];
+  nextCursor: string | null;
+};
+
+export async function getLibraryFiles(
+  options: LibraryFileOptions = {},
+): Promise<ActionResult<LibraryFilesPage>> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated." };
+
+  const limit = Math.min(Math.max(1, options.limit ?? 60), 200);
+
+  let query = supabaseAdmin
+    .from("attachments")
+    .select(
+      "id, organization_id, entity_type, entity_id, folder_id, name, description, file_type, file_extension, size_bytes, storage_path, thumbnail_path, mime_type, uploaded_by, uploaded_at, is_pinned, view_count, download_count, last_accessed_at",
+    )
+    .eq("organization_id", ctx.organizationId)
+    .is("deleted_at", null);
+
+  // Folder filter takes priority over `filter`. folderId === null means
+  // "library root" (direct uploads with no folder). undefined means no
+  // folder constraint at all.
+  if (options.folderId === null) {
+    query = query.is("folder_id", null).eq("entity_type", "library");
+  } else if (typeof options.folderId === "string") {
+    // Verify the viewer can see this folder before exposing its contents.
+    const access = await loadFolderForViewer(ctx, options.folderId);
+    if (!access.ok) return { success: false, error: access.error };
+    query = query.eq("folder_id", options.folderId);
+  } else {
+    switch (options.filter ?? "all") {
+      case "all":
+        break;
+      case "recent": {
+        const threshold = new Date(
+          Date.now() - 30 * 24 * 60 * 60 * 1000,
+        ).toISOString();
+        query = query.gte("uploaded_at", threshold);
+        break;
+      }
+      case "pinned":
+        query = query.eq("is_pinned", true);
+        break;
+      case "from_tasks":
+        query = query.eq("entity_type", "task");
+        break;
+      case "from_announcements":
+        query = query.eq("entity_type", "announcement");
+        break;
+      case "from_events":
+        query = query.eq("entity_type", "event");
+        break;
+      case "from_boards":
+        query = query.eq("entity_type", "board_card");
+        break;
+    }
+  }
+
+  if (options.fileTypes && options.fileTypes.length > 0)
+    query = query.in("file_type", options.fileTypes);
+  if (options.uploadedBy)
+    query = query.eq("uploaded_by", options.uploadedBy);
+  if (options.search && options.search.trim()) {
+    const safe = options.search.trim().replace(/[%_]/g, "\\$&");
+    query = query.ilike("name", `%${safe}%`);
+  }
+
+  // Tag filter: fetch attachment ids that have ALL the requested tags.
+  if (options.tagIds && options.tagIds.length > 0) {
+    const { data: tagRows } = await supabaseAdmin
+      .from("attachment_tags")
+      .select("attachment_id, tag_id")
+      .in("tag_id", options.tagIds);
+    const byAttachment = new Map<string, Set<string>>();
+    (tagRows ?? []).forEach(
+      (r: { attachment_id: string; tag_id: string }) => {
+        const s = byAttachment.get(r.attachment_id) ?? new Set<string>();
+        s.add(r.tag_id);
+        byAttachment.set(r.attachment_id, s);
+      },
+    );
+    const matchIds = Array.from(byAttachment.entries())
+      .filter(([, set]) =>
+        options.tagIds!.every((t) => set.has(t)),
+      )
+      .map(([id]) => id);
+    if (matchIds.length === 0)
+      return { success: true, data: { files: [], nextCursor: null } };
+    query = query.in("id", matchIds);
+  }
+
+  // Sort.
+  switch (options.sortBy ?? "date_newest") {
+    case "name_asc":
+      query = query.order("name", { ascending: true });
+      break;
+    case "name_desc":
+      query = query.order("name", { ascending: false });
+      break;
+    case "date_newest":
+      query = query.order("uploaded_at", { ascending: false });
+      break;
+    case "date_oldest":
+      query = query.order("uploaded_at", { ascending: true });
+      break;
+    case "size_largest":
+      query = query.order("size_bytes", { ascending: false });
+      break;
+    case "size_smallest":
+      query = query.order("size_bytes", { ascending: true });
+      break;
+  }
+  // Stable tiebreaker so cursors stay deterministic.
+  query = query.order("id", { ascending: true }).limit(limit + 1);
+
+  const { data, error } = await query;
+  if (error) {
+    console.error("[getLibraryFiles] Select error:", error.message);
+    return { success: false, error: error.message };
+  }
+
+  const rows = (data ?? []) as Parameters<typeof hydrateLibraryFiles>[0];
+  const hasMore = rows.length > limit;
+  const visible = hasMore ? rows.slice(0, limit) : rows;
+  const files = await hydrateLibraryFiles(visible);
+  return {
+    success: true,
+    data: {
+      files,
+      nextCursor: hasMore ? visible[visible.length - 1]?.id ?? null : null,
+    },
+  };
+}
+
+// ─── File mutations ───────────────────────────────────────
+
+export async function moveAttachmentToFolder(
+  attachmentId: string,
+  folderId: string | null,
+): Promise<ActionResult> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated." };
+
+  const { data: att } = await supabaseAdmin
+    .from("attachments")
+    .select("id, organization_id, uploaded_by, deleted_at")
+    .eq("id", attachmentId)
+    .maybeSingle();
+  if (!att || att.organization_id !== ctx.organizationId || att.deleted_at)
+    return { success: false, error: "Attachment not found." };
+  if (
+    att.uploaded_by !== ctx.userId &&
+    !["admin", "staff"].includes(ctx.role)
+  )
+    return {
+      success: false,
+      error: "You can't move this file.",
+      code: "FORBIDDEN",
+    };
+
+  if (folderId) {
+    const access = await loadFolderForViewer(ctx, folderId);
+    if (!access.ok) return { success: false, error: access.error };
+  }
+
+  const { error } = await supabaseAdmin
+    .from("attachments")
+    .update({ folder_id: folderId })
+    .eq("id", attachmentId);
+  if (error) {
+    console.error("[moveAttachmentToFolder] Update error:", error.message);
+    return { success: false, error: error.message };
+  }
+  revalidatePath("/workspace/library");
+  return { success: true };
+}
+
+// Copies an attachment as a new standalone Library file. Storage bytes
+// are duplicated on disk and accounted for by the INSERT trigger.
+export async function copyAttachment(
+  attachmentId: string,
+  targetFolderId: string | null,
+): Promise<ActionResult<LibraryFile>> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated." };
+
+  const { data: source } = await supabaseAdmin
+    .from("attachments")
+    .select(
+      "id, organization_id, name, description, file_type, file_extension, size_bytes, storage_path, thumbnail_path, mime_type, deleted_at",
+    )
+    .eq("id", attachmentId)
+    .maybeSingle();
+  if (!source || source.organization_id !== ctx.organizationId || source.deleted_at)
+    return { success: false, error: "Source file not found." };
+
+  if (targetFolderId) {
+    const access = await loadFolderForViewer(ctx, targetFolderId);
+    if (!access.ok) return { success: false, error: access.error };
+  }
+
+  // Storage limit precheck.
+  const usage = await getOrganizationStorageUsage();
+  if (
+    usage.success &&
+    usage.data &&
+    usage.data.used_bytes + Number(source.size_bytes) > usage.data.limit_bytes
+  ) {
+    return {
+      success: false,
+      code: "STORAGE_LIMIT_EXCEEDED",
+      error:
+        "Copying this file would exceed your storage limit. Free up space or upgrade.",
+    };
+  }
+
+  const fileId = crypto.randomUUID();
+  const sanitized = sanitizeFilename(source.name);
+  const newPath = `${ctx.organizationId}/library/${targetFolderId ?? "root"}/${fileId}_${sanitized}`;
+
+  // Copy the bytes in storage.
+  const { data: download, error: dlErr } = await supabaseAdmin.storage
+    .from(BUCKET)
+    .download(source.storage_path);
+  if (dlErr || !download) {
+    console.error("[copyAttachment] Download error:", dlErr?.message);
+    return { success: false, error: "Couldn't read the source file." };
+  }
+  const buffer = Buffer.from(await download.arrayBuffer());
+  const { error: upErr } = await supabaseAdmin.storage
+    .from(BUCKET)
+    .upload(newPath, buffer, {
+      contentType: source.mime_type || "application/octet-stream",
+      upsert: false,
+    });
+  if (upErr) {
+    console.error("[copyAttachment] Upload error:", upErr.message);
+    return { success: false, error: "Couldn't write the copy." };
+  }
+
+  // Thumbnail: clone the path if one exists. We re-upload from the
+  // original bytes so the copy works even if the source thumbnail is
+  // missing (Phase 1 best-effort flow).
+  let newThumbPath: string | null = null;
+  if (source.thumbnail_path) {
+    const { data: thumbDl } = await supabaseAdmin.storage
+      .from(BUCKET)
+      .download(source.thumbnail_path);
+    if (thumbDl) {
+      newThumbPath = `${ctx.organizationId}/library/${targetFolderId ?? "root"}/${fileId}_thumb.webp`;
+      const thumbBuf = Buffer.from(await thumbDl.arrayBuffer());
+      const { error: thumbErr } = await supabaseAdmin.storage
+        .from(BUCKET)
+        .upload(newThumbPath, thumbBuf, {
+          contentType: "image/webp",
+          upsert: false,
+        });
+      if (thumbErr) newThumbPath = null;
+    }
+  }
+
+  const { data: inserted, error: insertErr } = await supabaseAdmin
+    .from("attachments")
+    .insert({
+      organization_id: ctx.organizationId,
+      entity_type: "library",
+      entity_id: null,
+      folder_id: targetFolderId,
+      name: source.name,
+      description: source.description,
+      file_type: source.file_type,
+      file_extension: source.file_extension,
+      size_bytes: source.size_bytes,
+      storage_path: newPath,
+      thumbnail_path: newThumbPath,
+      mime_type: source.mime_type,
+      uploaded_by: ctx.userId,
+    })
+    .select(
+      "id, organization_id, entity_type, entity_id, folder_id, name, description, file_type, file_extension, size_bytes, storage_path, thumbnail_path, mime_type, uploaded_by, uploaded_at, is_pinned, view_count, download_count, last_accessed_at",
+    )
+    .single();
+  if (insertErr || !inserted) {
+    // Roll back storage uploads.
+    await supabaseAdmin.storage.from(BUCKET).remove([newPath]);
+    if (newThumbPath)
+      await supabaseAdmin.storage.from(BUCKET).remove([newThumbPath]);
+    console.error("[copyAttachment] Insert error:", insertErr?.message);
+    return {
+      success: false,
+      error: insertErr?.message || "Couldn't record the copy.",
+    };
+  }
+
+  const [hydrated] = await hydrateLibraryFiles([
+    inserted as Parameters<typeof hydrateLibraryFiles>[0][number],
+  ]);
+  revalidatePath("/workspace/library");
+  return { success: true, data: hydrated };
+}
+
+export async function pinAttachment(
+  attachmentId: string,
+): Promise<ActionResult> {
+  return setAttachmentPinned(attachmentId, true);
+}
+
+export async function unpinAttachment(
+  attachmentId: string,
+): Promise<ActionResult> {
+  return setAttachmentPinned(attachmentId, false);
+}
+
+async function setAttachmentPinned(
+  attachmentId: string,
+  pinned: boolean,
+): Promise<ActionResult> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated." };
+  const { data: att } = await supabaseAdmin
+    .from("attachments")
+    .select("id, organization_id, uploaded_by")
+    .eq("id", attachmentId)
+    .maybeSingle();
+  if (!att || att.organization_id !== ctx.organizationId)
+    return { success: false, error: "Attachment not found." };
+  if (
+    att.uploaded_by !== ctx.userId &&
+    !["admin", "staff"].includes(ctx.role)
+  )
+    return { success: false, error: "You can't pin this file.", code: "FORBIDDEN" };
+  const { error } = await supabaseAdmin
+    .from("attachments")
+    .update({ is_pinned: pinned })
+    .eq("id", attachmentId);
+  if (error) {
+    console.error("[setAttachmentPinned] Update error:", error.message);
+    return { success: false, error: error.message };
+  }
+  revalidatePath("/workspace/library");
+  return { success: true };
+}
+
+export async function renameAttachment(
+  attachmentId: string,
+  newName: string,
+): Promise<ActionResult> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated." };
+  const trimmed = newName.trim();
+  if (!trimmed)
+    return { success: false, error: "Name is required.", code: "BAD_INPUT" };
+
+  const { data: att } = await supabaseAdmin
+    .from("attachments")
+    .select("id, organization_id, uploaded_by")
+    .eq("id", attachmentId)
+    .maybeSingle();
+  if (!att || att.organization_id !== ctx.organizationId)
+    return { success: false, error: "Attachment not found." };
+  if (
+    att.uploaded_by !== ctx.userId &&
+    !["admin", "staff"].includes(ctx.role)
+  )
+    return {
+      success: false,
+      error: "You can't rename this file.",
+      code: "FORBIDDEN",
+    };
+
+  const { error } = await supabaseAdmin
+    .from("attachments")
+    .update({ name: trimmed.slice(0, 255) })
+    .eq("id", attachmentId);
+  if (error) {
+    console.error("[renameAttachment] Update error:", error.message);
+    return { success: false, error: error.message };
+  }
+  revalidatePath("/workspace/library");
+  return { success: true };
+}
+
+export async function updateAttachmentDescription(
+  attachmentId: string,
+  description: string,
+): Promise<ActionResult> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated." };
+  const { data: att } = await supabaseAdmin
+    .from("attachments")
+    .select("id, organization_id, uploaded_by")
+    .eq("id", attachmentId)
+    .maybeSingle();
+  if (!att || att.organization_id !== ctx.organizationId)
+    return { success: false, error: "Attachment not found." };
+  if (
+    att.uploaded_by !== ctx.userId &&
+    !["admin", "staff"].includes(ctx.role)
+  )
+    return {
+      success: false,
+      error: "You can't edit this file's description.",
+      code: "FORBIDDEN",
+    };
+  const { error } = await supabaseAdmin
+    .from("attachments")
+    .update({ description: description.trim() || null })
+    .eq("id", attachmentId);
+  if (error) {
+    console.error("[updateAttachmentDescription] Update error:", error.message);
+    return { success: false, error: error.message };
+  }
+  revalidatePath("/workspace/library");
+  return { success: true };
+}
+
+export async function getAttachmentDetail(
+  attachmentId: string,
+): Promise<ActionResult<LibraryFileDetail>> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated." };
+
+  const { data, error } = await supabaseAdmin
+    .from("attachments")
+    .select(
+      "id, organization_id, entity_type, entity_id, folder_id, name, description, file_type, file_extension, size_bytes, storage_path, thumbnail_path, mime_type, uploaded_by, uploaded_at, is_pinned, view_count, download_count, last_accessed_at, deleted_at",
+    )
+    .eq("id", attachmentId)
+    .maybeSingle();
+  if (error) {
+    console.error("[getAttachmentDetail] Select error:", error.message);
+    return { success: false, error: error.message };
+  }
+  if (
+    !data ||
+    data.organization_id !== ctx.organizationId ||
+    data.deleted_at
+  )
+    return { success: false, error: "Attachment not found." };
+
+  const [hydrated] = await hydrateLibraryFiles([
+    data as Parameters<typeof hydrateLibraryFiles>[0][number],
+  ]);
+
+  // Resolve folder + parent entity for the "Where this file is used" block.
+  let folder: LibraryFolder | null = null;
+  if (hydrated.folder_id) {
+    const { data: f } = await supabaseAdmin
+      .from("library_folders")
+      .select(
+        "id, organization_id, name, parent_folder_id, description, color, icon, visibility, department_id, created_by, created_at, updated_at",
+      )
+      .eq("id", hydrated.folder_id)
+      .maybeSingle();
+    folder = (f as LibraryFolder | null) ?? null;
+  }
+
+  let parent: LibraryParent;
+  switch (hydrated.entity_type) {
+    case "task": {
+      const { data: t } = await supabaseAdmin
+        .from("tasks")
+        .select("id, title")
+        .eq("id", hydrated.entity_id ?? "")
+        .maybeSingle();
+      parent = {
+        kind: "task",
+        id: t?.id ?? hydrated.entity_id ?? "",
+        title: t?.title ?? "Task",
+        href: `/workspace/tasks?task=${hydrated.entity_id}`,
+      };
+      break;
+    }
+    case "announcement": {
+      const { data: a } = await supabaseAdmin
+        .from("announcements")
+        .select("id, title")
+        .eq("id", hydrated.entity_id ?? "")
+        .maybeSingle();
+      parent = {
+        kind: "announcement",
+        id: a?.id ?? hydrated.entity_id ?? "",
+        title: a?.title ?? "Announcement",
+        href: `/workspace/announcements`,
+      };
+      break;
+    }
+    case "event": {
+      const { data: e } = await supabaseAdmin
+        .from("events")
+        .select("id, title")
+        .eq("id", hydrated.entity_id ?? "")
+        .maybeSingle();
+      parent = {
+        kind: "event",
+        id: e?.id ?? hydrated.entity_id ?? "",
+        title: e?.title ?? "Event",
+        href: `/workspace/calendar`,
+      };
+      break;
+    }
+    case "board_card": {
+      const { data: c } = await supabaseAdmin
+        .from("board_cards")
+        .select("id, title, board_id")
+        .eq("id", hydrated.entity_id ?? "")
+        .maybeSingle();
+      const { data: b } = c?.board_id
+        ? await supabaseAdmin
+            .from("boards")
+            .select("name")
+            .eq("id", c.board_id)
+            .maybeSingle()
+        : { data: null };
+      parent = {
+        kind: "board_card",
+        id: c?.id ?? hydrated.entity_id ?? "",
+        title: c?.title ?? "Card",
+        board_id: (c?.board_id as string) ?? "",
+        board_name: b?.name ?? "Board",
+        href: c?.board_id
+          ? `/workspace/projects/${c.board_id}`
+          : `/workspace/projects`,
+      };
+      break;
+    }
+    case "library":
+      parent = { kind: "library", folder };
+      break;
+  }
+
+  return {
+    success: true,
+    data: { ...hydrated, folder, parent } as LibraryFileDetail,
+  };
+}
+
+// Direct-library upload. Sets entity_type='library' + entity_id=null.
+export async function uploadToLibrary(
+  formData: FormData,
+): Promise<ActionResult<LibraryFile>> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated." };
+
+  if (!["admin", "staff", "leader"].includes(ctx.role))
+    return {
+      success: false,
+      error: "You don't have permission to upload files.",
+      code: "FORBIDDEN",
+    };
+
+  const file = formData.get("file");
+  const folderIdRaw = formData.get("folder_id");
+  const folderId =
+    typeof folderIdRaw === "string" && folderIdRaw.length > 0
+      ? folderIdRaw
+      : null;
+  const description =
+    (formData.get("description") as string | null) || null;
+
+  if (!(file instanceof File))
+    return { success: false, error: "No file provided.", code: "BAD_INPUT" };
+  if (file.size <= 0)
+    return { success: false, error: "File is empty.", code: "BAD_INPUT" };
+  if (file.size > MAX_FILE_BYTES)
+    return {
+      success: false,
+      error: `File is too large (${formatBytes(file.size)}). Max is 25 MB.`,
+      code: "FILE_TOO_LARGE",
+    };
+  if (!ALLOWED_MIME_TYPES.has(file.type))
+    return {
+      success: false,
+      error: `File type "${file.type || "unknown"}" isn't supported.`,
+      code: "UNSUPPORTED_TYPE",
+    };
+
+  if (folderId) {
+    const access = await loadFolderForViewer(ctx, folderId);
+    if (!access.ok) return { success: false, error: access.error };
+  }
+
+  const usage = await getOrganizationStorageUsage();
+  if (
+    usage.success &&
+    usage.data &&
+    usage.data.used_bytes + file.size > usage.data.limit_bytes
+  )
+    return {
+      success: false,
+      code: "STORAGE_LIMIT_EXCEEDED",
+      error: `Your church has used ${usage.data.formatted.used} of ${usage.data.formatted.limit}. Uploading "${file.name}" would exceed your plan.`,
+    };
+
+  const fileId = crypto.randomUUID();
+  const sanitized = sanitizeFilename(file.name);
+  const extension = getFileExtension(sanitized);
+  const storagePath = `${ctx.organizationId}/library/${folderId ?? "root"}/${fileId}_${sanitized}`;
+  const category = categorizeFile(file.type, extension);
+
+  const arrayBuffer = await file.arrayBuffer();
+  const fileBuffer = Buffer.from(arrayBuffer);
+
+  let thumbnailPath: string | null = null;
+  let thumbnailBuffer: Buffer | null = null;
+  if (shouldGenerateThumbnail(file.type)) {
+    try {
+      thumbnailBuffer = await sharp(fileBuffer)
+        .resize(200, 200, { fit: "inside", withoutEnlargement: true })
+        .webp({ quality: 80 })
+        .toBuffer();
+      thumbnailPath = `${ctx.organizationId}/library/${folderId ?? "root"}/${fileId}_thumb.webp`;
+    } catch (err) {
+      console.error("[uploadToLibrary] Thumbnail generation failed:", err);
+    }
+  }
+
+  const { error: uploadError } = await supabaseAdmin.storage
+    .from(BUCKET)
+    .upload(storagePath, fileBuffer, {
+      contentType: file.type,
+      cacheControl: "3600",
+      upsert: false,
+    });
+  if (uploadError) {
+    console.error("[uploadToLibrary] Storage upload error:", uploadError.message);
+    return { success: false, error: "Couldn't upload the file." };
+  }
+  if (thumbnailBuffer && thumbnailPath) {
+    const { error: thumbError } = await supabaseAdmin.storage
+      .from(BUCKET)
+      .upload(thumbnailPath, thumbnailBuffer, {
+        contentType: "image/webp",
+        cacheControl: "3600",
+        upsert: false,
+      });
+    if (thumbError) thumbnailPath = null;
+  }
+
+  const { data: inserted, error: insertError } = await supabaseAdmin
+    .from("attachments")
+    .insert({
+      organization_id: ctx.organizationId,
+      entity_type: "library",
+      entity_id: null,
+      folder_id: folderId,
+      name: file.name.slice(0, 255),
+      description,
+      file_type: category,
+      file_extension: extension,
+      size_bytes: file.size,
+      storage_path: storagePath,
+      thumbnail_path: thumbnailPath,
+      mime_type: file.type,
+      uploaded_by: ctx.userId,
+    })
+    .select(
+      "id, organization_id, entity_type, entity_id, folder_id, name, description, file_type, file_extension, size_bytes, storage_path, thumbnail_path, mime_type, uploaded_by, uploaded_at, is_pinned, view_count, download_count, last_accessed_at",
+    )
+    .single();
+
+  if (insertError || !inserted) {
+    await supabaseAdmin.storage.from(BUCKET).remove([storagePath]);
+    if (thumbnailPath)
+      await supabaseAdmin.storage.from(BUCKET).remove([thumbnailPath]);
+    console.error("[uploadToLibrary] Insert error:", insertError?.message);
+    return {
+      success: false,
+      error: insertError?.message || "Couldn't record the upload.",
+    };
+  }
+
+  const [hydrated] = await hydrateLibraryFiles([
+    inserted as Parameters<typeof hydrateLibraryFiles>[0][number],
+  ]);
+  revalidatePath("/workspace/library");
+  return { success: true, data: hydrated };
+}
+
+// ─── View / download tracking ──────────────────────────────
+//
+// Best-effort counters. Failures log and continue — we never want a
+// preview or download blocked by a failed UPDATE.
+
+export async function trackAttachmentView(
+  attachmentId: string,
+): Promise<void> {
+  try {
+    const ctx = await getAuthContext();
+    if (!ctx) return;
+    const { data: row } = await supabaseAdmin
+      .from("attachments")
+      .select("view_count, organization_id")
+      .eq("id", attachmentId)
+      .maybeSingle();
+    if (!row || row.organization_id !== ctx.organizationId) return;
+    await supabaseAdmin
+      .from("attachments")
+      .update({
+        view_count: (row.view_count ?? 0) + 1,
+        last_accessed_at: new Date().toISOString(),
+      })
+      .eq("id", attachmentId);
+  } catch (err) {
+    console.error("[trackAttachmentView] Threw:", err);
+  }
+}
+
+export async function trackAttachmentDownload(
+  attachmentId: string,
+): Promise<void> {
+  try {
+    const ctx = await getAuthContext();
+    if (!ctx) return;
+    const { data: row } = await supabaseAdmin
+      .from("attachments")
+      .select("download_count, organization_id")
+      .eq("id", attachmentId)
+      .maybeSingle();
+    if (!row || row.organization_id !== ctx.organizationId) return;
+    await supabaseAdmin
+      .from("attachments")
+      .update({
+        download_count: (row.download_count ?? 0) + 1,
+        last_accessed_at: new Date().toISOString(),
+      })
+      .eq("id", attachmentId);
+  } catch (err) {
+    console.error("[trackAttachmentDownload] Threw:", err);
+  }
+}
