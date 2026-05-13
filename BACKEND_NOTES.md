@@ -6,6 +6,17 @@ Ben adds entries here when he ships UI that needs a backend hook. Lucas moves th
 
 ## PENDING
 
+### Library Phase 2 — Chunked upload Route Handler
+- Server actions can't expose byte-level progress (full FormData arrives in one shot), so `FileUploader` currently uses an indeterminate animated bar. Replace with a chunked Route Handler (`/api/attachments/upload`) that streams via `ReadableStream` so the client can show real per-file bytes-uploaded progress.
+
+### Library Phase 2 — Storage Packs add-on
+- Stripe product + pricing for incremental storage packs (e.g., +25 GB / +100 GB).
+- Webhook treats Storage Pack purchases as additive to `storage_limit_bytes` on top of the tier baseline. Keep a separate `storage_pack_bytes` column (or per-line-item ledger) so cancelling a pack reverses the bump cleanly.
+- Settings → Subscription card teaser line ("Need more space? Storage Packs coming soon.") replaces with the real upsell button.
+
+### Library Phase 3 — Standalone Library page
+- Dedicated `/workspace/library` route with browse/search across all `entity_type = 'library'` attachments, folders/tags, sharing controls, and bulk operations. The polymorphic `attachments` table is ready; `getStorageBreakdown` already includes a "Library" bucket.
+
 ### Phase 2 notification follow-ups
 - `task_comment` notifications — `tasks.ts` doesn't have a comment server action yet. Once the comment write path lands, hook `createNotification({ type: 'task_comment' })` into it (notify task assignee + creator when they aren't the commenter).
 - Email delivery for the rest of the notification types — currently only the invitation email (`send-invitation`) and the board-member-added email (`send-board-member-added`) actually send. The `email_enabled` toggle in `/settings/notifications` records the preference but won't fire emails for `task_assigned` / `event_invited` / `announcement_posted` / etc. until each type gets its own `send-*` template + Resend hook.
@@ -14,6 +25,15 @@ Ben adds entries here when he ships UI that needs a backend hook. Lucas moves th
 ---
 
 ## DONE
+
+### Library Phase 1 — File attachments foundation — Completed 2026-05-04
+- Migration documentation: `supabase/migrations/20260513_attachments_phase_1.sql` — polymorphic `attachments` table (entity_type ∈ {task, announcement, event, board_card, library}, 25 MB CHECK constraint, soft-delete via `deleted_at`, unique `storage_path`, optional `thumbnail_path`), `organizations.storage_used_bytes` + `storage_limit_bytes` columns, and an INSERT/DELETE trigger that maintains `storage_used_bytes`. Trigger does NOT fire on UPDATE, so soft deletes manually decrement.
+- `src/lib/file-utils.ts`: shared pure helpers — `MAX_FILE_BYTES` (25 MB), `TIER_STORAGE_LIMITS` (2 / 10 / 50 GB), `ALLOWED_MIME_TYPES` allow-list (images, PDFs, audio, Word/Excel/PowerPoint, text), `categorizeFile`, `formatBytes`, `sanitizeFilename`, `shouldGenerateThumbnail`.
+- `src/app/actions/attachments.ts` (~570 LOC, `"use server"`): `uploadAttachment` (MIME + size + storage-limit checks, sharp-generated 200×200 WebP thumbnail for images, service-role storage write with rollback, parent-access gating per entity type, role gate re-enforced because service role bypasses RLS), `getAttachments`, `deleteAttachment` (soft delete + storage cleanup + manual `storage_used_bytes` decrement), `getDownloadUrl` / `getInlineUrl` / `getThumbnailUrl` (60-min signed URLs), `getOrganizationStorageUsage`, `getStorageBreakdown` (per-entity_type rollup).
+- Reusable client components: `<FileUploader>` (drag-drop, multi-file, client-side size/MIME/storage pre-checks, indeterminate per-row progress bar — TODO Phase 2), `<FilePreview>` (type-aware row with thumbnail / icon, three-dot menu: Download / Copy link / Delete with uploader-or-admin gate), `<AttachmentsSection>` (collapsible wrapper, orchestrates preview modals, self-resolves viewerId via browser supabase client). Three preview modals: `<LightboxModal>` (image carousel with ←/→ keys + Esc), `<PDFPreviewModal>` (iframe), `<TextPreviewModal>` (256 KB inline cap + truncation banner).
+- Integrations: Task modal (below description, edit mode only), Announcement card (inside expanded body, gated by `canEdit`), Calendar `EventDetailPanel` (replaces the previously-mocked Linked Files block), `EditCardModal` for project boards (below description). Audio plays inline via expanded `<audio>` player on click; Office docs route straight to download.
+- Settings → Subscription gained a "File Storage" card: tonal usage bar (mint < 80%, amber 80–99%, red ≥ 100%), per-feature breakdown (Tasks, Announcements, Events, Boards, Library), 25 MB note, Storage Packs teaser.
+- Stripe webhook now writes `storage_limit_bytes` on every tier change. `getAllocationsForTier` returns it alongside `seat_limit` and `ai_credits_limit`, so `checkout.session.completed`, `customer.subscription.updated`, `sync-stripe`, and onboarding success all pick it up automatically. Downgrades that take usage above the new limit keep existing files (blocks new uploads only).
 
 ### Board Overview description save — Completed 2026-05-12
 - Added `updateBoard(boardId, data)` server action in `src/app/actions/boards.ts` accepting partial updates for `name` / `description` / `color` / `icon` / `department_id` / `visibility`, gated by `requireEditAccess`.
