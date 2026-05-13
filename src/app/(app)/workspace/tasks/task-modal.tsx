@@ -6,6 +6,7 @@ import { X, Clock, ChevronDown } from "lucide-react";
 import { createTask, updateTask } from "@/app/actions/tasks";
 import type { Task, TeamMember, Department } from "./tasks-view";
 import { AttachmentsSection } from "@/components/attachments-section";
+import { TaskComments } from "./task-comments";
 
 type Priority = "high" | "medium" | "low" | "urgent";
 
@@ -269,17 +270,22 @@ export function TaskModal({
                   />
                 </div>
 
-                {/* Attachments — only available once the task exists, since
-                    the attachments table requires a real entity_id. New
-                    tasks get attachments after the first save. */}
+                {/* Attachments + comments — only when the task already
+                    exists (both require a real task id). New tasks pick
+                    these up after the first save. */}
                 {isEditing && task?.id && (
-                  <div className="mb-5">
-                    <AttachmentsSection
-                      entityType="task"
-                      entityId={task.id}
-                      canUpload
-                    />
-                  </div>
+                  <>
+                    <div className="mb-5">
+                      <AttachmentsSection
+                        entityType="task"
+                        entityId={task.id}
+                        canUpload
+                      />
+                    </div>
+                    <div className="mb-5">
+                      <TaskComments taskId={task.id} />
+                    </div>
+                  </>
                 )}
 
                 {/* Priority */}
