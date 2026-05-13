@@ -14,8 +14,10 @@ Ben adds entries here when he ships UI that needs a backend hook. Lucas moves th
 - Webhook treats Storage Pack purchases as additive to `storage_limit_bytes` on top of the tier baseline. Keep a separate `storage_pack_bytes` column (or per-line-item ledger) so cancelling a pack reverses the bump cleanly.
 - Settings → Subscription card teaser line ("Need more space? Storage Packs coming soon.") replaces with the real upsell button.
 
-### Library Phase 3 — Standalone Library page
-- Dedicated `/workspace/library` route with browse/search across all `entity_type = 'library'` attachments, folders/tags, sharing controls, and bulk operations. The polymorphic `attachments` table is ready; `getStorageBreakdown` already includes a "Library" bucket.
+### Library Phase 4 — Polish / extensions
+- Drag-and-drop folder reorganization (currently three-dot menu only).
+- Deep folder tree recursion in `deleteLibraryFolder('delete_files')` — current implementation soft-deletes files at the top level of the folder being deleted. Nested folders' files survive via `ON DELETE SET NULL`. Fine for most cases; revisit if users start nesting heavily.
+- Background "where this file is used" widening — show every entity (not just the original parent) once attachments get re-attached across entities. Today an attachment has a single `entity_type` / `entity_id`, so the UI accurately reflects one parent.
 
 ### Phase 2 notification follow-ups
 - Email delivery for the rest of the notification types — currently only the invitation email (`send-invitation`) and the board-member-added email (`send-board-member-added`) actually send. The `email_enabled` toggle in `/settings/notifications` records the preference but won't fire emails for `task_assigned` / `event_invited` / `announcement_posted` / `task_comment` / `board_card_comment` / `board_card_mention` / etc. until each type gets its own `send-*` template + Resend hook.
@@ -27,6 +29,28 @@ Ben adds entries here when he ships UI that needs a backend hook. Lucas moves th
 ---
 
 ## DONE
+
+### Library Phase 3 — Standalone /workspace/library page — Completed 2026-05-13
+- Migration documentation: `supabase/migrations/20260513_library_phase_3.sql` mirrors the SQL already applied in Supabase. New tables: `library_folders` (hierarchical, visibility = organization/department/private, color + icon for the sidebar tree), `library_tags` (org-scoped, unique on `(organization_id, name)`), `attachment_tags` junction. New columns on `attachments`: `folder_id` (nullable, FK to library_folders ON DELETE SET NULL), `is_pinned`, `view_count`, `download_count`, `last_accessed_at`. Separate `ALTER` drops the NOT NULL on `attachments.entity_id` so direct-library uploads use `entity_type='library' + entity_id IS NULL` instead of a sentinel uuid.
+- 19 new server actions in `attachments.ts`:
+  - **Folders**: `getLibraryFolders`, `getFolderTree` (with per-folder file counts), `createLibraryFolder` (admin/staff/leader), `updateLibraryFolder`, `deleteLibraryFolder` (cascade options: `move_to_root` re-parents files, `delete_files` soft-deletes them and manually decrements `storage_used_bytes` since the trigger only fires on hard DELETE), `moveLibraryFolder` (walks parent chain to reject cycles).
+  - **Tags**: `getLibraryTags` (org-filtered usage counts), `createLibraryTag`, `updateLibraryTag`, `deleteLibraryTag`, `addTagToAttachment`, `removeTagFromAttachment`.
+  - **Files**: `getLibraryFiles` is the universal fetcher (folderId/filter routing — `recent` = 30 day window, `pinned` = is_pinned, `from_*` = entity_type filter; tag intersection, file-type filter, ILIKE search, six sort modes, cursor pagination by id). `moveAttachmentToFolder` only writes `folder_id` — never changes entity_type/entity_id (multi-location model). `copyAttachment` clones bytes + thumbnail under a new storage path with `entity_type='library' + entity_id=null`. `pinAttachment` / `unpinAttachment`. `renameAttachment`. `updateAttachmentDescription`. `getAttachmentDetail` (joins folder + parent entity for the "Where this file is used" block).
+  - **Upload**: `uploadToLibrary` — direct-library upload (entity_type='library', entity_id=null). Reuses Phase 1's MIME/size/storage checks and sharp thumbnail pipeline.
+  - **Tracking**: `trackAttachmentView`, `trackAttachmentDownload` — best-effort counters, never blocks the action that triggered them.
+- Phase 1 `userHasParentAccess` updated: the `library` branch still returns `{ ok: true }`. For direct-library uploads (entity_id IS NULL), the upload path uses `uploadToLibrary` instead of `uploadAttachment`, so the existing helper never gets called with a null id.
+- UI: 11 new components under `src/app/(app)/workspace/library/_components/`:
+  - `library-sidebar.tsx` — quick filters + virtual folders + folder tree (with file-count badges, recursive expand/collapse, context-menu hook) + tag pill list.
+  - `library-topbar.tsx` — breadcrumb chain rebuilt from `parent_folder_id`, search input, filters popover (file types, uploaded-by), sort menu (6 modes), grid/list toggle, upload + new folder CTAs, active tag-filter chips.
+  - `file-card.tsx` + `file-grid.tsx` — responsive 1/2/3/4-column grid with hover lift, multi-select checkbox, per-card three-dot menu, pin badge, lazy thumbnail load via `getThumbnailUrl`.
+  - `file-list.tsx` — table view with the spec's full column set (thumbnail, name, type, size, uploader, modified, tags, actions).
+  - `file-detail-panel.tsx` — 640px slide-in with inline rename, click-to-edit description, native previews (image → lightbox, PDF → iframe, audio → player, others → download CTA), tag picker over the org catalog, "Where this file is used" link to parent entity, Download / Copy link / Move to / Pin / Delete actions.
+  - `create-folder-modal.tsx` — dual-purpose create/edit with name, description, 12-color palette, curated icon picker over `getIconByName`, visibility radio with department dropdown.
+  - `folder-picker-modal.tsx` — searchable tree picker with "Library Root" option and an optional "Create new folder" handoff.
+  - `bulk-actions-toolbar.tsx` — sticky bottom-center pill (Move / Tag / Pin / Delete / Clear).
+  - `empty-states.tsx` — empty library, empty folder, no search results, storage banner at 80% / 100%.
+  - `library-view.tsx` — the state-holding orchestrator that pulls it all together.
+- Replaces the "Coming Soon" placeholder at `/workspace/library`.
 
 ### Project Boards Phase 3 — Card detail panel, checklist, comments, labels, activity — Completed 2026-05-13
 - Migration documentation: `supabase/migrations/20260513_create_card_activity.sql` — `card_activity` table (CHECK-constrained `action_type`, jsonb `metadata`, per-card descending index, RLS) plus `card_checklist_items.completed_at`. SQL was applied directly to Supabase first; migration file is the source-of-truth copy.

@@ -14,7 +14,15 @@ Before you start a coding session:
 
 ## Lucas (last updated: 2026-05-13)
 
-Free / between tasks. Most recent ship: **Project Boards Phase 3 — card detail panel, checklist, comments, labels, activity** + **task comments retrofit**.
+Free / between tasks. Most recent ship: **Library Phase 3 — standalone /workspace/library page**.
+
+Library Phase 3 highlights:
+- New schema in Supabase: `library_folders` (hierarchical with org / department / private visibility), `library_tags` (org-scoped), `attachment_tags` junction. Existing `attachments` table gained `folder_id`, `is_pinned`, `view_count`, `download_count`, `last_accessed_at`; `entity_id` is now nullable so direct-library uploads can sit at `entity_type='library' + entity_id IS NULL` without a sentinel.
+- 19 new server actions covering folder CRUD, tag CRUD, universal file fetcher with virtual-folder / filter / tag-intersection / search routing, copy / pin / rename / describe / detail / direct-library upload / view + download tracking.
+- The "files live in multiple places" model: `moveAttachmentToFolder` only writes `folder_id`, never changes `entity_type` / `entity_id`. A file attached to a task and moved into a custom folder appears in both "From Tasks" and the custom folder.
+- 11 new UI components: sidebar (filters + folder tree + tags), topbar (breadcrumb + search + filters + sort + view toggle + upload), grid / list views, detail panel with inline rename + previews + parent-link, create-folder / folder-picker modals, bulk-actions toolbar, empty states, storage banner, plus the orchestrator that ties it all together. Replaces the prior "Coming Soon" placeholder.
+
+Previous ship before this: Project Boards Phase 3 (card detail panel + checklist + comments + labels + activity) and task comments retrofit.
 
 Phase 3 highlights:
 - `card_activity` table with diff-driven retrofit into `createCard` / `updateCard` / `moveCard` (best-effort; never rolls back the primary write).
