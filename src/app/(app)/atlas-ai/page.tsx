@@ -1,6 +1,6 @@
 import { Sparkles } from "lucide-react";
 
-export default function CopilotPage() {
+export default function AtlasAIPage() {
   return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4">
       <div
@@ -13,7 +13,7 @@ export default function CopilotPage() {
         className="text-2xl font-semibold text-[#2D333A] mb-2"
         style={{ fontFamily: "var(--font-poppins)" }}
       >
-        Atlas Copilot
+        Atlas AI
       </h2>
       <p
         className="text-[#6B7280] text-[15px] max-w-md mb-4"

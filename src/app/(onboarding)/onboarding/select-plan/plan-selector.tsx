@@ -22,7 +22,7 @@ const plans: Plan[] = [
     features: [
       "5 team seats",
       "500 AI credits / month",
-      "Unlimited Copilot access",
+      "Unlimited Atlas AI access",
       "Workspace module",
       "Announcements & Tasks",
       "Project Boards",

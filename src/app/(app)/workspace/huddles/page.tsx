@@ -13,7 +13,7 @@ export default function HuddlesPage() {
         className="text-2xl font-semibold text-[#2D333A] mb-2"
         style={{ fontFamily: "var(--font-poppins)" }}
       >
-        Team Huddles
+        Huddles
       </h2>
       <p
         className="text-[#6B7280] text-[15px] max-w-md mb-4"

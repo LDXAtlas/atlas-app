@@ -24,7 +24,7 @@ const TIERS: Record<string, TierInfo> = {
     credits: "500",
     color: "#5CE1A5",
     icon: Zap,
-    features: ["Workspace module", "Announcements & Tasks", "Project Boards", "Unlimited Copilot"],
+    features: ["Workspace module", "Announcements & Tasks", "Project Boards", "Unlimited Atlas AI"],
   },
   suite: {
     name: "Atlas Suite",

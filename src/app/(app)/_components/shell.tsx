@@ -81,7 +81,7 @@ const modules: ModuleGroup[] = [
     items: [
       { label: "Announcements", href: "/workspace/announcements", icon: <Megaphone className="size-4" /> },
       { label: "My Tasks", href: "/workspace/tasks", icon: <CheckSquare className="size-4" /> },
-      { label: "Team Huddles", href: "/workspace/huddles", icon: <Users className="size-4" /> },
+      { label: "Huddles", href: "/workspace/huddles", icon: <Users className="size-4" /> },
       { label: "Project Boards", href: "/workspace/projects", icon: <Folder className="size-4" /> },
       { label: "Calendar", href: "/workspace/calendar", icon: <Calendar className="size-4" /> },
       { label: "Library", href: "/workspace/library", icon: <BookOpen className="size-4" /> },
@@ -109,17 +109,16 @@ const modules: ModuleGroup[] = [
       { label: "Prayer Wall", href: "/care/prayer-wall", icon: <MessageCircle className="size-4" /> },
     ],
   },
-  {
-    id: "atlas-ai",
-    label: "Atlas AI",
-    icon: <Sparkles className="size-5" strokeWidth={1.5} />,
-    color: AI_TO,
-    isAI: true,
-    items: [
-      { label: "Atlas Copilot", href: "/atlas-ai/copilot", icon: <Sparkles className="size-4" /> },
-      { label: "Workflows", href: "/atlas-ai/workflows", icon: <Zap className="size-4" /> },
-    ],
-  },
+];
+
+// AI-flavored standalone destinations. Used to live as a collapsible
+// "Atlas AI" module wrapping a Copilot child route, but the Copilot name
+// is now off-limits, so the two children are promoted to standalone tabs:
+//   /atlas-ai     — the chat assistant (formerly /atlas-ai/copilot)
+//   /workflows    — automations (formerly /atlas-ai/workflows)
+const aiNav: NavItem[] = [
+  { label: "Atlas AI", href: "/atlas-ai", icon: <Sparkles className="size-5" strokeWidth={1.5} /> },
+  { label: "Workflows", href: "/workflows", icon: <Zap className="size-5" strokeWidth={1.5} /> },
 ];
 
 const bottomNav: NavItem[] = [
@@ -133,7 +132,7 @@ const pageTitles: Record<string, string> = {
   "/ministry-hub": "Ministry Hub",
   "/workspace/announcements": "Announcements",
   "/workspace/tasks": "My Tasks",
-  "/workspace/huddles": "Team Huddles",
+  "/workspace/huddles": "Huddles",
   "/workspace/projects": "Project Boards",
   "/workspace/library": "Library",
   "/workspace/calendar": "Calendar",
@@ -143,8 +142,8 @@ const pageTitles: Record<string, string> = {
   "/care/care-journal": "Care Journal",
   "/care/follow-ups": "Follow-Ups",
   "/care/prayer-wall": "Prayer Wall",
-  "/atlas-ai/copilot": "Atlas Copilot",
-  "/atlas-ai/workflows": "Workflows",
+  "/atlas-ai": "Atlas AI",
+  "/workflows": "Workflows",
   "/messages": "Messages",
   "/directory": "Directory",
   "/directory/staff-management": "Directory",
@@ -197,19 +196,19 @@ function isModuleLocked(moduleId: string, tier: SubscriptionTier): boolean {
 
 function isItemLocked(itemHref: string, tier: SubscriptionTier): boolean {
   if (tier === "ultimate") return false;
-  // Workflows locked for workspace, suite, and null
-  if (itemHref === "/atlas-ai/workflows") return true;
+  // Workflows is Ultimate-only — locked for workspace, suite, and null.
+  if (itemHref === "/workflows") return true;
   return false;
 }
 
 function getRequiredTier(moduleId: string, itemHref?: string): "suite" | "ultimate" {
-  if (itemHref === "/atlas-ai/workflows") return "ultimate";
+  if (itemHref === "/workflows") return "ultimate";
   if (moduleId === "serve" || moduleId === "care") return "suite";
   return "suite";
 }
 
 function getUpgradePath(moduleId: string, itemHref?: string): string {
-  if (itemHref === "/atlas-ai/workflows") return "/upgrade/workflows";
+  if (itemHref === "/workflows") return "/upgrade/workflows";
   return `/upgrade/${moduleId}`;
 }
 
@@ -367,6 +366,15 @@ export function AppShell({ userName, userId, tier, children }: AppShellProps) {
               collapsed={collapsed}
               tier={tier}
             />
+          ))}
+
+          {/* AI tabs — Atlas AI (chat) and Workflows (automations). Both
+              are standalone top-level destinations now that the old
+              "Atlas AI" group has been split. Workflows tier-gates via
+              its route layout (redirects to /upgrade/workflows on lower
+              tiers), so the link is safe to render for everyone. */}
+          {aiNav.map((item) => (
+            <NavLink key={item.href} item={item} active={isActive(item.href)} collapsed={collapsed} />
           ))}
 
           <Divider collapsed={collapsed} />
