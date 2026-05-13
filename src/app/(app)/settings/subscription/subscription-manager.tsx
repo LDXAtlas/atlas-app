@@ -4,6 +4,7 @@ import { useState } from "react";
 import { createBillingPortalSession } from "@/app/actions/stripe";
 import { syncWithStripe } from "@/app/actions/sync-stripe";
 import { Check, CreditCard, Users, Sparkles, Zap, Rocket, Crown, RefreshCw } from "lucide-react";
+import { StorageUsageCard } from "./storage-usage-card";
 
 interface TierInfo {
   name: string;
@@ -210,6 +211,8 @@ export function SubscriptionManager({ currentTier, hasStripeCustomer, seatLimit 
           </p>
         )}
       </div>
+
+      <StorageUsageCard />
     </div>
   );
 }
