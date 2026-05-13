@@ -1,32 +1,95 @@
-import { BookOpen } from "lucide-react";
+import { connection } from "next/server";
+import { createClient } from "@/lib/supabase/server";
+import { supabaseAdmin } from "@/lib/supabase/admin";
+import { getRoleFromProfile } from "@/lib/permissions";
+import type { Role } from "@/lib/permissions";
+import {
+  getFolderTree,
+  getLibraryTags,
+} from "@/app/actions/attachments";
+import { LibraryView } from "./_components/library-view";
 
-export default function LibraryPage() {
-  return (
-    <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4">
-      <div
-        className="size-16 rounded-2xl flex items-center justify-center mb-5"
-        style={{ backgroundColor: "rgba(92, 225, 165, 0.08)" }}
-      >
-        <BookOpen className="size-8 text-[#5CE1A5]" />
+export default async function LibraryPage() {
+  await connection();
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return (
+      <div className="p-8 text-center text-[#6B7280]">
+        Sign in to use the Library.
       </div>
-      <h2
-        className="text-2xl font-semibold text-[#2D333A] mb-2"
-        style={{ fontFamily: "var(--font-poppins)" }}
-      >
-        Library
-      </h2>
-      <p
-        className="text-[#6B7280] text-[15px] max-w-md mb-4"
-        style={{ fontFamily: "var(--font-source-sans)" }}
-      >
-        Your church&apos;s resource hub. Store documents, templates, training materials, and shared files in one place.
-      </p>
-      <span
-        className="inline-flex items-center px-3 py-1 rounded-full text-[12px] font-medium text-[#5CE1A5] bg-[#5CE1A5]/8"
-        style={{ fontFamily: "var(--font-poppins)" }}
-      >
-        Coming Soon
-      </span>
+    );
+  }
+
+  const slug = user.user_metadata?.organization_slug;
+  if (!slug) {
+    return (
+      <div className="p-8 text-center text-[#6B7280]">
+        No organization context found.
+      </div>
+    );
+  }
+
+  // Resolve org context + viewer role.
+  const { data: org } = await supabaseAdmin
+    .from("organizations")
+    .select("id, name")
+    .eq("slug", slug)
+    .single();
+  if (!org) {
+    return (
+      <div className="p-8 text-center text-[#6B7280]">
+        Organization not found.
+      </div>
+    );
+  }
+
+  const { data: profile } = await supabaseAdmin
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+  const role: Role = getRoleFromProfile(profile);
+
+  // Initial data — fetched server-side so the page renders without a
+  // visible loading state for the chrome. Files load client-side.
+  const [foldersRes, tagsRes, deptsRes, profilesRes] = await Promise.all([
+    getFolderTree(),
+    getLibraryTags(),
+    supabaseAdmin
+      .from("departments")
+      .select("id, name, color")
+      .eq("organization_id", org.id)
+      .order("name", { ascending: true }),
+    supabaseAdmin
+      .from("profiles")
+      .select("id, full_name, email")
+      .eq("organization_id", org.id)
+      .order("full_name", { ascending: true }),
+  ]);
+
+  const orgProfiles = (profilesRes.data ?? []).map(
+    (p: { id: string; full_name: string | null; email: string | null }) => ({
+      id: p.id,
+      full_name: p.full_name || p.email?.split("@")[0] || "Unnamed",
+    }),
+  );
+
+  return (
+    <div className="h-[calc(100vh-128px)]">
+      <LibraryView
+        orgName={org.name}
+        viewerRole={role}
+        initialFolders={foldersRes.success && foldersRes.data ? foldersRes.data : []}
+        initialTags={tagsRes.success && tagsRes.data ? tagsRes.data : []}
+        departments={
+          (deptsRes.data ?? []) as { id: string; name: string; color: string }[]
+        }
+        orgProfiles={orgProfiles}
+      />
     </div>
   );
 }
