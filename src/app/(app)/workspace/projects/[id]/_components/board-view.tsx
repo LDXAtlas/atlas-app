@@ -40,7 +40,7 @@ import { BoardDetailHeader } from "./board-detail-header";
 import { KanbanColumn, StaticKanbanColumn } from "./kanban-column";
 import { KanbanCard } from "./kanban-card";
 import { QuickAddCardModal } from "./quick-add-card-modal";
-import { EditCardModal } from "./edit-card-modal";
+import { CardDetailPanel } from "./card-detail-panel";
 import { AddColumnInput } from "./add-column-input";
 
 interface BoardViewProps {
@@ -77,7 +77,7 @@ export function BoardView({
   viewerId,
   orgProfiles,
 }: BoardViewProps) {
-  void viewerRole;
+  const viewerIsAdmin = viewerRole === "admin";
 
   const [columns, setColumns] = useState<BoardColumnWithCards[]>(
     () => sortByPosition(board.columns),
@@ -282,13 +282,104 @@ export function BoardView({
     setColumns((prev) => prev.map((c) => c.id === columnId ? { ...c, cards: [...c.cards, card] } : c));
   }
 
-  function handleCardUpdated(updatedCard: BoardCardWithMeta) {
-    setColumns((prev) => prev.map((col) => {
-        if (col.id === updatedCard.column_id) {
-          return { ...col, cards: col.cards.map((card) => card.id === updatedCard.id ? updatedCard : card) };
+  // Patch handler used by the new CardDetailPanel — applies a partial
+  // shape (mirrors what BoardCardWithMeta exposes to the kanban) and
+  // handles cross-column moves by splicing rather than swapping in place.
+  function handleCardPatch(patch: {
+    id: string;
+    title?: string;
+    description?: string | null;
+    cover_color?: string | null;
+    assigned_to?: string | null;
+    assignee_full_name?: string | null;
+    due_date?: string | null;
+    is_completed?: boolean;
+    column_id?: string;
+    label_count?: number;
+    comment_count?: number;
+    checklist_completed?: number;
+    checklist_total?: number;
+  }) {
+    setColumns((prev) => {
+      // Locate the current column for this card so we can detect moves.
+      let fromColIdx = -1;
+      let cardIdx = -1;
+      prev.some((col, ci) => {
+        const idx = col.cards.findIndex((c) => c.id === patch.id);
+        if (idx >= 0) {
+          fromColIdx = ci;
+          cardIdx = idx;
+          return true;
+        }
+        return false;
+      });
+      if (fromColIdx < 0) return prev;
+      const current = prev[fromColIdx].cards[cardIdx];
+
+      const merged: BoardCardWithMeta = {
+        ...current,
+        title: patch.title ?? current.title,
+        description:
+          patch.description !== undefined ? patch.description : current.description,
+        cover_color:
+          patch.cover_color !== undefined ? patch.cover_color : current.cover_color,
+        assigned_to:
+          patch.assigned_to !== undefined ? patch.assigned_to : current.assigned_to,
+        due_date: patch.due_date !== undefined ? patch.due_date : current.due_date,
+        is_completed:
+          patch.is_completed !== undefined ? patch.is_completed : current.is_completed,
+        column_id: patch.column_id ?? current.column_id,
+        assignee:
+          patch.assigned_to !== undefined
+            ? patch.assigned_to
+              ? {
+                  id: patch.assigned_to,
+                  full_name: patch.assignee_full_name || "Teammate",
+                  avatar_color: current.assignee?.avatar_color || "#5CE1A5",
+                }
+              : null
+            : current.assignee,
+        label_count: patch.label_count ?? current.label_count,
+        comment_count: patch.comment_count ?? current.comment_count,
+        checklist_completed:
+          patch.checklist_completed ?? current.checklist_completed,
+        checklist_total: patch.checklist_total ?? current.checklist_total,
+      };
+
+      // Same-column update: splice in place.
+      if (!patch.column_id || patch.column_id === current.column_id) {
+        return prev.map((col, ci) =>
+          ci === fromColIdx
+            ? {
+                ...col,
+                cards: col.cards.map((c) => (c.id === patch.id ? merged : c)),
+              }
+            : col,
+        );
+      }
+
+      // Cross-column move: pop from old, prepend to new.
+      return prev.map((col, ci) => {
+        if (ci === fromColIdx) {
+          return {
+            ...col,
+            cards: col.cards.filter((c) => c.id !== patch.id),
+          };
+        }
+        if (col.id === patch.column_id) {
+          return { ...col, cards: [merged, ...col.cards] };
         }
         return col;
-      })
+      });
+    });
+  }
+
+  function handleCardRemoved(cardId: string) {
+    setColumns((prev) =>
+      prev.map((col) => ({
+        ...col,
+        cards: col.cards.filter((c) => c.id !== cardId),
+      })),
     );
   }
 
@@ -333,15 +424,6 @@ export function BoardView({
   }, [columns, activeSort, activeAssigneeTop]);
 
   const columnIdsForSortable = useMemo(() => displayColumns.map((c) => `column-${c.id}`), [displayColumns]);
-
-  const editingCard = useMemo(() => {
-    if (!editingCardId) return null;
-    for (const col of columns) {
-      const card = col.cards.find(c => c.id === editingCardId);
-      if (card) return card;
-    }
-    return null;
-  }, [editingCardId, columns]);
 
   return (
     <div className="flex flex-col h-full">
@@ -500,12 +582,18 @@ export function BoardView({
         onCreated={handleCardCreated}
       />
 
-      <EditCardModal
-        open={!!editingCardId}
+      <CardDetailPanel
+        cardId={editingCardId}
         onClose={() => setEditingCardId(null)}
-        card={editingCard}
-        orgProfiles={orgProfiles}
-        onUpdated={handleCardUpdated}
+        columns={columns.map((c) => ({
+          id: c.id,
+          name: c.name,
+          color: c.color,
+        }))}
+        viewerId={viewerId}
+        viewerIsAdmin={viewerIsAdmin}
+        onCardChanged={handleCardPatch}
+        onCardDeleted={handleCardRemoved}
       />
     </div>
   );
