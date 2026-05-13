@@ -8,10 +8,10 @@ import {
   Clock,
   FileText,
   FolderPlus,
+  Kanban,
   Library as LibraryIcon,
   Megaphone,
   Plus,
-  Trello,
   Calendar,
 } from "lucide-react";
 import { getIconByName } from "@/lib/icons";
@@ -89,7 +89,7 @@ const VIRTUAL_FILTERS: {
   {
     filter: "from_boards",
     label: "From Projects",
-    icon: (s) => <Trello className={s} />,
+    icon: (s) => <Kanban className={s} />,
   },
 ];
 
