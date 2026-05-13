@@ -1432,6 +1432,15 @@ export async function createCard(
     return { success: false, error: error?.message || "Failed to create card." };
   }
 
+  recordCardActivity(inserted.id, ctx.userId, "created", {
+    title: inserted.title,
+  });
+  if (inserted.assigned_to && inserted.assigned_to !== ctx.userId) {
+    recordCardActivity(inserted.id, ctx.userId, "assigned", {
+      profile_id: inserted.assigned_to,
+    });
+  }
+
   // Resolve assignee for the immediate UI return.
   let assignee: CardAssignee | null = null;
   if (inserted.assigned_to) {
@@ -1531,11 +1540,13 @@ export async function updateCard(
   const ctx = await getAuthContext();
   if (!ctx) return { success: false, error: "Not authenticated." };
 
-  // Fetch the existing assignment + title so we can detect a true change
-  // and craft the notification copy without an extra round-trip later.
+  // Fetch the existing row so we can both detect real changes (vs. no-op
+  // re-saves) and craft notification/activity copy without an extra hop.
   const { data: card } = await supabaseAdmin
     .from("board_cards")
-    .select("board_id, title, assigned_to")
+    .select(
+      "board_id, title, description, assigned_to, due_date, is_completed",
+    )
     .eq("id", cardId)
     .maybeSingle();
   if (!card) return { success: false, error: "Card not found." };
@@ -1566,6 +1577,53 @@ export async function updateCard(
   if (error) {
     console.error("[updateCard] Update error:", error.message);
     return { success: false, error: error.message };
+  }
+
+  // Activity diff — one row per changed field. Best-effort: failure to
+  // record activity must never roll back the user's save (handled inside
+  // recordCardActivity).
+  if (update.title && update.title !== card.title) {
+    recordCardActivity(cardId, ctx.userId, "title_changed", {
+      from: card.title,
+      to: update.title,
+    });
+  }
+  if (
+    "description" in update &&
+    (update.description ?? null) !== (card.description ?? null)
+  ) {
+    recordCardActivity(cardId, ctx.userId, "description_changed", {});
+  }
+  if (
+    data.assigned_to !== undefined &&
+    (update.assigned_to ?? null) !== (card.assigned_to ?? null)
+  ) {
+    recordCardActivity(
+      cardId,
+      ctx.userId,
+      update.assigned_to ? "assigned" : "unassigned",
+      { profile_id: update.assigned_to ?? card.assigned_to },
+    );
+  }
+  if (
+    data.due_date !== undefined &&
+    (update.due_date ?? null) !== (card.due_date ?? null)
+  ) {
+    recordCardActivity(cardId, ctx.userId, "due_date_changed", {
+      from: card.due_date,
+      to: update.due_date,
+    });
+  }
+  if (
+    data.is_completed !== undefined &&
+    update.is_completed !== card.is_completed
+  ) {
+    recordCardActivity(
+      cardId,
+      ctx.userId,
+      update.is_completed ? "completed" : "reopened",
+      {},
+    );
   }
 
   // Notify the new assignee on an actual change (not a no-op re-save) and
@@ -1633,7 +1691,7 @@ export async function moveCard(
   // Target column must belong to the same board.
   const { data: targetCol } = await supabaseAdmin
     .from("board_columns")
-    .select("id, board_id")
+    .select("id, board_id, name")
     .eq("id", targetColumnId)
     .maybeSingle();
   if (!targetCol || targetCol.board_id !== card.board_id) {
@@ -1656,6 +1714,22 @@ export async function moveCard(
     console.error("[moveCard] Update error:", error.message);
     return { success: false, error: error.message };
   }
+
+  // Only log a column change — drag-within-column reorders are noise.
+  if (targetColumnId !== card.column_id) {
+    const { data: fromCol } = await supabaseAdmin
+      .from("board_columns")
+      .select("name")
+      .eq("id", card.column_id)
+      .maybeSingle();
+    recordCardActivity(cardId, ctx.userId, "moved_column", {
+      from: fromCol?.name,
+      to: targetCol.name,
+      from_column_id: card.column_id,
+      to_column_id: targetColumnId,
+    });
+  }
+
   await touchBoard(card.board_id);
   revalidatePath(`/workspace/projects/${card.board_id}`);
   return { success: true };
