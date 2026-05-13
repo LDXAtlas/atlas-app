@@ -12,11 +12,17 @@ Before you start a coding session:
 
 ---
 
-## Lucas (last updated: 2026-05-04)
+## Lucas (last updated: 2026-05-13)
 
-Free / between tasks. Most recent ship: **Library Phase 1 — file attachments foundation**. Polymorphic `attachments` table (25 MB cap, soft delete, trigger-tracked org storage), 8 server actions in `attachments.ts`, reusable `<FileUploader>` / `<FilePreview>` / `<AttachmentsSection>` plus image / PDF / text preview modals, integrated into tasks, announcements, calendar event detail, and project board cards. Settings → Subscription got a "File Storage" card (tonal progress bar + per-feature breakdown). Stripe webhook now writes `storage_limit_bytes` per tier (2 / 10 / 50 GB).
+Free / between tasks. Most recent ship: **Project Boards Phase 3 — card detail panel, checklist, comments, labels, activity** + **task comments retrofit**.
 
-See `BACKEND_NOTES.md → DONE` for the running history and `BACKEND_NOTES.md → PENDING` for queued work: Library Phase 2 (chunked uploads with real progress, Storage Packs add-on), Library Phase 3 (standalone `/workspace/library` page), and Phase-2 notification follow-ups.
+Phase 3 highlights:
+- `card_activity` table with diff-driven retrofit into `createCard` / `updateCard` / `moveCard` (best-effort; never rolls back the primary write).
+- 14 new server actions covering checklist CRUD with drag-reorder, comments with `@[Name](uuid)` mention tokens + de-duped notification fan-out, label CRUD with usage counts, and a fresh `getCard` with parallel joins.
+- New 720px slide-in `<CardDetailPanel>` replacing the old `EditCardModal`: inline title/description editing, drag-reorder checklist with progress bar, AttachmentsSection (from Library Phase 1) for files, collapsible activity log, comments with @mention autocomplete + edit/delete, sidebar with status / assignee picker / due date / labels / cover color / created by.
+- Task comments retrofit closes the `task_comment` notification gap. Reuses the same `<CommentsSection>` from Project Boards inside `task-modal.tsx`.
+
+See `BACKEND_NOTES.md → DONE` for the running history and `BACKEND_NOTES.md → PENDING` for queued work: Library Phase 2 (chunked uploads with real progress, Storage Packs add-on), Library Phase 3 (standalone `/workspace/library` page), Project Boards Phase 4 (duplicate card), and the remaining email-template hookups.
 
 ---
 

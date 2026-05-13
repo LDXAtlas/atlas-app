@@ -18,13 +18,31 @@ Ben adds entries here when he ships UI that needs a backend hook. Lucas moves th
 - Dedicated `/workspace/library` route with browse/search across all `entity_type = 'library'` attachments, folders/tags, sharing controls, and bulk operations. The polymorphic `attachments` table is ready; `getStorageBreakdown` already includes a "Library" bucket.
 
 ### Phase 2 notification follow-ups
-- `task_comment` notifications — `tasks.ts` doesn't have a comment server action yet. Once the comment write path lands, hook `createNotification({ type: 'task_comment' })` into it (notify task assignee + creator when they aren't the commenter).
-- Email delivery for the rest of the notification types — currently only the invitation email (`send-invitation`) and the board-member-added email (`send-board-member-added`) actually send. The `email_enabled` toggle in `/settings/notifications` records the preference but won't fire emails for `task_assigned` / `event_invited` / `announcement_posted` / etc. until each type gets its own `send-*` template + Resend hook.
-- Phase-2 types (`task_due_soon`, `announcement_mention`, `event_reminder`, `board_card_mention`, `mention`) — wired into the type union and preferences, but no action emits them yet. Add them when each feature lands.
+- Email delivery for the rest of the notification types — currently only the invitation email (`send-invitation`) and the board-member-added email (`send-board-member-added`) actually send. The `email_enabled` toggle in `/settings/notifications` records the preference but won't fire emails for `task_assigned` / `event_invited` / `announcement_posted` / `task_comment` / `board_card_comment` / `board_card_mention` / etc. until each type gets its own `send-*` template + Resend hook.
+- Remaining Phase-2 types (`task_due_soon`, `announcement_mention`, `event_reminder`) — wired into the type union and preferences, but no action emits them yet. Add them when each feature lands. (`board_card_mention`, `board_card_comment`, `task_comment`, and generic `mention` now fire — see DONE below.)
+
+### Project Boards Phase 4 — "Duplicate card"
+- The card detail panel's three-dot menu shows a disabled "Duplicate · Soon" item. Server action would clone title/description/cover/labels/checklist items (positions remapped) and place at the head of the same column. Don't carry over comments or activity.
 
 ---
 
 ## DONE
+
+### Project Boards Phase 3 — Card detail panel, checklist, comments, labels, activity — Completed 2026-05-13
+- Migration documentation: `supabase/migrations/20260513_create_card_activity.sql` — `card_activity` table (CHECK-constrained `action_type`, jsonb `metadata`, per-card descending index, RLS) plus `card_checklist_items.completed_at`. SQL was applied directly to Supabase first; migration file is the source-of-truth copy.
+- 14 new server actions in `boards.ts`:
+  - Checklist: `createChecklistItem`, `updateChecklistItem` (flips `completed_at` on real `false→true` transitions only), `deleteChecklistItem`, `reorderChecklistItems`.
+  - Comments: `createCardComment` (parses `@[Name](uuid)` mention tokens into `board_card_mention` notifications; emits `board_card_comment` to assignee + creator; de-dupes against the commenter), `updateCardComment`, `deleteCardComment`, `getCardComments`.
+  - Labels: `getBoardLabels` (with `usage_count`), `createBoardLabel` (handles 23505 unique on `(board_id, name)`), `updateBoardLabel`, `deleteBoardLabel`, `addCardLabel`, `removeCardLabel`.
+  - Activity: `recordCardActivity` helper (best-effort — failures log and continue, never roll back the primary write), `getCardActivity`.
+  - `getCard` fresh: parallel `Promise.all` across board / column / labels / checklist / comments / activity / profiles. Returns assignee + creator joined, `viewer_can_edit` / `viewer_can_delete`, latest 20 activity entries.
+- Activity diffs retrofitted into `createCard`, `updateCard` (title, description, assigned_to, due_date, is_completed — diffed against pre-update row to skip no-op re-saves), and `moveCard` (column changes only — in-column reorders are noise).
+- UI components: `<MentionInput>` reusable @-trigger textarea with debounced `searchProfiles` dropdown and keyboard navigation; `<MentionRenderer>` for pill rendering; `<CommentsSection>` entity-agnostic, takes onCreate/onUpdate/onDelete props; `<ChecklistSection>` @dnd-kit drag-reorder with optimistic flips + progress bar; `<LabelsPicker>` popover; `<ManageLabelsModal>` per-row CRUD with usage counts; `<ActivityLog>` with phrase formatter per action_type; `<CardDetailPanel>` 720px slide-in orchestrator replacing the old `EditCardModal`.
+- `board-view.tsx` rewired: `handleCardPatch` applies partial updates and handles cross-column moves by splicing rather than swapping in place; `handleCardRemoved` pulls deleted cards out of the kanban immediately. `EditCardModal` file deleted.
+
+### Task comments — Completed 2026-05-13
+- Closes the long-standing task_comment notification gap. Same @mention token syntax as card comments. `createTaskComment` fans out `task_comment` notifications to the assignee + creator and a generic `mention` notification to anyone tagged. `updateTaskComment` is author-only; `deleteTaskComment` is author-or-admin (re-resolves viewer role since `tasks.ts`'s auth helper doesn't carry it).
+- `TaskComments` wrapper component slots inside `task-modal.tsx` right under attachments, rendered only when the task already has an id. Reuses the shared `<CommentsSection>` from project boards — same pill rendering, same edit/delete affordances.
 
 ### Library Phase 1 — File attachments foundation — Completed 2026-05-04
 - Migration documentation: `supabase/migrations/20260513_attachments_phase_1.sql` — polymorphic `attachments` table (entity_type ∈ {task, announcement, event, board_card, library}, 25 MB CHECK constraint, soft-delete via `deleted_at`, unique `storage_path`, optional `thumbnail_path`), `organizations.storage_used_bytes` + `storage_limit_bytes` columns, and an INSERT/DELETE trigger that maintains `storage_used_bytes`. Trigger does NOT fire on UPDATE, so soft deletes manually decrement.
