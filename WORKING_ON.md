@@ -34,6 +34,24 @@ See `BACKEND_NOTES.md â†’ DONE` for the running history and `BACKEND_NOTES.md â†
 
 ---
 
-## Ben (last updated: 2026-05-XX)
+## Ben (last updated: 2026-05-14)
 
-[Update when starting next session]
+1. Edge-to-Edge Canvas Layout
+
+Removed the Boxed Constraints: We removed the hardcoded max-widths (1400px) and grey gutters surrounding the main content. The Library now bleeds edge-to-edge seamlessly, inheriting the global app background for a more native, immersive feel.
+
+Deleted the Sidebar: We completely removed the vertical library-sidebar.tsx. This opened up a massive amount of horizontal breathing room for the actual files.
+
+2. Modernized Topbar & Navigation
+
+Horizontal Navigation: We replaced the sidebar tree with a sleek, horizontal row of navigation chips (All Files, Favorites, Recent) and a clean "Folders" dropdown menu.
+
+Floating Action Buttons: We standardized the primary actions (Upload File, New Folder) into modern, pill-shaped buttons that float on the canvas rather than sitting inside a rigid white header box.
+
+Integrated Storage Meter: Moved the storage capacity progress bar into a compact, pill-shaped indicator in the top right corner, perfectly balancing the header.
+
+3. Premium Interactions & Quality of Life
+
+Full-Screen Drag & Drop: Added a global drag-and-drop listener to the Library view. Whenever a user drags a file from their computer over the browser, a frosted glass overlay with a dashed drop-zone appears, allowing for instant, frictionless uploads.
+
+Click-to-Sort Table Headers: Removed the clunky "Sort" dropdown menu from the UI. Instead, users can now simply click the column headers in the List View (Name, Type, Size, Uploaded By, etc.) to toggle between ascending and descending order, complete with active arrow indicators.
