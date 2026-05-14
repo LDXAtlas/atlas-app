@@ -1,10 +1,18 @@
 "use client";
 
 import { motion, AnimatePresence } from "motion/react";
-import { Bookmark, MoreHorizontal } from "lucide-react";
+import { Bookmark, MoreHorizontal, ArrowDown, ArrowUp } from "lucide-react";
 import { formatBytes } from "@/lib/file-utils";
 import type { LibraryFile } from "@/app/actions/attachments";
 import { fileCategoryLabel, fileIconFor } from "./file-icon-helper";
+
+type SortMode =
+  | "date_newest" | "date_oldest"
+  | "name_asc" | "name_desc"
+  | "size_largest" | "size_smallest"
+  | "type_asc" | "type_desc"
+  | "uploader_asc" | "uploader_desc"
+  | "tags_asc" | "tags_desc";
 
 interface FileListProps {
   files: LibraryFile[];
@@ -13,6 +21,8 @@ interface FileListProps {
   onOpenFile: (file: LibraryFile) => void;
   onToggleSelect: (fileId: string, next: boolean) => void;
   onOpenMenu: (file: LibraryFile, e: React.MouseEvent) => void;
+  sortBy: SortMode;
+  setSortBy: (v: SortMode) => void;
 }
 
 export function FileList({
@@ -22,19 +32,74 @@ export function FileList({
   onOpenFile,
   onToggleSelect,
   onOpenMenu,
+  sortBy,
+  setSortBy,
 }: FileListProps) {
+  
+  // Helper to toggle between ascending and descending for a given column
+  const handleSort = (ascMode: SortMode, descMode: SortMode) => {
+    if (sortBy === ascMode) {
+      setSortBy(descMode);
+    } else {
+      setSortBy(ascMode);
+    }
+  };
+
   return (
-    <div className="bg-white border border-[#E5E7EB] rounded-2xl overflow-hidden">
+    <div className="bg-white border border-[#E5E7EB] rounded-2xl overflow-hidden shadow-sm">
       <table className="w-full">
         <thead>
           <tr className="border-b border-[#F1F5F9] bg-[#FAFBFC]">
             <Th className="w-8" />
-            <Th>Name</Th>
-            <Th>Type</Th>
-            <Th align="right">Size</Th>
-            <Th>Uploaded by</Th>
-            <Th>Modified</Th>
-            <Th>Tags</Th>
+            <Th
+              sortable
+              active={sortBy.startsWith("name")}
+              direction={sortBy === "name_desc" ? "desc" : "asc"}
+              onClick={() => handleSort("name_asc", "name_desc")}
+            >
+              Name
+            </Th>
+            <Th
+              sortable
+              active={sortBy.startsWith("type")}
+              direction={sortBy === "type_desc" ? "desc" : "asc"}
+              onClick={() => handleSort("type_asc", "type_desc")}
+            >
+              Type
+            </Th>
+            <Th
+              align="right"
+              sortable
+              active={sortBy.startsWith("size")}
+              direction={sortBy === "size_smallest" ? "asc" : "desc"} // Default to largest first
+              onClick={() => handleSort("size_largest", "size_smallest")}
+            >
+              Size
+            </Th>
+            <Th
+              sortable
+              active={sortBy.startsWith("uploader")}
+              direction={sortBy === "uploader_desc" ? "desc" : "asc"}
+              onClick={() => handleSort("uploader_asc", "uploader_desc")}
+            >
+              Uploaded by
+            </Th>
+            <Th
+              sortable
+              active={sortBy.startsWith("date")}
+              direction={sortBy === "date_oldest" ? "asc" : "desc"} // Default to newest first
+              onClick={() => handleSort("date_newest", "date_oldest")}
+            >
+              Modified
+            </Th>
+            <Th
+              sortable
+              active={sortBy.startsWith("tags")}
+              direction={sortBy === "tags_desc" ? "desc" : "asc"}
+              onClick={() => handleSort("tags_asc", "tags_desc")}
+            >
+              Tags
+            </Th>
             <Th className="w-12" />
           </tr>
         </thead>
@@ -62,23 +127,48 @@ function Th({
   children,
   className,
   align = "left",
+  sortable,
+  active,
+  direction,
+  onClick,
 }: {
   children?: React.ReactNode;
   className?: string;
   align?: "left" | "right";
+  sortable?: boolean;
+  active?: boolean;
+  direction?: "asc" | "desc";
+  onClick?: () => void;
 }) {
   return (
     <th
-      className={`px-3 py-2 text-[11px] uppercase tracking-wider text-[#9CA3AF] ${
-        align === "right" ? "text-right" : "text-left"
-      } ${className ?? ""}`}
-      style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}
+      className={`px-3 py-3 text-[11px] uppercase tracking-wider group ${
+        active ? "text-[#0F172A]" : "text-[#9CA3AF]"
+      } ${align === "right" ? "text-right" : "text-left"} ${
+        className ?? ""
+      } ${sortable ? "cursor-pointer hover:bg-[#F1F5F9] transition-colors select-none" : ""}`}
+      style={{ fontFamily: "var(--font-poppins)", fontWeight: active ? 700 : 600 }}
+      onClick={sortable ? onClick : undefined}
     >
-      {children}
+      <div className={`flex items-center gap-1.5 ${align === "right" ? "justify-end" : "justify-start"}`}>
+        {children}
+        {sortable && (
+          <span
+            className={`transition-opacity flex items-center justify-center size-4 rounded-md ${
+              active 
+                ? "opacity-100 bg-[#5CE1A5]/15 text-[#059669]" 
+                : "opacity-0 group-hover:opacity-100 text-[#9CA3AF]"
+            }`}
+          >
+            {direction === "desc" ? <ArrowDown className="size-3" /> : <ArrowUp className="size-3" />}
+          </span>
+        )}
+      </div>
     </th>
   );
 }
 
+// ... Keep existing Row, Td, initials, and relativeTime functions unchanged below this line.
 function Row({
   file,
   selected,

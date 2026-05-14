@@ -16,6 +16,7 @@ import {
   Loader2,
   Tag,
   Trash2,
+  Upload, // Added Upload icon
 } from "lucide-react";
 import {
   addTagToAttachment,
@@ -43,7 +44,6 @@ import {
   formatBytes,
   type FileCategory,
 } from "@/lib/file-utils";
-import { LibrarySidebar } from "./library-sidebar";
 import { LibraryTopbar } from "./library-topbar";
 import { FileGrid } from "./file-grid";
 import { FileList } from "./file-list";
@@ -55,7 +55,6 @@ import {
   EmptyFolderState,
   LibraryEmptyState,
   NoSearchResultsState,
-  StorageBanner,
 } from "./empty-states";
 
 interface LibraryViewProps {
@@ -68,12 +67,12 @@ interface LibraryViewProps {
 }
 
 type SortMode =
-  | "date_newest"
-  | "date_oldest"
-  | "name_asc"
-  | "name_desc"
-  | "size_largest"
-  | "size_smallest";
+  | "date_newest" | "date_oldest"
+  | "name_asc" | "name_desc"
+  | "size_largest" | "size_smallest"
+  | "type_asc" | "type_desc"
+  | "uploader_asc" | "uploader_desc"
+  | "tags_asc" | "tags_desc";
 
 type UploadJob =
   | { id: string; name: string; status: "uploading" }
@@ -95,25 +94,20 @@ export function LibraryView({
   const [files, setFiles] = useState<LibraryFile[]>([]);
   const [filesLoading, setFilesLoading] = useState(true);
 
-  // Location: either a filter (folderId=undefined + filter) or a folder
-  // (folderId=null for root, uuid for a specific folder).
   const [filter, setFilter] = useState<LibraryFilter>("all");
   const [folderId, setFolderId] = useState<string | null | undefined>(undefined);
 
-  // Filters / UI state.
   const [search, setSearch] = useState("");
   const [searchDebounced, setSearchDebounced] = useState("");
   const [sortBy, setSortBy] = useState<SortMode>("date_newest");
-  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [viewMode, setViewMode] = useState<"grid" | "list">("list");
   const [fileTypeFilters, setFileTypeFilters] = useState<FileCategory[]>([]);
   const [uploaderFilter, setUploaderFilter] = useState<string | null>(null);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
 
-  // Selection.
   const [selectedFileIds, setSelectedFileIds] = useState<Set<string>>(new Set());
   const selectMode = selectedFileIds.size > 0;
 
-  // Detail panel + modals.
   const [detailFileId, setDetailFileId] = useState<string | null>(null);
   const [createFolderOpen, setCreateFolderOpen] = useState(false);
   const [editingFolder, setEditingFolder] = useState<LibraryFolder | null>(null);
@@ -122,7 +116,6 @@ export function LibraryView({
   } | null>(null);
   const [bulkTagOpen, setBulkTagOpen] = useState(false);
 
-  // Storage usage banner.
   const [storage, setStorage] = useState<{
     used_bytes: number;
     limit_bytes: number;
@@ -130,24 +123,24 @@ export function LibraryView({
     formatted: { used: string; limit: string };
   } | null>(null);
 
-  // Upload queue (drives a small toast list).
   const [uploads, setUploads] = useState<UploadJob[]>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Per-file context menu (anchored absolute by position).
   const [contextMenu, setContextMenu] = useState<{
     fileId: string;
     x: number;
     y: number;
   } | null>(null);
 
-  // Debounce search input → server query.
+  // --- Drag and Drop State ---
+  const [isDragging, setIsDragging] = useState(false);
+  const dragCounter = useRef(0);
+
   useEffect(() => {
     const t = setTimeout(() => setSearchDebounced(search.trim()), 250);
     return () => clearTimeout(t);
   }, [search]);
 
-  // Pull storage info once + after upload.
   const refreshStorage = useCallback(() => {
     getOrganizationStorageUsage().then((r) => {
       if (r.success && r.data) setStorage(r.data);
@@ -157,7 +150,6 @@ export function LibraryView({
     refreshStorage();
   }, [refreshStorage]);
 
-  // Re-pull folders/tags when the catalog changes.
   const refreshFolders = useCallback(async () => {
     const r = await getFolderTree();
     if (r.success && r.data) setFolders(r.data);
@@ -167,7 +159,6 @@ export function LibraryView({
     if (r.success && r.data) setTags(r.data);
   }, []);
 
-  // Re-fetch files whenever the query inputs change.
   const reloadFiles = useCallback(() => {
     let cancelled = false;
     setFilesLoading(true);
@@ -178,7 +169,7 @@ export function LibraryView({
       fileTypes: fileTypeFilters.length > 0 ? fileTypeFilters : undefined,
       search: searchDebounced || undefined,
       uploadedBy: uploaderFilter || undefined,
-      sortBy,
+      sortBy: sortBy as any, // Fixed TypeScript error
       limit: 120,
     }).then((res) => {
       if (cancelled) return;
@@ -242,28 +233,11 @@ export function LibraryView({
     setContextMenu({ fileId: file.id, x: e.clientX, y: e.clientY });
   }
 
-  // ─── Selection bulk ops ───────────────────────────────
-
   function clearSelection() {
     setSelectedFileIds(new Set());
   }
   function selectedFileList(): LibraryFile[] {
     return files.filter((f) => selectedFileIds.has(f.id));
-  }
-
-  async function bulkMove(targetFolderId: string | null) {
-    const list = selectedFileList();
-    await Promise.all(
-      list.map((f) => moveAttachmentToFolder(f.id, targetFolderId)),
-    );
-    // Optimistically update local folder_id so the rows reflect immediately.
-    setFiles((prev) =>
-      prev.map((f) =>
-        selectedFileIds.has(f.id) ? { ...f, folder_id: targetFolderId } : f,
-      ),
-    );
-    refreshFolders();
-    clearSelection();
   }
 
   async function bulkPin() {
@@ -364,14 +338,47 @@ export function LibraryView({
           ),
         );
       }
-      // Auto-clear success jobs after 3s.
       setTimeout(() => {
         setUploads((u) => u.filter((j) => j.id !== jobId));
       }, 5000);
     }
-    // Reset input so the same file can be picked again later.
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
+
+  // ─── Drag and Drop Handlers ───────────────────────────
+
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current += 1;
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      setIsDragging(true);
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current -= 1;
+    if (dragCounter.current === 0) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    dragCounter.current = 0;
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handleFilesPicked(e.dataTransfer.files);
+    }
+  };
 
   // ─── Render ───────────────────────────────────────────
 
@@ -412,37 +419,54 @@ export function LibraryView({
     canUpload,
   ]);
 
-  // Filter chips need the full tag rows.
-  const tagChips: LibraryTag[] = useMemo(
-    () =>
-      selectedTagIds
-        .map((id) => tags.find((t) => t.id === id))
-        .filter((t): t is LibraryTagWithUsage => !!t),
-    [selectedTagIds, tags],
-  );
-
   return (
     <div
-      className="flex h-full overflow-hidden"
-      style={{ backgroundColor: "#F4F5F7" }}
+      className="flex flex-col h-full overflow-hidden relative bg-transparent"
+      onDragEnter={canUpload ? handleDragEnter : undefined}
+      onDragLeave={canUpload ? handleDragLeave : undefined}
+      onDragOver={canUpload ? handleDragOver : undefined}
+      onDrop={canUpload ? handleDrop : undefined}
     >
-      <LibrarySidebar
+      {/* Drag & Drop Full Screen Overlay */}
+      <AnimatePresence>
+        {isDragging && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-[300] bg-white/60 backdrop-blur-sm flex items-center justify-center p-8"
+          >
+            <div className="w-full h-full border-4 border-dashed border-[#5CE1A5] rounded-[32px] bg-[#5CE1A5]/5 flex flex-col items-center justify-center gap-4 pointer-events-none transition-all">
+              <div className="size-20 rounded-full bg-white shadow-sm flex items-center justify-center">
+                <Upload className="size-10 text-[#5CE1A5]" />
+              </div>
+              <h2 className="text-3xl font-bold text-[#0F172A]" style={{ fontFamily: "var(--font-poppins)" }}>
+                Drop files to upload
+              </h2>
+              <p className="text-[#6B7280] text-[15px]" style={{ fontFamily: "var(--font-source-sans)" }}>
+                {folderId ? "Adding to the selected folder" : "Adding to Library Root"}
+              </p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <LibraryTopbar
         orgName={orgName}
         filter={filter}
-        folderId={folderId}
-        selectedTagIds={selectedTagIds}
-        folders={folders}
-        tags={tags}
-        canManage={canUpload}
         onSelectFilter={(f) => {
           setFilter(f);
           setFolderId(undefined);
           clearSelection();
         }}
+        folderId={folderId}
         onSelectFolder={(id) => {
           setFolderId(id);
           clearSelection();
         }}
+        folders={folders}
+        tags={tags}
+        selectedTagIds={selectedTagIds}
         onToggleTag={(id) =>
           setSelectedTagIds((prev) =>
             prev.includes(id)
@@ -450,68 +474,33 @@ export function LibraryView({
               : [...prev, id],
           )
         }
+        search={search}
+        setSearch={setSearch}
+        sortBy={sortBy}
+        setSortBy={setSortBy}
+        viewMode={viewMode}
+        setViewMode={setViewMode}
+        fileTypeFilters={fileTypeFilters}
+        setFileTypeFilters={setFileTypeFilters}
+        uploaderFilter={uploaderFilter}
+        setUploaderFilter={setUploaderFilter}
+        onResetFilters={() => {
+          setFileTypeFilters([]);
+          setUploaderFilter(null);
+          setSelectedTagIds([]);
+        }}
+        orgProfiles={orgProfiles}
+        canUpload={canUpload}
+        onUpload={triggerFilePicker}
         onCreateFolder={() => {
           setEditingFolder(null);
           setCreateFolderOpen(true);
         }}
-        onCreateTag={() => {
-          // Inline create — minimal path: prompt for a name, default color.
-          const name = window.prompt("Tag name?");
-          if (!name?.trim()) return;
-          import("@/app/actions/attachments").then(async (m) => {
-            const r = await m.createLibraryTag(name.trim(), "#5CE1A5");
-            if (r.success) refreshTags();
-          });
-        }}
-        onContextMenuFolder={(folder) => {
-          // Quick edit: open the modal in edit mode.
-          setEditingFolder(folder);
-          setCreateFolderOpen(true);
-        }}
+        storage={storage}
       />
 
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <LibraryTopbar
-          filter={filter}
-          folderId={folderId}
-          folders={folders}
-          search={search}
-          setSearch={setSearch}
-          sortBy={sortBy}
-          setSortBy={setSortBy}
-          viewMode={viewMode}
-          setViewMode={setViewMode}
-          fileTypeFilters={fileTypeFilters}
-          setFileTypeFilters={setFileTypeFilters}
-          uploaderFilter={uploaderFilter}
-          setUploaderFilter={setUploaderFilter}
-          tagFilters={tagChips}
-          onClearTagFilter={(id) =>
-            setSelectedTagIds((prev) => prev.filter((x) => x !== id))
-          }
-          onResetFilters={() => {
-            setFileTypeFilters([]);
-            setUploaderFilter(null);
-            setSelectedTagIds([]);
-          }}
-          orgProfiles={orgProfiles}
-          canUpload={canUpload}
-          onUpload={triggerFilePicker}
-          onCreateFolder={() => {
-            setEditingFolder(null);
-            setCreateFolderOpen(true);
-          }}
-        />
-
-        {storage && (
-          <StorageBanner
-            used={storage.formatted.used}
-            limit={storage.formatted.limit}
-            pct={storage.percentage_used}
-          />
-        )}
-
-        <main className="flex-1 overflow-y-auto px-5 py-4">
+      <main className="flex-1 overflow-y-auto px-8 pb-8 pt-2">
+        <div className="w-full">
           {filesLoading ? (
             <div
               className="flex items-center justify-center py-16 text-[#9CA3AF] gap-2"
@@ -539,10 +528,12 @@ export function LibraryView({
               onOpenFile={handleOpenFile}
               onToggleSelect={handleToggleSelect}
               onOpenMenu={handleOpenMenu}
+              sortBy={sortBy}
+              setSortBy={setSortBy}
             />
           )}
-        </main>
-      </div>
+        </div>
+      </main>
 
       {/* Hidden file input for upload */}
       <input
@@ -917,4 +908,3 @@ function UploadToasts({ uploads }: { uploads: UploadJob[] }) {
     </div>
   );
 }
-

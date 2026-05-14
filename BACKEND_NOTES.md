@@ -6,6 +6,15 @@ Ben adds entries here when he ships UI that needs a backend hook. Lucas moves th
 
 ## PENDING
 
+Lucas you can delete the library-sidebar.tsx file if you dont need it for anything. my libray UI is not using that file at all. 05/14 ben
+
+Folder Hierarchy to Flat List Shift: The getFolderTree endpoint might need to return a pre-formatted path_name string if you allow deeply nested folders, since we removed the vertical tree in favor of a dropdown. 05/14 ben
+
+Expanded Sorting Parameters (NEW): We moved sorting from a global dropdown directly into the table headers. The frontend is now passing six new values in the sortBy payload to getLibraryFiles: "type_asc", "type_desc", "uploader_asc", "uploader_desc", "tags_asc", and "tags_desc". 05/14 ben
+
+TypeScript Interface Update Required (NEW): In @/app/actions/attachments, the type definition for the arguments accepted by getLibraryFiles() needs to be updated. Its sortBy property must be expanded to union the new sort strings mentioned above. (The frontend currently has a temporary as any cast on line 175 of library-view.tsx to bypass the type error until this is updated). 05/14 ben
+
+
 ### Library Phase 2 — Chunked upload Route Handler
 - Server actions can't expose byte-level progress (full FormData arrives in one shot), so `FileUploader` currently uses an indeterminate animated bar. Replace with a chunked Route Handler (`/api/attachments/upload`) that streams via `ReadableStream` so the client can show real per-file bytes-uploaded progress.
 
