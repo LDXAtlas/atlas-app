@@ -5,6 +5,24 @@ Ben adds entries here when he ships UI that needs a backend hook. Lucas moves th
 ---
 
 ## PENDING
+1. Drag-and-Drop API Endpoint
+
+What's needed: A server action or API route to update an event's date in Supabase.
+
+Where to plug it in: In calendar-view.tsx, look for the handleEventDrop(eventId: string, newDate: Date) function. They need to trigger an UPDATE to the database inside this function to permanently save the new starts_at (and adjust the ends_at accordingly) when a user drops an event on a new day.
+
+2. National Holidays Feed
+
+What's needed: Real holiday data.
+
+Where to plug it in: Currently, we are generating mock data using a frontend function called getUSCHolidays(year). The backend team should replace this by either sending down event_type: "holiday" items directly in the main events payload, or by providing a separate endpoint (like /api/holidays?year=2026) that the frontend can fetch from.
+
+3. Performance Note on "Expanded Events"
+
+What's needed: Keep an eye on recurring events.
+
+Where to plug it in: Right now, the frontend calculates all recurring event dates locally using getAllEventDates. This is standard for modern apps, but if an organization has thousands of recurring events stretching years into the future, the backend might eventually need to handle the recurrence expansion via an Edge Function before sending the data to the client to save memory.
+
 
 Lucas you can delete the library-sidebar.tsx file if you dont need it for anything. my libray UI is not using that file at all. 05/14 ben
 

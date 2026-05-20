@@ -16,6 +16,8 @@ import {
   Repeat,
   Video,
   Check,
+  AlertCircle,
+  Filter,
 } from "lucide-react";
 import {
   EventModal,
@@ -67,6 +69,7 @@ const EVENT_TYPE_COLORS: Record<string, string> = {
   outreach: "#EC4899",
   social: "#10B981",
   general: "#6B7280",
+  holiday: "#9CA3AF",
   other: "#6B7280",
 };
 
@@ -78,8 +81,39 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
   outreach: "Outreach",
   social: "Social",
   general: "General",
+  holiday: "Holiday",
   other: "Other",
 };
+
+// ─── Holiday Helper ─────────────────────────────────────
+
+function getUSCHolidays(year: number): CalendarEvent[] {
+  const hols = [
+    { name: "New Year's Day", date: `${year}-01-01T00:00:00Z` },
+    { name: "Memorial Day", date: `${year}-05-25T00:00:00Z` },
+    { name: "Independence Day", date: `${year}-07-04T00:00:00Z` },
+    { name: "Halloween", date: `${year}-10-31T00:00:00Z` },
+    { name: "Christmas Day", date: `${year}-12-25T00:00:00Z` },
+  ];
+
+  return hols.map((h, i) => ({
+    id: `holiday-${year}-${i}`,
+    title: h.name,
+    description: "National Holiday",
+    event_type: "holiday",
+    starts_at: h.date,
+    ends_at: null,
+    is_all_day: true,
+    location: null,
+    location_type: "none",
+    virtual_url: null,
+    color: "#9CA3AF",
+    status: "confirmed",
+    department_id: null,
+    departments: [],
+    recurrence_rule: null,
+  }));
+}
 
 // ─── Helpers ────────────────────────────────────────────
 
@@ -220,12 +254,10 @@ function getAllEventDates(evt: CalendarEvent): Date[] {
   const targetDays = weekdaysStr ? weekdaysStr.split(',').map(d => jsDaysMap[d]).filter(d => d !== undefined) : [baseDate.getDay()];
   
   let loops = 0;
-  
   let limitCount = count !== null ? count : 730;
   
   if (freq === "weekly" && weekdaysStr) {
     let currentDay = new Date(currDate);
-    // Align to Sunday to handle week boundaries
     let currentWeekStart = new Date(currentDay);
     currentWeekStart.setDate(currentWeekStart.getDate() - currentWeekStart.getDay());
     
@@ -233,14 +265,11 @@ function getAllEventDates(evt: CalendarEvent): Date[] {
       loops++;
       if (until !== null && currentDay > until) break;
       
-      // Only emit if it's on or after baseDate
       if (currentDay >= currDate && targetDays.includes(currentDay.getDay())) {
          dates.push(new Date(currentDay));
          occurrenceCount++;
       }
-      
       currentDay.setDate(currentDay.getDate() + 1);
-      
       if (currentDay.getDay() === 0) {
          currentDay.setDate(currentDay.getDate() + (interval - 1) * 7);
       }
@@ -267,11 +296,8 @@ function getAllEventDates(evt: CalendarEvent): Date[] {
       break;
     }
   }
-  
   return dates;
 }
-
-// ─── HOUR_LABELS ────────────────────────────────────────
 
 const HOUR_LABELS: number[] = [];
 for (let h = 6; h <= 22; h++) HOUR_LABELS.push(h);
@@ -321,7 +347,6 @@ function EventDetailPanel({
 
   return (
     <>
-      {/* Overlay */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -330,7 +355,6 @@ function EventDetailPanel({
         onClick={onClose}
         className="fixed inset-0 z-[90] bg-black/20"
       />
-      {/* Panel */}
       <motion.div
         initial={{ x: "100%" }}
         animate={{ x: 0 }}
@@ -338,24 +362,27 @@ function EventDetailPanel({
         transition={{ duration: 0.3, ease: [0.23, 1, 0.32, 1] }}
         className="fixed right-0 top-0 bottom-0 z-[95] w-full max-w-[640px] bg-white border-l border-[#E5E7EB] shadow-2xl flex flex-col overflow-hidden"
       >
-        {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[#E5E7EB] shrink-0">
           <div className="flex items-center gap-2">
-            <button
-              onClick={onEdit}
-              className="size-9 flex items-center justify-center rounded-xl text-[#6B7280] hover:text-[#2D333A] hover:bg-[#F4F5F7] transition-all"
-              title="Edit"
-            >
-              <Pencil className="size-4" />
-            </button>
-            {!confirmDelete ? (
+            {event.event_type !== "holiday" && (
               <button
-                onClick={() => setConfirmDelete(true)}
-                className="size-9 flex items-center justify-center rounded-xl text-[#6B7280] hover:text-[#EF4444] hover:bg-[#FEF2F2] transition-all"
-                title="Delete"
+                onClick={onEdit}
+                className="size-9 flex items-center justify-center rounded-xl text-[#6B7280] hover:text-[#2D333A] hover:bg-[#F4F5F7] transition-all"
+                title="Edit"
               >
-                <Trash2 className="size-4" />
+                <Pencil className="size-4" />
               </button>
+            )}
+            {!confirmDelete ? (
+              event.event_type !== "holiday" && (
+                <button
+                  onClick={() => setConfirmDelete(true)}
+                  className="size-9 flex items-center justify-center rounded-xl text-[#6B7280] hover:text-[#EF4444] hover:bg-[#FEF2F2] transition-all"
+                  title="Delete"
+                >
+                  <Trash2 className="size-4" />
+                </button>
+              )
             ) : (
               <div className="flex items-center gap-1.5">
                 <button
@@ -388,9 +415,7 @@ function EventDetailPanel({
           </button>
         </div>
 
-        {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 py-6 space-y-5">
-          {/* Title */}
           <h2
             className="text-xl text-[#2D333A]"
             style={{ fontFamily: "var(--font-poppins)", fontWeight: 700 }}
@@ -398,7 +423,6 @@ function EventDetailPanel({
             {event.title}
           </h2>
 
-          {/* Date/time */}
           <div className="flex items-center gap-2 text-[#6B7280]">
             <Clock className="size-4 shrink-0" />
             <span
@@ -411,7 +435,6 @@ function EventDetailPanel({
             </span>
           </div>
 
-          {/* Type badge */}
           <div className="flex items-center gap-2 flex-wrap">
             <span
               className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-[12px] uppercase tracking-wider"
@@ -446,7 +469,6 @@ function EventDetailPanel({
             )}
           </div>
 
-          {/* Recurrence */}
           {recurrenceDesc && (
             <div className="flex items-center gap-2 text-[#6B7280]">
               <Repeat className="size-4 shrink-0" />
@@ -459,7 +481,6 @@ function EventDetailPanel({
             </div>
           )}
 
-          {/* Location */}
           {event.location && (
             <div className="flex items-center gap-2 text-[#6B7280]">
               <MapPin className="size-4 shrink-0" />
@@ -472,7 +493,6 @@ function EventDetailPanel({
             </div>
           )}
 
-          {/* Virtual URL */}
           {event.virtual_url && (
             <div className="flex items-center gap-2">
               <Video className="size-4 shrink-0 text-[#6B7280]" />
@@ -499,7 +519,6 @@ function EventDetailPanel({
             </div>
           )}
 
-          {/* Description */}
           {event.description && (
             <div className="pt-2 border-t border-[#E5E7EB]">
               <h4
@@ -517,18 +536,18 @@ function EventDetailPanel({
             </div>
           )}
 
-          {/* Attachments */}
-          <div className="pt-2 border-t border-[#E5E7EB]">
-            <AttachmentsSection
-              entityType="event"
-              entityId={event.id}
-              canUpload
-              collapsible={false}
-              title="Files"
-            />
-          </div>
+          {event.event_type !== "holiday" && (
+            <div className="pt-2 border-t border-[#E5E7EB]">
+              <AttachmentsSection
+                entityType="event"
+                entityId={event.id}
+                canUpload
+                collapsible={false}
+                title="Files"
+              />
+            </div>
+          )}
 
-          {/* Department badges */}
           {event.departments.length > 0 && (
             <div className="pt-2 border-t border-[#E5E7EB]">
               <h4
@@ -559,6 +578,164 @@ function EventDetailPanel({
               </div>
             </div>
           )}
+        </div>
+      </motion.div>
+    </>
+  );
+}
+
+// ─── Mobile Filter Panel ────────────────────────────────
+
+function MobileFilterPanel({
+  onClose,
+  showHolidays,
+  setShowHolidays,
+  activeFilters,
+  toggleFilter,
+  departments,
+}: any) {
+  return (
+    <>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.2 }}
+        onClick={onClose}
+        className="fixed inset-0 z-[100] bg-black/40 xl:hidden"
+      />
+      <motion.div
+        initial={{ y: "100%" }}
+        animate={{ y: 0 }}
+        exit={{ y: "100%" }}
+        transition={{ type: "spring", damping: 25, stiffness: 200 }}
+        className="fixed inset-x-0 bottom-0 z-[105] bg-white rounded-t-3xl shadow-[0_-10px_40px_rgba(0,0,0,0.1)] p-6 pb-12 xl:hidden max-h-[85vh] overflow-y-auto"
+      >
+        <div className="flex items-center justify-between mb-6">
+          <h3
+            className="text-[18px] text-[#2D333A]"
+            style={{ fontFamily: "var(--font-poppins)", fontWeight: 700 }}
+          >
+            Filters & Sources
+          </h3>
+          <button
+            onClick={onClose}
+            className="size-8 flex items-center justify-center rounded-full bg-[#F4F5F7] text-[#6B7280]"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+
+        <div className="space-y-6">
+          <div>
+            <h4
+              className="text-[12px] text-[#9CA3AF] uppercase tracking-wider mb-3"
+              style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}
+            >
+              General
+            </h4>
+            <div className="space-y-3">
+              <label className="flex items-center gap-3 cursor-pointer group">
+                <div
+                  onClick={() => setShowHolidays(!showHolidays)}
+                  className="size-5 rounded-md border-2 flex items-center justify-center transition-all"
+                  style={{
+                    borderColor: showHolidays ? "#9CA3AF" : "#E5E7EB",
+                    backgroundColor: showHolidays ? "#9CA3AF18" : "transparent",
+                  }}
+                >
+                  {showHolidays && <Check className="size-3 text-[#9CA3AF]" />}
+                </div>
+                <span
+                  onClick={() => setShowHolidays(!showHolidays)}
+                  className="text-[15px] text-[#2D333A]"
+                  style={{ fontFamily: "var(--font-source-sans)" }}
+                >
+                  National Holidays
+                </span>
+              </label>
+
+              {[
+                { id: "general", label: "My Events", color: "#5CE1A5" },
+                { id: "meeting", label: "Meetings", color: "#3B82F6" },
+                { id: "service", label: "Services", color: "#F59E0B" },
+              ].map((source) => {
+                const isActive = activeFilters.has(source.id);
+                return (
+                  <label
+                    key={source.id}
+                    className="flex items-center gap-3 cursor-pointer group"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      toggleFilter(source.id);
+                    }}
+                  >
+                    <div
+                      className="size-5 rounded-md border-2 flex items-center justify-center transition-all"
+                      style={{
+                        borderColor: isActive ? source.color : "#E5E7EB",
+                        backgroundColor: isActive ? `${source.color}18` : "transparent",
+                      }}
+                    >
+                      {isActive && <Check className="size-3" style={{ color: source.color }} />}
+                    </div>
+                    <span
+                      className="text-[15px] text-[#2D333A] transition-colors"
+                      style={{
+                        fontFamily: "var(--font-source-sans)",
+                        opacity: isActive ? 1 : 0.6,
+                      }}
+                    >
+                      {source.label}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <h4
+              className="text-[12px] text-[#9CA3AF] uppercase tracking-wider mb-3"
+              style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}
+            >
+              Departments
+            </h4>
+            <div className="space-y-3">
+              {departments.map((dept: any) => {
+                const isActive = activeFilters.has(dept.id);
+                return (
+                  <label
+                    key={dept.id}
+                    className="flex items-center gap-3 cursor-pointer group"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      toggleFilter(dept.id);
+                    }}
+                  >
+                    <div
+                      className="size-5 rounded-md border-2 flex items-center justify-center transition-all"
+                      style={{
+                        borderColor: isActive ? dept.color : "#E5E7EB",
+                        backgroundColor: isActive ? `${dept.color}18` : "transparent",
+                      }}
+                    >
+                      {isActive && <Check className="size-3" style={{ color: dept.color }} />}
+                    </div>
+                    <span
+                      className="text-[15px] text-[#2D333A] transition-colors"
+                      style={{
+                        fontFamily: "var(--font-source-sans)",
+                        opacity: isActive ? 1 : 0.6,
+                      }}
+                    >
+                      {dept.name}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
         </div>
       </motion.div>
     </>
@@ -667,6 +844,7 @@ function MonthGrid({
   getEventsForDay,
   onDayClick,
   onEventClick,
+  onEventDrop,
 }: {
   year: number;
   month: number;
@@ -674,6 +852,7 @@ function MonthGrid({
   getEventsForDay: (d: Date) => CalendarEvent[];
   onDayClick: (d: Date) => void;
   onEventClick: (e: CalendarEvent) => void;
+  onEventDrop: (eventId: string, newDate: Date) => void;
 }) {
   const daysInMonth = getDaysInMonth(year, month);
   const firstDayOfWeek = getFirstDayOfMonth(year, month);
@@ -694,7 +873,6 @@ function MonthGrid({
             "0 4px 20px -2px rgba(0,0,0,0.03), 0 1px 4px -1px rgba(0,0,0,0.02)",
         }}
       >
-        {/* Weekday headers */}
         {WEEK_LABELS.map((label) => (
           <div
             key={label}
@@ -702,17 +880,13 @@ function MonthGrid({
           >
             <span
               className="text-[10px] text-[#9CA3AF] uppercase tracking-widest"
-              style={{
-                fontFamily: "var(--font-poppins)",
-                fontWeight: 600,
-              }}
+              style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}
             >
               {label}
             </span>
           </div>
         ))}
 
-        {/* Leading blanks */}
         {Array.from({ length: firstDayOfWeek }).map((_, i) => (
           <div
             key={`blank-${i}`}
@@ -720,7 +894,6 @@ function MonthGrid({
           />
         ))}
 
-        {/* Day cells */}
         {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((day) => {
           const date = new Date(year, month, day);
           const dayEvents = getEventsForDay(date);
@@ -729,10 +902,7 @@ function MonthGrid({
 
           const uniqueColors = [
             ...new Set(
-              dayEvents.map(
-                (e) =>
-                  e.color || EVENT_TYPE_COLORS[e.event_type] || "#6B7280",
-              ),
+              dayEvents.map((e) => e.color || EVENT_TYPE_COLORS[e.event_type] || "#6B7280")
             ),
           ];
 
@@ -740,6 +910,15 @@ function MonthGrid({
             <div
               key={day}
               onClick={() => onDayClick(date)}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                const eventId = e.dataTransfer.getData("eventId");
+                if (eventId) onEventDrop(eventId, date);
+              }}
               className="border-b border-r border-[#E5E7EB]/50 last:border-r-0 p-1.5 transition-all cursor-pointer relative group min-h-[90px] hover:bg-[#F4F5F7]/30"
             >
               <div className="flex items-center justify-between mb-1">
@@ -768,61 +947,57 @@ function MonthGrid({
               </div>
 
               <div className="space-y-0.5">
-                {dayEvents.slice(0, 2).map((evt) => {
-                  const evtColor =
-                    evt.color ||
-                    EVENT_TYPE_COLORS[evt.event_type] ||
-                    "#6B7280";
-                  return (
-                    <div
-                      key={`${evt.id}-${evt.starts_at}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onEventClick(evt);
-                      }}
-                      className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] truncate border cursor-pointer hover:brightness-95 transition-all"
-                      style={{
-                        fontFamily: "var(--font-poppins)",
-                        fontWeight: 600,
-                        backgroundColor: `${evtColor}10`,
-                        color: evtColor,
-                        borderColor: `${evtColor}20`,
-                      }}
-                    >
-                      <div
-                        className="size-1.5 rounded-full shrink-0"
-                        style={{ backgroundColor: evtColor }}
-                      />
-                      <span className="truncate">{evt.title}</span>
-                    </div>
-                  );
-                })}
+                <AnimatePresence>
+                  {dayEvents.slice(0, 2).map((evt) => {
+                    const evtColor = evt.color || EVENT_TYPE_COLORS[evt.event_type] || "#6B7280";
+                    const isHoliday = evt.event_type === "holiday";
+                    
+                    return (
+                      <motion.div
+                        layout
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.9 }}
+                        transition={{ duration: 0.2 }}
+                        key={`${evt.id}-${evt.starts_at}`}
+                        draggable={!isHoliday}
+                        onDragStart={(e: any) => {
+                          e.dataTransfer.setData("eventId", evt.id);
+                          e.dataTransfer.effectAllowed = "move";
+                        }}
+                        whileHover={{ scale: 1.02, zIndex: 10 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={(e: any) => {
+                          e.stopPropagation();
+                          onEventClick(evt);
+                        }}
+                        className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] truncate border cursor-pointer transition-colors ${!isHoliday ? 'hover:shadow-sm' : 'opacity-80'}`}
+                        style={{
+                          fontFamily: "var(--font-poppins)",
+                          fontWeight: 600,
+                          backgroundColor: `${evtColor}10`,
+                          color: evtColor,
+                          borderColor: `${evtColor}20`,
+                        }}
+                      >
+                        <div
+                          className="size-1.5 rounded-full shrink-0"
+                          style={{ backgroundColor: evtColor }}
+                        />
+                        <span className="truncate">{evt.title}</span>
+                      </motion.div>
+                    );
+                  })}
+                </AnimatePresence>
                 {dayEvents.length > 2 && (
                   <p
                     className="text-[9px] text-[#9CA3AF] uppercase tracking-wider pl-1"
-                    style={{
-                      fontFamily: "var(--font-poppins)",
-                      fontWeight: 600,
-                    }}
+                    style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}
                   >
                     +{dayEvents.length - 2} more
                   </p>
                 )}
               </div>
-
-              {hasEvents && (
-                <div className="absolute bottom-1 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <span
-                    className="text-[8px] text-[#5CE1A5] uppercase tracking-widest"
-                    style={{
-                      fontFamily: "var(--font-poppins)",
-                      fontWeight: 600,
-                    }}
-                  >
-                    View
-                  </span>
-                </div>
-              )}
             </div>
           );
         })}
@@ -868,7 +1043,6 @@ function WeekGrid({
             "0 4px 20px -2px rgba(0,0,0,0.03), 0 1px 4px -1px rgba(0,0,0,0.02)",
         }}
       >
-        {/* Day headers */}
         <div className="grid grid-cols-[60px_repeat(7,1fr)] border-b border-[#E5E7EB]/50 shrink-0">
           <div className="h-12 border-r border-[#E5E7EB]/50" />
           {weekDays.map((d, i) => {
@@ -880,10 +1054,7 @@ function WeekGrid({
               >
                 <span
                   className="text-[10px] uppercase tracking-widest text-[#9CA3AF]"
-                  style={{
-                    fontFamily: "var(--font-poppins)",
-                    fontWeight: 600,
-                  }}
+                  style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}
                 >
                   {WEEK_LABELS[d.getDay()]}
                 </span>
@@ -903,7 +1074,6 @@ function WeekGrid({
           })}
         </div>
 
-        {/* Hour grid */}
         <div className="flex-1 overflow-y-auto">
           <div className="grid grid-cols-[60px_repeat(7,1fr)] relative">
             {HOUR_LABELS.map((h) => (
@@ -911,10 +1081,7 @@ function WeekGrid({
                 <div className="h-14 border-b border-r border-[#E5E7EB]/50 flex items-start justify-end pr-2 pt-0.5">
                   <span
                     className="text-[10px] text-[#9CA3AF]"
-                    style={{
-                      fontFamily: "var(--font-source-sans)",
-                      fontWeight: 500,
-                    }}
+                    style={{ fontFamily: "var(--font-source-sans)", fontWeight: 500 }}
                   >
                     {formatHourLabel(h)}
                   </span>
@@ -927,31 +1094,44 @@ function WeekGrid({
                     return startH === h;
                   });
 
+                  const isConflict = hourEvts.length > 1;
+
                   return (
                     <div
                       key={di}
                       onDoubleClick={() => onDoubleClickSlot(d, h)}
-                      className="h-14 border-b border-r border-[#E5E7EB]/50 last:border-r-0 relative px-0.5 py-0.5"
+                      className="h-14 border-b border-r border-[#E5E7EB]/50 last:border-r-0 relative px-0.5 py-0.5 flex flex-col gap-0.5 overflow-hidden"
                     >
                       {hourEvts.map((evt) => {
-                        const evtColor =
-                          evt.color ||
-                          EVENT_TYPE_COLORS[evt.event_type] ||
-                          "#6B7280";
+                        const evtColor = evt.color || EVENT_TYPE_COLORS[evt.event_type] || "#6B7280";
+                        const bgStyle = isConflict
+                          ? { 
+                              backgroundImage: `repeating-linear-gradient(45deg, transparent, transparent 4px, ${evtColor}15 4px, ${evtColor}15 8px)`,
+                              backgroundColor: `${evtColor}08`,
+                              borderColor: `${evtColor}40`
+                            }
+                          : { 
+                              backgroundColor: `${evtColor}18`, 
+                              borderColor: `${evtColor}30` 
+                            };
+
                         return (
                           <div
                             key={`${evt.id}-${evt.starts_at}`}
-                            onClick={() => onEventClick(evt)}
-                            className="text-[10px] px-1.5 py-0.5 rounded truncate cursor-pointer border hover:brightness-95 transition-all"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onEventClick(evt);
+                            }}
+                            className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded truncate cursor-pointer border hover:shadow-sm transition-all"
                             style={{
                               fontFamily: "var(--font-poppins)",
                               fontWeight: 600,
-                              backgroundColor: `${evtColor}18`,
                               color: evtColor,
-                              borderColor: `${evtColor}30`,
+                              ...bgStyle
                             }}
                           >
-                            {evt.title}
+                            {isConflict && <AlertCircle className="size-2.5 shrink-0" />}
+                            <span className="truncate">{evt.title}</span>
                           </div>
                         );
                       })}
@@ -1000,7 +1180,6 @@ function DayGrid({
             "0 4px 20px -2px rgba(0,0,0,0.03), 0 1px 4px -1px rgba(0,0,0,0.02)",
         }}
       >
-        {/* Day header */}
         <div className="h-12 border-b border-[#E5E7EB]/50 flex items-center justify-center gap-3 shrink-0">
           <span
             className="text-[10px] uppercase tracking-widest text-[#9CA3AF]"
@@ -1027,16 +1206,12 @@ function DayGrid({
           </span>
         </div>
 
-        {/* All-day events */}
         {events.filter((e) => e.is_all_day).length > 0 && (
           <div className="px-4 py-2 border-b border-[#E5E7EB]/50 flex flex-wrap gap-2">
             {events
               .filter((e) => e.is_all_day)
               .map((evt) => {
-                const evtColor =
-                  evt.color ||
-                  EVENT_TYPE_COLORS[evt.event_type] ||
-                  "#6B7280";
+                const evtColor = evt.color || EVENT_TYPE_COLORS[evt.event_type] || "#6B7280";
                 return (
                   <div
                     key={`${evt.id}-${evt.starts_at}`}
@@ -1057,7 +1232,6 @@ function DayGrid({
           </div>
         )}
 
-        {/* Hour grid */}
         <div className="flex-1 overflow-y-auto">
           {HOUR_LABELS.map((h) => {
             const hourEvts = events.filter((evt) => {
@@ -1065,6 +1239,8 @@ function DayGrid({
               const startH = Math.floor(getHourFromDate(evt.starts_at));
               return startH === h;
             });
+
+            const isConflict = hourEvts.length > 1;
 
             return (
               <div
@@ -1075,68 +1251,82 @@ function DayGrid({
                 <div className="w-16 shrink-0 border-r border-[#E5E7EB]/50 flex items-start justify-end pr-2 pt-1">
                   <span
                     className="text-[10px] text-[#9CA3AF]"
-                    style={{
-                      fontFamily: "var(--font-source-sans)",
-                      fontWeight: 500,
-                    }}
+                    style={{ fontFamily: "var(--font-source-sans)", fontWeight: 500 }}
                   >
                     {formatHourLabel(h)}
                   </span>
                 </div>
                 <div className="flex-1 p-1 space-y-1">
-                  {hourEvts.map((evt) => {
-                    const evtColor =
-                      evt.color ||
-                      EVENT_TYPE_COLORS[evt.event_type] ||
-                      "#6B7280";
-                    return (
-                      <div
-                        key={`${evt.id}-${evt.starts_at}`}
-                        onClick={() => onEventClick(evt)}
-                        className="px-3 py-2 rounded-lg cursor-pointer border hover:brightness-95 transition-all"
-                        style={{
-                          backgroundColor: `${evtColor}14`,
-                          borderColor: `${evtColor}25`,
-                        }}
-                      >
-                        <div className="flex items-center gap-2">
-                          <div
-                            className="size-2 rounded-full shrink-0"
-                            style={{ backgroundColor: evtColor }}
-                          />
-                          <span
-                            className="text-[13px] truncate"
-                            style={{
-                              fontFamily: "var(--font-poppins)",
-                              fontWeight: 600,
-                              color: evtColor,
-                            }}
-                          >
-                            {evt.title}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-3 mt-1 ml-4 text-[#9CA3AF]">
-                          <span
-                            className="text-[11px]"
-                            style={{ fontFamily: "var(--font-source-sans)" }}
-                          >
-                            {formatTimeRange(evt.starts_at, evt.ends_at)}
-                          </span>
-                          {evt.location && (
+                  {isConflict && (
+                    <div className="flex items-center gap-1.5 px-2 py-0.5">
+                      <AlertCircle className="size-3 text-[#EF4444]" />
+                      <span className="text-[10px] text-[#EF4444] uppercase tracking-wider" style={{ fontFamily: "var(--font-poppins)", fontWeight: 700 }}>
+                        Double Booked Slot
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="flex flex-col gap-1">
+                    {hourEvts.map((evt) => {
+                      const evtColor = evt.color || EVENT_TYPE_COLORS[evt.event_type] || "#6B7280";
+                      const bgStyle = isConflict
+                        ? { 
+                            backgroundImage: `repeating-linear-gradient(45deg, transparent, transparent 6px, ${evtColor}10 6px, ${evtColor}10 12px)`,
+                            backgroundColor: `${evtColor}05`,
+                            borderColor: `${evtColor}40`
+                          }
+                        : { 
+                            backgroundColor: `${evtColor}14`, 
+                            borderColor: `${evtColor}25` 
+                          };
+
+                      return (
+                        <div
+                          key={`${evt.id}-${evt.starts_at}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onEventClick(evt);
+                          }}
+                          className="px-3 py-2 rounded-lg cursor-pointer border hover:shadow-sm transition-all"
+                          style={{ ...bgStyle }}
+                        >
+                          <div className="flex items-center gap-2">
+                            <div
+                              className="size-2 rounded-full shrink-0"
+                              style={{ backgroundColor: evtColor }}
+                            />
                             <span
-                              className="flex items-center gap-1 text-[11px]"
+                              className="text-[13px] truncate"
                               style={{
-                                fontFamily: "var(--font-source-sans)",
+                                fontFamily: "var(--font-poppins)",
+                                fontWeight: 600,
+                                color: evtColor,
                               }}
                             >
-                              <MapPin className="size-3" />
-                              {evt.location}
+                              {evt.title}
                             </span>
-                          )}
+                          </div>
+                          <div className="flex items-center gap-3 mt-1 ml-4 text-[#9CA3AF]">
+                            <span
+                              className="text-[11px]"
+                              style={{ fontFamily: "var(--font-source-sans)" }}
+                            >
+                              {formatTimeRange(evt.starts_at, evt.ends_at)}
+                            </span>
+                            {evt.location && (
+                              <span
+                                className="flex items-center gap-1 text-[11px]"
+                                style={{ fontFamily: "var(--font-source-sans)" }}
+                              >
+                                <MapPin className="size-3" />
+                                {evt.location}
+                              </span>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             );
@@ -1160,7 +1350,6 @@ function AgendaView({
   const twoWeeksOut = new Date(now);
   twoWeeksOut.setDate(twoWeeksOut.getDate() + 14);
 
-  // Group events by date
   const grouped = useMemo(() => {
     const upcoming = events
       .filter((e) => {
@@ -1241,7 +1430,6 @@ function AgendaView({
       <div className="space-y-4">
         {grouped.map((group) => (
           <div key={group.date.toISOString()}>
-            {/* Date header */}
             <div className="flex items-center gap-3 mb-2">
               <h3
                 className="text-[14px] text-[#2D333A] whitespace-nowrap"
@@ -1252,7 +1440,6 @@ function AgendaView({
               <div className="flex-1 h-px bg-[#E5E7EB]" />
             </div>
 
-            {/* Events */}
             <div className="space-y-2">
               {group.events.map((evt) => {
                 const evtColor =
@@ -1360,19 +1547,55 @@ export function CalendarView({
   const [month, setMonth] = useState(initialMonth);
   const [selectedDay, setSelectedDay] = useState(new Date().getDate());
   const [viewMode, setViewMode] = useState<CalendarViewMode>("month");
+  
+  // Modals & Drawers
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
   const [detailEvent, setDetailEvent] = useState<CalendarEvent | null>(null);
   const [editEvent, setEditEvent] = useState<EventModalData | null>(null);
+  
   const [initialDate, setInitialDate] = useState<string>("");
   const [initialTime, setInitialTime] = useState<string>("");
 
+  const [localEvents, setLocalEvents] = useState<CalendarEvent[]>(events);
+  const [showHolidays, setShowHolidays] = useState(true);
+
+  const [activeFilters, setActiveFilters] = useState<Set<string>>(
+    new Set([
+      "general", "service", "meeting", "rehearsal", "class", "outreach", "social", "other",
+      ...departments.map(d => d.id)
+    ])
+  );
+
+  function toggleFilter(id: string) {
+    const next = new Set(activeFilters);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setActiveFilters(next);
+  }
+
+  useMemo(() => {
+    setLocalEvents(events);
+  }, [events]);
+
   const today = new Date();
 
-  // Expand recurring events
   const expandedEvents = useMemo(() => {
+    let sourceEvents = [...localEvents];
+    
+    if (showHolidays) {
+      sourceEvents = [...sourceEvents, ...getUSCHolidays(year)];
+    }
+
     const result: CalendarEvent[] = [];
-    for (const evt of events) {
+    for (const evt of sourceEvents) {
       if (evt.status === "cancelled") continue;
+      
+      const isHoliday = evt.event_type === "holiday";
+      const hasActiveType = activeFilters.has(evt.event_type);
+      const hasActiveDept = evt.departments.some(d => activeFilters.has(d.id));
+      
+      if (!isHoliday && !hasActiveType && !hasActiveDept) continue;
       
       const dates = getAllEventDates(evt);
       for (let i = 0; i < dates.length; i++) {
@@ -1397,9 +1620,30 @@ export function CalendarView({
       }
     }
     return result;
-  }, [events]);
+  }, [localEvents, showHolidays, year, activeFilters]);
 
-  // Build event lookup by date
+  // Phase 3: Smart Global Conflict Checker
+  const conflictCount = useMemo(() => {
+    const now = new Date();
+    const upcoming = expandedEvents.filter(e => new Date(e.starts_at) >= now && !e.is_all_day && e.event_type !== 'holiday');
+    const groups = new Map<string, CalendarEvent[]>();
+    
+    upcoming.forEach(evt => {
+      const d = new Date(evt.starts_at);
+      // Group by exact Day AND Hour block
+      const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}-${d.getHours()}`;
+      if(!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(evt);
+    });
+    
+    let conflicts = 0;
+    groups.forEach(evts => {
+      // If a block has more than one event, add them to the total conflict count
+      if (evts.length > 1) conflicts += evts.length;
+    });
+    return conflicts;
+  }, [expandedEvents]);
+
   const eventsByDay = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>();
     for (const evt of expandedEvents) {
@@ -1411,7 +1655,6 @@ export function CalendarView({
     return map;
   }, [expandedEvents]);
 
-  // Set of days with events (for mini calendar)
   const eventDays = useMemo(() => {
     const s = new Set<string>();
     for (const evt of expandedEvents) {
@@ -1429,22 +1672,30 @@ export function CalendarView({
     [eventsByDay],
   );
 
-  // Navigation
-  function goToPrevMonth() {
-    if (month === 0) {
-      setMonth(11);
-      setYear(year - 1);
-    } else {
-      setMonth(month - 1);
+  // Phase 4: Smart Navigation Logic
+  function goToPrev() {
+    if (viewMode === 'month' || viewMode === 'agenda') {
+      if (month === 0) { setMonth(11); setYear(year - 1); }
+      else { setMonth(month - 1); }
+    } else if (viewMode === 'week') {
+      const d = new Date(year, month, selectedDay - 7);
+      setYear(d.getFullYear()); setMonth(d.getMonth()); setSelectedDay(d.getDate());
+    } else if (viewMode === 'day') {
+      const d = new Date(year, month, selectedDay - 1);
+      setYear(d.getFullYear()); setMonth(d.getMonth()); setSelectedDay(d.getDate());
     }
   }
 
-  function goToNextMonth() {
-    if (month === 11) {
-      setMonth(0);
-      setYear(year + 1);
-    } else {
-      setMonth(month + 1);
+  function goToNext() {
+    if (viewMode === 'month' || viewMode === 'agenda') {
+      if (month === 11) { setMonth(0); setYear(year + 1); }
+      else { setMonth(month + 1); }
+    } else if (viewMode === 'week') {
+      const d = new Date(year, month, selectedDay + 7);
+      setYear(d.getFullYear()); setMonth(d.getMonth()); setSelectedDay(d.getDate());
+    } else if (viewMode === 'day') {
+      const d = new Date(year, month, selectedDay + 1);
+      setYear(d.getFullYear()); setMonth(d.getMonth()); setSelectedDay(d.getDate());
     }
   }
 
@@ -1452,6 +1703,24 @@ export function CalendarView({
     setYear(today.getFullYear());
     setMonth(today.getMonth());
     setSelectedDay(today.getDate());
+  }
+
+  // Generate dynamic label for the nav bar
+  let navLabel = "";
+  if (viewMode === "month" || viewMode === "agenda") {
+    navLabel = `${MONTH_NAMES[month]} ${year}`;
+  } else if (viewMode === "day") {
+    const d = new Date(year, month, selectedDay);
+    navLabel = d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+  } else if (viewMode === "week") {
+    const weekDays = getWeekDays(year, month, selectedDay);
+    const start = weekDays[0];
+    const end = weekDays[6];
+    if (start.getMonth() === end.getMonth()) {
+      navLabel = `${MONTH_NAMES[start.getMonth()]} ${start.getDate()} - ${end.getDate()}, ${start.getFullYear()}`;
+    } else {
+      navLabel = `${MONTH_NAMES[start.getMonth()].slice(0,3)} ${start.getDate()} - ${MONTH_NAMES[end.getMonth()].slice(0,3)} ${end.getDate()}, ${start.getFullYear()}`;
+    }
   }
 
   function handleMiniDayClick(date: Date) {
@@ -1481,6 +1750,20 @@ export function CalendarView({
     setDetailEvent(event);
   }
 
+  function handleEventDrop(eventId: string, newDate: Date) {
+    setLocalEvents((prev) =>
+      prev.map((evt) => {
+        if (evt.id === eventId) {
+          const oldStart = new Date(evt.starts_at);
+          const newStart = new Date(newDate);
+          newStart.setHours(oldStart.getHours(), oldStart.getMinutes());
+          return { ...evt, starts_at: newStart.toISOString() };
+        }
+        return evt;
+      })
+    );
+  }
+
   function handleEditFromDetail() {
     if (!detailEvent) return;
     setEditEvent({
@@ -1502,7 +1785,6 @@ export function CalendarView({
     setIsCreateOpen(true);
   }
 
-  // Upcoming events (next 3 for sidebar)
   const upcomingEvents = useMemo(() => {
     const nowStr = new Date().toISOString();
     return expandedEvents
@@ -1523,7 +1805,6 @@ export function CalendarView({
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Header */}
       <div className="px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6 lg:pt-8 pb-4 shrink-0">
         <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-5">
           <div>
@@ -1541,53 +1822,81 @@ export function CalendarView({
             </p>
           </div>
 
-          <button
-            onClick={() => {
-              setEditEvent(null);
-              setInitialDate("");
-              setInitialTime("");
-              setIsCreateOpen(true);
-            }}
-            className="px-5 py-2.5 rounded-xl text-white text-[14px] hover:brightness-105 active:scale-[0.98] transition-all flex items-center gap-2 shrink-0"
-            style={{
-              fontFamily: "var(--font-poppins)",
-              fontWeight: 600,
-              backgroundColor: "#2D333A",
-            }}
-          >
-            <Plus className="size-4" /> Create Event
-          </button>
+          <div className="flex items-center gap-3 shrink-0 flex-wrap">
+            {/* Phase 3: Conflict Notification Pill */}
+            <AnimatePresence>
+              {conflictCount > 0 && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9, x: 10 }}
+                  animate={{ opacity: 1, scale: 1, x: 0 }}
+                  exit={{ opacity: 0, scale: 0.9, x: 10 }}
+                  className="flex items-center gap-2 px-3.5 py-2.5 bg-[#FEF2F2] text-[#EF4444] rounded-xl border border-[#FEE2E2]"
+                  style={{ boxShadow: "0 2px 8px -2px rgba(239,68,68,0.1)" }}
+                >
+                  <AlertCircle className="size-4" />
+                  <span
+                    className="text-[13px] whitespace-nowrap"
+                    style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}
+                  >
+                    {conflictCount} Overlapping {conflictCount === 1 ? "Event" : "Events"}
+                  </span>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Phase 4: Mobile Filter Button */}
+            <button
+              onClick={() => setIsFilterMenuOpen(true)}
+              className="xl:hidden flex items-center justify-center size-[42px] rounded-xl border border-[#E5E7EB] bg-white text-[#6B7280] hover:bg-[#F4F5F7] hover:text-[#2D333A] transition-all"
+            >
+              <Filter className="size-4" />
+            </button>
+
+            <button
+              onClick={() => {
+                setEditEvent(null);
+                setInitialDate("");
+                setInitialTime("");
+                setIsCreateOpen(true);
+              }}
+              className="px-5 py-2.5 h-[42px] rounded-xl text-white text-[14px] hover:brightness-105 active:scale-[0.98] transition-all flex items-center gap-2 shrink-0"
+              style={{
+                fontFamily: "var(--font-poppins)",
+                fontWeight: 600,
+                backgroundColor: "#2D333A",
+              }}
+            >
+              <Plus className="size-4" /> Create Event
+            </button>
+          </div>
         </div>
 
-        {/* Navigation row */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            {/* Month nav */}
             <div className="flex items-center gap-1 bg-[#F4F5F7] p-1 rounded-xl">
               <button
-                onClick={goToPrevMonth}
+                onClick={goToPrev}
                 className="p-2 rounded-lg text-[#6B7280] hover:bg-white hover:text-[#2D333A] hover:shadow-sm transition-all"
               >
                 <ChevronLeft className="size-4" />
               </button>
               <span
-                className="px-4 py-1.5 text-[14px] text-[#2D333A] min-w-[180px] text-center"
+                className="px-4 py-1.5 text-[14px] text-[#2D333A] min-w-[200px] text-center"
                 style={{
                   fontFamily: "var(--font-poppins)",
                   fontWeight: 600,
                 }}
               >
-                {MONTH_NAMES[month]} {year}
+                {navLabel}
               </span>
               <button
-                onClick={goToNextMonth}
+                onClick={goToNext}
                 className="p-2 rounded-lg text-[#6B7280] hover:bg-white hover:text-[#2D333A] hover:shadow-sm transition-all"
               >
                 <ChevronRight className="size-4" />
               </button>
             </div>
 
-            {/* Today button */}
             <button
               onClick={goToToday}
               className="px-3.5 py-2 bg-white border border-[#E5E7EB] rounded-xl text-[11px] text-[#6B7280] hover:text-[#5CE1A5] hover:border-[#5CE1A5]/30 transition-all uppercase tracking-wider"
@@ -1600,7 +1909,6 @@ export function CalendarView({
             </button>
           </div>
 
-          {/* View toggle with animated indicator */}
           <div className="flex p-1 bg-[#F4F5F7] rounded-xl relative">
             {VIEW_MODES.map((v) => (
               <button
@@ -1634,9 +1942,7 @@ export function CalendarView({
         </div>
       </div>
 
-      {/* Body */}
       <div className="flex-1 flex min-h-0 px-4 sm:px-6 lg:px-8 pb-4 sm:pb-6 lg:pb-8 gap-6">
-        {/* Main calendar area */}
         <div className="flex-1 flex flex-col min-h-0 min-w-0">
           <AnimatePresence mode="wait">
             {viewMode === "month" && (
@@ -1647,6 +1953,7 @@ export function CalendarView({
                 getEventsForDay={getEventsForDay}
                 onDayClick={handleDayClick}
                 onEventClick={handleEventClick}
+                onEventDrop={handleEventDrop}
               />
             )}
             {viewMode === "week" && (
@@ -1678,9 +1985,8 @@ export function CalendarView({
           </AnimatePresence>
         </div>
 
-        {/* Right Sidebar (hidden below xl) */}
+        {/* Right Sidebar (Hidden below xl) */}
         <div className="hidden xl:flex flex-col gap-4 w-[280px] shrink-0">
-          {/* Mini Calendar */}
           <div
             className="bg-white rounded-2xl border border-[#E5E7EB]/50 p-4"
             style={{
@@ -1694,12 +2000,17 @@ export function CalendarView({
               today={today}
               eventDays={eventDays}
               onDayClick={handleMiniDayClick}
-              onPrev={goToPrevMonth}
-              onNext={goToNextMonth}
+              onPrev={() => {
+                if (month === 0) { setMonth(11); setYear(year - 1); }
+                else { setMonth(month - 1); }
+              }}
+              onNext={() => {
+                if (month === 11) { setMonth(0); setYear(year + 1); }
+                else { setMonth(month + 1); }
+              }}
             />
           </div>
 
-          {/* Calendar Sources */}
           <div
             className="bg-white rounded-2xl border border-[#E5E7EB]/50 p-4"
             style={{
@@ -1714,52 +2025,98 @@ export function CalendarView({
               Calendar Sources
             </h4>
             <div className="space-y-2">
+              <label className="flex items-center gap-2.5 cursor-pointer group">
+                <div
+                  onClick={() => setShowHolidays(!showHolidays)}
+                  className="size-4 rounded border-2 flex items-center justify-center transition-all"
+                  style={{ 
+                    borderColor: showHolidays ? "#9CA3AF" : "#E5E7EB", 
+                    backgroundColor: showHolidays ? "#9CA3AF18" : "transparent" 
+                  }}
+                >
+                  {showHolidays && <Check className="size-2.5 text-[#9CA3AF]" />}
+                </div>
+                <span
+                  onClick={() => setShowHolidays(!showHolidays)}
+                  className="text-[13px] text-[#2D333A] group-hover:text-[#9CA3AF] transition-colors"
+                  style={{ fontFamily: "var(--font-source-sans)" }}
+                >
+                  National Holidays
+                </span>
+              </label>
+
               {[
-                { label: "My Events", color: "#5CE1A5" },
-                { label: "Organization", color: "#3B82F6" },
-                { label: "Tasks", color: "#F59E0B" },
-              ].map((source) => (
-                <label
-                  key={source.label}
-                  className="flex items-center gap-2.5 cursor-pointer group"
-                >
-                  <div
-                    className="size-4 rounded border-2 flex items-center justify-center"
-                    style={{ borderColor: source.color, backgroundColor: `${source.color}18` }}
+                { id: "general", label: "My Events", color: "#5CE1A5" },
+                { id: "meeting", label: "Meetings", color: "#3B82F6" },
+                { id: "service", label: "Services", color: "#F59E0B" },
+              ].map((source) => {
+                const isActive = activeFilters.has(source.id);
+                return (
+                  <label
+                    key={source.id}
+                    className="flex items-center gap-2.5 cursor-pointer group"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      toggleFilter(source.id);
+                    }}
                   >
-                    <Check className="size-2.5" style={{ color: source.color }} />
-                  </div>
-                  <span
-                    className="text-[13px] text-[#2D333A] group-hover:text-[#5CE1A5] transition-colors"
-                    style={{ fontFamily: "var(--font-source-sans)" }}
+                    <div
+                      className="size-4 rounded border-2 flex items-center justify-center transition-all"
+                      style={{ 
+                        borderColor: isActive ? source.color : "#E5E7EB", 
+                        backgroundColor: isActive ? `${source.color}18` : "transparent" 
+                      }}
+                    >
+                      {isActive && <Check className="size-2.5" style={{ color: source.color }} />}
+                    </div>
+                    <span
+                      className="text-[13px] text-[#2D333A] transition-colors"
+                      style={{ 
+                        fontFamily: "var(--font-source-sans)",
+                        opacity: isActive ? 1 : 0.6 
+                      }}
+                    >
+                      {source.label}
+                    </span>
+                  </label>
+                );
+              })}
+
+              {departments.map((dept) => {
+                const isActive = activeFilters.has(dept.id);
+                return (
+                  <label
+                    key={dept.id}
+                    className="flex items-center gap-2.5 cursor-pointer group"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      toggleFilter(dept.id);
+                    }}
                   >
-                    {source.label}
-                  </span>
-                </label>
-              ))}
-              {departments.map((dept) => (
-                <label
-                  key={dept.id}
-                  className="flex items-center gap-2.5 cursor-pointer group"
-                >
-                  <div
-                    className="size-4 rounded border-2 flex items-center justify-center"
-                    style={{ borderColor: dept.color, backgroundColor: `${dept.color}18` }}
-                  >
-                    <Check className="size-2.5" style={{ color: dept.color }} />
-                  </div>
-                  <span
-                    className="text-[13px] text-[#2D333A] group-hover:text-[#5CE1A5] transition-colors"
-                    style={{ fontFamily: "var(--font-source-sans)" }}
-                  >
-                    {dept.name}
-                  </span>
-                </label>
-              ))}
+                    <div
+                      className="size-4 rounded border-2 flex items-center justify-center transition-all"
+                      style={{ 
+                        borderColor: isActive ? dept.color : "#E5E7EB", 
+                        backgroundColor: isActive ? `${dept.color}18` : "transparent" 
+                      }}
+                    >
+                      {isActive && <Check className="size-2.5" style={{ color: dept.color }} />}
+                    </div>
+                    <span
+                      className="text-[13px] text-[#2D333A] transition-colors"
+                      style={{ 
+                        fontFamily: "var(--font-source-sans)",
+                        opacity: isActive ? 1 : 0.6 
+                      }}
+                    >
+                      {dept.name}
+                    </span>
+                  </label>
+                );
+              })}
             </div>
           </div>
 
-          {/* Upcoming */}
           <div
             className="bg-white rounded-2xl border border-[#E5E7EB]/50 p-4"
             style={{
@@ -1832,7 +2189,6 @@ export function CalendarView({
         </div>
       </div>
 
-      {/* Event Detail Panel */}
       <AnimatePresence>
         {detailEvent && (
           <EventDetailPanel
@@ -1847,7 +2203,19 @@ export function CalendarView({
         )}
       </AnimatePresence>
 
-      {/* Create / Edit Event Modal */}
+      <AnimatePresence>
+        {isFilterMenuOpen && (
+          <MobileFilterPanel
+            onClose={() => setIsFilterMenuOpen(false)}
+            showHolidays={showHolidays}
+            setShowHolidays={setShowHolidays}
+            activeFilters={activeFilters}
+            toggleFilter={toggleFilter}
+            departments={departments}
+          />
+        )}
+      </AnimatePresence>
+
       <EventModal
         isOpen={isCreateOpen}
         onClose={() => {

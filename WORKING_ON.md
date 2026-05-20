@@ -34,15 +34,46 @@ See `BACKEND_NOTES.md â†’ DONE` for the running history and `BACKEND_NOTES.md â†
 
 ---
 
-## Ben (last updated: 2026-05-14)
+## Ben (last updated: 2026-05-20)
 
-1. Edge-to-Edge Canvas Layout
+
+1. Premium Drag-and-Drop (Month View)
+
+Users can now click and drag event pills across the month grid to reschedule them.
+
+We added "Optimistic UI" updates, meaning the pill snaps to the new day instantly without waiting for the server, making the app feel lightning fast.
+
+2. Fluid Animations & Micro-interactions
+
+Added Framer Motion tap and hover states (the pills pop up slightly when you hover or click them).
+
+Added layout animations, so when you filter out an event, the remaining events gracefully slide into the empty space instead of instantly snapping.
+
+3. Live Sidebar Filtering & Mobile Support
+
+Wired up the right-side "Calendar Sources" and "Departments" checkboxes so they instantly filter the calendar view.
+
+Added a responsive mobile design: on smaller screens, the sidebar hides, and a sleek "Filter" icon appears at the top. Tapping it slides up an Apple-style bottom sheet containing the filters.
+
+4. Smart Conflict Detection
+
+The calendar now acts as an intelligent assistant. If a user is double-booked, the overlapping events get a premium diagonal-striped background and a red alert icon.
+
+A red notification pill automatically appears at the top of the screen next to "Create Event" to warn the user exactly how many overlapping events they currently have scheduled.
+
+5. Dynamic Navigation
+
+Upgraded the < / > arrows at the top to be context-aware. If you are in the Week view, they step forward exactly 7 days. If you are in Day view, they step 1 day.
+
+The date label between the arrows dynamically updates to format exactly what you are looking at (e.g., "May 10 - 16, 2026").
+
+. Edge-to-Edge Canvas Layout
 
 Removed the Boxed Constraints: We removed the hardcoded max-widths (1400px) and grey gutters surrounding the main content. The Library now bleeds edge-to-edge seamlessly, inheriting the global app background for a more native, immersive feel.
 
 Deleted the Sidebar: We completely removed the vertical library-sidebar.tsx. This opened up a massive amount of horizontal breathing room for the actual files.
 
-2. Modernized Topbar & Navigation
+. Modernized Topbar & Navigation
 
 Horizontal Navigation: We replaced the sidebar tree with a sleek, horizontal row of navigation chips (All Files, Favorites, Recent) and a clean "Folders" dropdown menu.
 
@@ -50,8 +81,10 @@ Floating Action Buttons: We standardized the primary actions (Upload File, New F
 
 Integrated Storage Meter: Moved the storage capacity progress bar into a compact, pill-shaped indicator in the top right corner, perfectly balancing the header.
 
-3. Premium Interactions & Quality of Life
+. Premium Interactions & Quality of Life
 
 Full-Screen Drag & Drop: Added a global drag-and-drop listener to the Library view. Whenever a user drags a file from their computer over the browser, a frosted glass overlay with a dashed drop-zone appears, allowing for instant, frictionless uploads.
 
 Click-to-Sort Table Headers: Removed the clunky "Sort" dropdown menu from the UI. Instead, users can now simply click the column headers in the List View (Name, Type, Size, Uploaded By, etc.) to toggle between ascending and descending order, complete with active arrow indicators.
+
+
