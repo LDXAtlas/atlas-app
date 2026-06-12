@@ -12,9 +12,19 @@ Before you start a coding session:
 
 ---
 
-## Lucas (last updated: 2026-05-13)
+## Lucas (last updated: 2026-06-12)
 
-Free / between tasks. Most recent ship: **Library Phase 3 — standalone /workspace/library page**.
+Just completed Phase 0 AI infrastructure. Phase 1 Huddles is next.
+
+Phase 0 highlights:
+- `src/lib/ai/` module with five files: anthropic-client, openai-client, model-selector, credit-accounting, and the unified `index.ts` that exposes `callAI()` + `transcribeAudio()` to feature code.
+- Tier-based model routing with graceful OpenAI fallback when an org runs out of credits — Workspace gets Haiku 4.5, Suite gets Sonnet 4.6, Ultimate gets Sonnet 4.6 by default and Opus 4.7 for complex tasks.
+- Every call goes through atomic credit deduction + `ai_usage_log` audit insert. Token-level usage feeds the per-row USD cost estimate.
+- `tier-allocations.ts` extended with `huddle_storage_limit_bytes` so the existing Stripe webhook plumbing keeps the new column current on every tier change.
+- Smoke-test endpoint at `/api/ai/test` (admin-gated, flagged for removal before public launch).
+- Two follow-ups queued: monthly credit reset cron, and confirming `gpt-5-nano` vs `gpt-4o-mini` as the live OpenAI fallback after the first production call logs which one the SDK accepts.
+
+Phase 0 ship before this: Library Phase 3 (standalone `/workspace/library` page) and Project Boards Phase 3.
 
 Library Phase 3 highlights:
 - New schema in Supabase: `library_folders` (hierarchical with org / department / private visibility), `library_tags` (org-scoped), `attachment_tags` junction. Existing `attachments` table gained `folder_id`, `is_pinned`, `view_count`, `download_count`, `last_accessed_at`; `entity_id` is now nullable so direct-library uploads can sit at `entity_type='library' + entity_id IS NULL` without a sentinel.

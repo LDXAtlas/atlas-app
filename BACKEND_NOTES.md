@@ -33,6 +33,20 @@ Expanded Sorting Parameters (NEW): We moved sorting from a global dropdown direc
 TypeScript Interface Update Required (NEW): In @/app/actions/attachments, the type definition for the arguments accepted by getLibraryFiles() needs to be updated. Its sortBy property must be expanded to union the new sort strings mentioned above. (The frontend currently has a temporary as any cast on line 175 of library-view.tsx to bypass the type error until this is updated). 05/14 ben
 
 
+### Huddles Phase 1 — Recording, transcription, summary
+- Ready to start. Phase 0 AI infrastructure is in place: `callAI()` and `transcribeAudio()` from `src/lib/ai` handle model selection, fallback, credit accounting, and audit logging end to end.
+- Phase 1 needs: huddle session schema (org-scoped recordings with retention metadata), an upload Route Handler that streams audio to Supabase Storage, the transcription pipeline that calls `transcribeAudio()` post-upload, and a summary action that calls `callAI({ feature: 'huddle_summary', complexity: 'standard' })`.
+- Don't forget action-item extraction (`feature: 'huddle_action_extraction'`) — schema is ready but the prompt + UI aren't designed yet.
+
+### AI infrastructure — Monthly credit reset cron
+- `organizations.ai_credits_reset_at` is being read but no scheduled job resets `ai_credits_used` to 0 on that date yet. Build a Supabase scheduled function (or a Vercel cron hitting an admin route) that loops orgs where `now() >= ai_credits_reset_at`, zeros the counter, and rolls the reset date forward one month.
+
+### AI infrastructure — Confirm `gpt-5-nano` availability
+- `src/lib/ai/openai-client.ts` defaults the OpenAI fallback to `gpt-5-nano` with a runtime swap to `gpt-4o-mini` if the API returns model-not-found. First production call will log which one is in effect — verify and decide whether to hard-code the working id.
+
+### AI infrastructure — Remove `/api/ai/test` before public launch
+- Admin-gated POST endpoint that burns real credits on every call. Fine for QA, not for production. Either delete or move behind a stricter feature flag once Huddles Phase 1 is in real use.
+
 ### Library Phase 2 — Chunked upload Route Handler
 - Server actions can't expose byte-level progress (full FormData arrives in one shot), so `FileUploader` currently uses an indeterminate animated bar. Replace with a chunked Route Handler (`/api/attachments/upload`) that streams via `ReadableStream` so the client can show real per-file bytes-uploaded progress.
 
@@ -56,6 +70,17 @@ TypeScript Interface Update Required (NEW): In @/app/actions/attachments, the ty
 ---
 
 ## DONE
+
+### Huddles Phase 0 — AI infrastructure — Completed 2026-06-12
+- SDK install: `@anthropic-ai/sdk ^0.104.1`, `openai ^6.42.0`.
+- `src/lib/ai/anthropic-client.ts` — singleton client, `callClaude()` with structured retry (3 attempts, 1s/2s/4s backoff on 408/429/5xx/network only), prompt caching on by default, user-friendly error mapping. Reports billed input + cache-read tokens separately.
+- `src/lib/ai/openai-client.ts` — `transcribeAudio()` (Whisper-1 verbose_json with segment timestamps) and `callGPTNanoFallback()` (graceful chat fallback). `PRIMARY_FALLBACK_MODEL='gpt-5-nano'` with a runtime swap to `SECONDARY_FALLBACK_MODEL='gpt-4o-mini'` if the API returns model-not-found.
+- `src/lib/ai/model-selector.ts` — single source of truth for "which model handles this call?". 0 credits → OpenAI fallback. Ultimate+complex → Opus 4.7. Workspace → Haiku 4.5. Otherwise → Sonnet 4.6. `MODEL_PRICING` covers all five model ids (Anthropic three + both OpenAI fallback candidates + whisper-1) for accurate `cost_usd_estimated` math.
+- `src/lib/ai/credit-accounting.ts` — `getRemainingCredits()` wraps the live `get_ai_credits_remaining` RPC. `estimateCreditsForCall()` is feature- and model-family-aware. `consumeCredits()` runs the live `consume_ai_credits` RPC then writes a row to `ai_usage_log` with the full token breakdown and an estimated USD cost.
+- `src/lib/ai/index.ts` — `callAI()` and `transcribeAudio()` are the public API. Every feature in Atlas (Huddles, Atlas AI chatbot, announcement gen, smart suggestions, etc.) imports from here. Feature code never touches the SDKs or the credit columns.
+- Schema documentation: `supabase/migrations/20260612_huddles_phase_0_ai_infra.sql` mirrors the live `ai_usage_log` table (CHECK constraints on `feature` and `provider`, per-org/time + per-feature/time indexes, RLS that lets org members SELECT their own usage), plus pointer notes for the columns already on `organizations` and the two live PostgreSQL helpers.
+- `src/lib/tier-allocations.ts` extended with `huddle_storage_limit_bytes` (workspace 10GB, suite 50GB, ultimate 200GB). The Stripe webhook + sync-stripe + onboarding success all spread `getAllocationsForTier()` into the org update, so the new column lands on every tier-change code path with a single source change.
+- `POST /api/ai/test` — admin-gated end-to-end smoke test. Calls `callAI({ feature: 'other' })`, returns model / provider / wasFallback / creditsRemaining / usage. Flagged for removal before public launch.
 
 ### Library Phase 3 — Standalone /workspace/library page — Completed 2026-05-13
 - Migration documentation: `supabase/migrations/20260513_library_phase_3.sql` mirrors the SQL already applied in Supabase. New tables: `library_folders` (hierarchical, visibility = organization/department/private, color + icon for the sidebar tree), `library_tags` (org-scoped, unique on `(organization_id, name)`), `attachment_tags` junction. New columns on `attachments`: `folder_id` (nullable, FK to library_folders ON DELETE SET NULL), `is_pinned`, `view_count`, `download_count`, `last_accessed_at`. Separate `ALTER` drops the NOT NULL on `attachments.entity_id` so direct-library uploads use `entity_type='library' + entity_id IS NULL` instead of a sentinel uuid.
