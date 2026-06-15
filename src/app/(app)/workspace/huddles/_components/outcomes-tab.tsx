@@ -17,31 +17,26 @@ import {
   deleteDecision,
   promoteActionItemToTask,
   type HuddleActionItem,
-  type HuddleAttendee,
   type HuddleDecision,
 } from "@/app/actions/huddles";
-import { AttendeeList } from "./attendee-list";
 
 interface OutcomesTabProps {
   huddleId: string;
-  attendees: HuddleAttendee[];
   actionItems: HuddleActionItem[];
   decisions: HuddleDecision[];
   canEdit: boolean;
-  canManage: boolean;
-  onAttendeesChange: (a: HuddleAttendee[]) => void;
   onActionsChange: (items: HuddleActionItem[]) => void;
   onDecisionsChange: (items: HuddleDecision[]) => void;
 }
 
+// Results of the meeting only. Attendance + role management moved up
+// to the Overview tab where it logically belongs ("who's here?" is a
+// setup-time question, not a results-time one).
 export function OutcomesTab({
   huddleId,
-  attendees,
   actionItems,
   decisions,
   canEdit,
-  canManage,
-  onAttendeesChange,
   onActionsChange,
   onDecisionsChange,
 }: OutcomesTabProps) {
@@ -58,12 +53,6 @@ export function OutcomesTab({
         items={decisions}
         canEdit={canEdit}
         onChange={onDecisionsChange}
-      />
-      <AttendeeList
-        huddleId={huddleId}
-        attendees={attendees}
-        canManage={canManage}
-        onChange={onAttendeesChange}
       />
       <SummaryPlaceholder />
     </div>
