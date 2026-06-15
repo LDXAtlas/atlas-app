@@ -12,9 +12,21 @@ Before you start a coding session:
 
 ---
 
-## Lucas (last updated: 2026-06-12)
+## Lucas (last updated: 2026-06-15)
 
-Just completed Phase 0 AI infrastructure. Phase 1 Huddles is next.
+Just completed Huddles Phase 1 — the meeting orchestration shell. Page is functional and ready for Ben's design polish pass.
+
+Component files Ben will be working with (all under `src/app/(app)/workspace/huddles/_components/`):
+- `huddle-list.tsx` + `huddle-card.tsx` + `meeting-source-badge.tsx` — the list page
+- `create-huddle-modal.tsx` — new-huddle flow
+- `huddle-detail.tsx` (orchestrator), `huddle-header.tsx`, `agenda-tab.tsx`, `notes-tab.tsx`, `outcomes-tab.tsx`, `attendee-list.tsx` — detail page
+
+Functionally everything works: create huddles with attendees + initial agenda; attendees get notified (reusing the existing `mention` notification type — dedicated `huddle_invited` queued in BACKEND_NOTES); start / end / finalize lifecycle; drag-reorder agenda; autosave notes every 5s; log decisions; track action items and promote them to real tasks in `My Tasks` with `source='huddle'` + a back-link via `source_huddle_id`; mark attendance; huddles appear on the Calendar (mint-saturated pills that route to the huddle page on click — drag-reschedule is read-only on the calendar for Phase 1).
+
+The Phase 0 AI infrastructure isn't wired yet — Phase 2 will add recording upload, transcription via `transcribeAudio()`, and AI summary / action extraction via `callAI()`.
+
+Phase 0 highlights (previous ship):
+- `src/lib/ai/` module with five files: anthropic-client, openai-client, model-selector, credit-accounting, and the unified `index.ts` that exposes `callAI()` + `transcribeAudio()` to feature code.
 
 Phase 0 highlights:
 - `src/lib/ai/` module with five files: anthropic-client, openai-client, model-selector, credit-accounting, and the unified `index.ts` that exposes `callAI()` + `transcribeAudio()` to feature code.

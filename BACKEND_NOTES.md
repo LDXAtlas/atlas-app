@@ -33,10 +33,15 @@ Expanded Sorting Parameters (NEW): We moved sorting from a global dropdown direc
 TypeScript Interface Update Required (NEW): In @/app/actions/attachments, the type definition for the arguments accepted by getLibraryFiles() needs to be updated. Its sortBy property must be expanded to union the new sort strings mentioned above. (The frontend currently has a temporary as any cast on line 175 of library-view.tsx to bypass the type error until this is updated). 05/14 ben
 
 
-### Huddles Phase 1 — Recording, transcription, summary
-- Ready to start. Phase 0 AI infrastructure is in place: `callAI()` and `transcribeAudio()` from `src/lib/ai` handle model selection, fallback, credit accounting, and audit logging end to end.
-- Phase 1 needs: huddle session schema (org-scoped recordings with retention metadata), an upload Route Handler that streams audio to Supabase Storage, the transcription pipeline that calls `transcribeAudio()` post-upload, and a summary action that calls `callAI({ feature: 'huddle_summary', complexity: 'standard' })`.
-- Don't forget action-item extraction (`feature: 'huddle_action_extraction'`) — schema is ready but the prompt + UI aren't designed yet.
+### Huddles Phase 2 — Recording, transcription, summary
+- Phase 1 (meeting orchestration shell) ships in this PR. Phase 2 is the AI layer on top.
+- Needs: an upload Route Handler that streams audio to Supabase Storage (use the existing `huddle_recordings` table — Phase 1 left it empty), the transcription pipeline that calls `transcribeAudio()` post-upload (writes a `huddle_transcripts` row), and a summary action that calls `callAI({ feature: 'huddle_summary', complexity: 'standard' })` (writes a `huddle_summaries` row).
+- Don't forget action-item extraction (`feature: 'huddle_action_extraction'`) — the schema is ready (`huddle_action_items.source = 'ai_extracted'`), the prompt + UI aren't designed yet.
+- The status enum already has `processing` and `ready` for the post-upload pipeline.
+
+### Huddles Phase 1 — Notification type follow-up
+- `huddle_invited` and `huddle_action_assigned` aren't in the `notifications.type` CHECK constraint. Phase 1 reuses `mention` for huddle invites and `task_assigned` for promoted action items so notifications still fire today.
+- To clean up the messaging copy: extend the constraint via `ALTER TABLE notifications ... DROP CONSTRAINT ... ADD CONSTRAINT ... CHECK (type IN (... 'huddle_invited', 'huddle_action_assigned'))`, add the two strings to `src/lib/notifications-config.ts` (union + DEFAULT_NOTIFICATION_PREFERENCES + NOTIFICATION_CATEGORIES), then swap the two call sites in `src/app/actions/huddles.ts` (createHuddle, addHuddleAttendee, promoteActionItemToTask).
 
 ### AI infrastructure — Monthly credit reset cron
 - `organizations.ai_credits_reset_at` is being read but no scheduled job resets `ai_credits_used` to 0 on that date yet. Build a Supabase scheduled function (or a Vercel cron hitting an admin route) that loops orgs where `now() >= ai_credits_reset_at`, zeros the counter, and rolls the reset date forward one month.
@@ -70,6 +75,23 @@ TypeScript Interface Update Required (NEW): In @/app/actions/attachments, the ty
 ---
 
 ## DONE
+
+### Huddles Phase 1 — Meeting orchestration shell — Completed 2026-06-15
+- Migration documentation: `supabase/migrations/20260615_huddles_phase_1.sql` mirrors the live schema for `huddles` (with status / visibility / meeting_source CHECK constraints), `huddle_attendees` (profile_id XOR member_id), `huddle_agenda_items`, `huddle_notes` (one row per huddle, PK = huddle_id), `huddle_decisions`, `huddle_action_items` (task_id FK), plus the empty Phase 2 placeholders (`huddle_recordings`, `huddle_transcripts`, `huddle_summaries`) and the new `tasks.source` + `tasks.source_huddle_id` columns.
+- `src/app/actions/huddles.ts` (~1300 lines): full CRUD over huddles + child tables, batched count / hydration for the list view, getHuddle with parallel Promise.all over every related table, lifecycle helpers (`startHuddle`, `endHuddle`, `finalizeHuddle`) that stamp the right timestamps, `promoteActionItemToTask` that creates a real tasks row with `source='huddle'` + `source_huddle_id` and fires the existing `task_assigned` notification.
+- Notification reuse: `mention` covers huddle invites, `task_assigned` covers promoted action items. Dedicated types queued under PENDING.
+- UI components under `src/app/(app)/workspace/huddles/_components/`:
+  - `huddle-list.tsx` — Upcoming / Past / All filter tabs, friendly empty state with CTA.
+  - `huddle-card.tsx` — list-row card with status pill, schedule, meeting source badge, attendee / agenda / action-item counts. Links to the detail page.
+  - `meeting-source-badge.tsx` — reusable icon + label for the seven `meeting_source` variants.
+  - `create-huddle-modal.tsx` — title, datetime pickers, meeting source toggle with conditional URL / location field, department + visibility selectors, debounced `searchProfiles` attendee picker, optional inline agenda drafts. On success, routes to the new huddle's detail page.
+  - `huddle-header.tsx` — inline-editable title, status pill, breadcrumb, lifecycle button ladder (Start → End → Finalize), 'Join Meeting' shortcut, manage-only delete.
+  - `agenda-tab.tsx` — `@dnd-kit` drag-reorder, click-to-toggle complete, inline rename, minute / presenter rendering, total / completed summary.
+  - `notes-tab.tsx` — single textarea with 5-second debounced autosave + 'Saved Xs ago · last edited by Y' indicator. Two quick-add cards below: action item and decision.
+  - `outcomes-tab.tsx` — action items with `Promote to task` button (links to the resulting task on success), decisions list, attendance via `attendee-list.tsx`, friendly Phase 2 placeholder for the auto-summary.
+  - `attendee-list.tsx` — `searchProfiles` invite picker, attendance checkbox, per-row remove for managers.
+  - `huddle-detail.tsx` — client orchestrator that lifts state across the three tabs.
+- Calendar integration (minimal pass): `CalendarEvent` gained optional `is_huddle` + `huddle_id` discriminators. `calendar/page.tsx` server query now runs `getHuddlesForCalendar()` in parallel and interleaves the scheduled rows into the events array (`event_type='huddle'`, mint-saturated emerald color). Click handler routes huddle pills to `/workspace/huddles/<id>` instead of the event detail modal. Drag-reschedule and edit-from-calendar are intentionally deferred — Phase 2 territory.
 
 ### Huddles Phase 0 — AI infrastructure — Completed 2026-06-12
 - SDK install: `@anthropic-ai/sdk ^0.104.1`, `openai ^6.42.0`.
