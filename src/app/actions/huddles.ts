@@ -1785,26 +1785,68 @@ export async function promoteActionItemToTask(
 
   const assigneeId = item.suggested_assignee_id || ctx.userId;
 
-  const { data: task, error } = await supabaseAdmin
-    .from("tasks")
-    .insert({
-      organization_id: ctx.organizationId,
-      title: item.description.slice(0, 240),
-      description: `From Huddle: ${huddleTitle}`,
-      status: "todo",
-      priority: "medium",
-      due_date: item.suggested_due_date || null,
-      assigned_to: assigneeId,
-      assigned_by: ctx.userId,
-      position: nextPosition,
-      source: "huddle",
-      source_huddle_id: item.huddle_id,
-    })
-    .select("id")
-    .single();
-  if (error || !task) {
-    console.error("[promoteActionItemToTask] Task insert error:", error?.message);
-    return { success: false, error: error?.message || "Couldn't create task." };
+  // The tasks.source + tasks.source_huddle_id columns are documented as
+  // live but the original migration was applied separately from the
+  // Phase 1 huddles ALTER. If they don't exist in this org's Supabase,
+  // the insert will return PostgREST error 42703 ("column ... does not
+  // exist"). Retry the insert without those fields so the task still
+  // lands in My Tasks — we just lose the back-link, which is better
+  // than silently dropping the action item promotion.
+  const basePayload = {
+    organization_id: ctx.organizationId,
+    title: item.description.slice(0, 240),
+    description: `From Huddle: ${huddleTitle}`,
+    status: "todo",
+    priority: "medium",
+    due_date: item.suggested_due_date || null,
+    assigned_to: assigneeId,
+    assigned_by: ctx.userId,
+    position: nextPosition,
+  };
+
+  let task: { id: string } | null = null;
+  let insertError: { message: string; code?: string } | null = null;
+  {
+    const { data, error } = await supabaseAdmin
+      .from("tasks")
+      .insert({
+        ...basePayload,
+        source: "huddle",
+        source_huddle_id: item.huddle_id,
+      })
+      .select("id")
+      .single();
+    if (error) {
+      insertError = error;
+      // 42703 = undefined_column. Retry without the source fields so
+      // the promote still works in environments that haven't run the
+      // ALTER yet. Log clearly so the gap shows up in deploy logs.
+      if (error.code === "42703") {
+        console.warn(
+          "[promoteActionItemToTask] tasks.source columns missing — retrying without back-link. Apply the Phase 1 ALTER to enable source tracking.",
+        );
+        const retry = await supabaseAdmin
+          .from("tasks")
+          .insert(basePayload)
+          .select("id")
+          .single();
+        task = retry.data;
+        insertError = retry.error;
+      }
+    } else {
+      task = data;
+    }
+  }
+
+  if (insertError || !task) {
+    console.error(
+      "[promoteActionItemToTask] Task insert error:",
+      insertError?.message,
+    );
+    return {
+      success: false,
+      error: insertError?.message || "Couldn't create task.",
+    };
   }
 
   // Link back from the action item.

@@ -83,6 +83,7 @@ function ActionItemsSection({
 }) {
   const [draft, setDraft] = useState("");
   const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
 
   function add() {
     const trimmed = draft.trim();
@@ -92,6 +93,9 @@ function ActionItemsSection({
       if (res.success && res.data) {
         onChange([...items, res.data]);
         setDraft("");
+      } else if (!res.success) {
+        setError(res.error);
+        setTimeout(() => setError(null), 4000);
       }
     });
   }
@@ -107,6 +111,13 @@ function ActionItemsSection({
               : i,
           ),
         );
+        setError(null);
+      } else if (!res.success) {
+        // Surface the real error instead of silently doing nothing —
+        // makes promote-to-task gaps (e.g., a missing source column)
+        // visible at the click site instead of only in server logs.
+        setError(res.error);
+        setTimeout(() => setError(null), 6000);
       }
     });
   }
@@ -132,6 +143,16 @@ function ActionItemsSection({
           {items.filter((i) => i.task_id).length} of {items.length} promoted to tasks
         </span>
       </header>
+
+      {error && (
+        <div
+          className="mb-3 px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-[12.5px] text-red-700"
+          style={{ fontFamily: "var(--font-source-sans)" }}
+          role="alert"
+        >
+          {error}
+        </div>
+      )}
 
       {items.length === 0 ? (
         <p
