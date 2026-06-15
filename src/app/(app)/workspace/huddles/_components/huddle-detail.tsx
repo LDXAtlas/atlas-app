@@ -3,34 +3,56 @@
 import { useState } from "react";
 import type { HuddleDetail } from "@/app/actions/huddles";
 import { HuddleHeader } from "./huddle-header";
+import { OverviewTab } from "./overview-tab";
 import { AgendaTab } from "./agenda-tab";
 import { NotesTab } from "./notes-tab";
 import { OutcomesTab } from "./outcomes-tab";
+import { HuddleSettingsPanel } from "./huddle-settings-panel";
 
 interface HuddleDetailViewProps {
   initial: HuddleDetail;
+  departments: { id: string; name: string }[];
 }
 
-type Tab = "agenda" | "notes" | "outcomes";
+type Tab = "overview" | "agenda" | "notes" | "outcomes";
 
-export function HuddleDetailView({ initial }: HuddleDetailViewProps) {
+// Timeline-based IA: set up (Overview) → plan (Agenda) → run (Notes)
+// → results (Outcomes). The settings gear in the header opens a modal
+// for per-huddle config so it doesn't muddy the running-the-meeting
+// tabs.
+export function HuddleDetailView({
+  initial,
+  departments,
+}: HuddleDetailViewProps) {
   const [detail, setDetail] = useState<HuddleDetail>(initial);
-  const [tab, setTab] = useState<Tab>("agenda");
+  const [tab, setTab] = useState<Tab>("overview");
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   return (
     <div className="bg-[#F4F5F7] min-h-full">
       <HuddleHeader
         huddle={detail}
         onPatch={(patch) => setDetail({ ...detail, ...patch })}
+        onOpenSettings={() => setSettingsOpen(true)}
       />
 
       <div className="max-w-5xl mx-auto px-5 py-5">
         <nav className="flex items-center gap-1 mb-4">
-          <TabButton active={tab === "agenda"} onClick={() => setTab("agenda")} count={detail.agenda.length}>
+          <TabButton
+            active={tab === "overview"}
+            onClick={() => setTab("overview")}
+          >
+            Overview
+          </TabButton>
+          <TabButton
+            active={tab === "agenda"}
+            onClick={() => setTab("agenda")}
+            count={detail.agenda.length}
+          >
             Agenda
           </TabButton>
           <TabButton active={tab === "notes"} onClick={() => setTab("notes")}>
-            Live Notes
+            Notes
           </TabButton>
           <TabButton
             active={tab === "outcomes"}
@@ -41,13 +63,25 @@ export function HuddleDetailView({ initial }: HuddleDetailViewProps) {
           </TabButton>
         </nav>
 
+        {tab === "overview" && (
+          <OverviewTab
+            huddle={detail}
+            onAttendeesChange={(a) =>
+              setDetail({ ...detail, attendees: a, attendee_count: a.length })
+            }
+          />
+        )}
         {tab === "agenda" && (
           <AgendaTab
             huddleId={detail.id}
             items={detail.agenda}
             canEdit={detail.viewer_can_edit}
             onItemsChange={(items) =>
-              setDetail({ ...detail, agenda: items, agenda_count: items.length })
+              setDetail({
+                ...detail,
+                agenda: items,
+                agenda_count: items.length,
+              })
             }
           />
         )}
@@ -71,14 +105,9 @@ export function HuddleDetailView({ initial }: HuddleDetailViewProps) {
         {tab === "outcomes" && (
           <OutcomesTab
             huddleId={detail.id}
-            attendees={detail.attendees}
             actionItems={detail.action_items}
             decisions={detail.decisions}
             canEdit={detail.viewer_can_edit}
-            canManage={detail.viewer_can_manage}
-            onAttendeesChange={(a) =>
-              setDetail({ ...detail, attendees: a, attendee_count: a.length })
-            }
             onActionsChange={(items) =>
               setDetail({
                 ...detail,
@@ -92,6 +121,14 @@ export function HuddleDetailView({ initial }: HuddleDetailViewProps) {
           />
         )}
       </div>
+
+      <HuddleSettingsPanel
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        huddle={detail}
+        departments={departments}
+        onPatch={(patch) => setDetail({ ...detail, ...patch })}
+      />
     </div>
   );
 }

@@ -85,6 +85,10 @@ export type HuddleAgendaItem = {
   huddle_id: string;
   title: string;
   description: string | null;
+  /** Free-form notes the team captures against this specific topic
+   *  during the meeting. Optional; column lands via the agenda-notes
+   *  migration and the UI degrades gracefully if it isn't applied. */
+  notes: string | null;
   estimated_minutes: number | null;
   presenter_id: string | null;
   position: number;
@@ -527,6 +531,54 @@ export async function updateHuddle(
   return { success: true };
 }
 
+// Settings-panel updates — visibility, department, retention. Calls
+// through to updateHuddle for visibility / department but adds
+// recording_retention_days which the existing UpdateHuddleInput
+// doesn't carry.
+export interface HuddleSettingsInput {
+  visibility?: HuddleVisibility;
+  departmentId?: string | null;
+  recordingRetentionDays?: number | null;
+}
+
+export async function updateHuddleSettings(
+  huddleId: string,
+  data: HuddleSettingsInput,
+): Promise<ActionResult> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated." };
+  const access = await loadHuddleForViewer(ctx, huddleId);
+  if (!access.ok) return { success: false, error: access.error };
+  if (!access.canManage)
+    return {
+      success: false,
+      error: "Only the organizer or an admin can change huddle settings.",
+      code: "FORBIDDEN",
+    };
+
+  const update: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+  };
+  if (data.visibility) update.visibility = data.visibility;
+  if ("departmentId" in data) update.department_id = data.departmentId ?? null;
+  if ("recordingRetentionDays" in data)
+    update.recording_retention_days = data.recordingRetentionDays ?? null;
+  if (Object.keys(update).length === 1) return { success: true };
+
+  const { error } = await supabaseAdmin
+    .from("huddles")
+    .update(update)
+    .eq("id", huddleId);
+  if (error) {
+    console.error("[updateHuddleSettings] Update error:", error.message);
+    return { success: false, error: error.message };
+  }
+  revalidatePath(`/workspace/huddles/${huddleId}`);
+  revalidatePath("/workspace/huddles");
+  revalidatePath("/workspace/calendar");
+  return { success: true };
+}
+
 export async function deleteHuddle(huddleId: string): Promise<ActionResult> {
   const ctx = await getAuthContext();
   if (!ctx) return { success: false, error: "Not authenticated." };
@@ -948,6 +1000,28 @@ export async function getHuddle(
 
   // Pull task status for any promoted action items so the UI can render
   // "View task" + open / done state.
+  // Defensive notes hydrate. Separate query so a missing column doesn't
+  // break the main agenda fetch — pre-ALTER environments simply get null
+  // notes everywhere.
+  const agendaIds = agendaRows.map((a) => a.id);
+  const notesByAgendaId = new Map<string, string | null>();
+  if (agendaIds.length > 0) {
+    const { data: noteRows, error: notesError } = await supabaseAdmin
+      .from("huddle_agenda_items")
+      .select("id, notes")
+      .in("id", agendaIds);
+    if (notesError) {
+      if (notesError.code !== "42703") {
+        console.error("[getHuddle] Agenda notes fetch error:", notesError.message);
+      }
+      // 42703 = undefined_column. Silently ignore until the ALTER ships.
+    } else {
+      (noteRows ?? []).forEach((r: { id: string; notes: string | null }) => {
+        notesByAgendaId.set(r.id, r.notes ?? null);
+      });
+    }
+  }
+
   const taskIds = actionRows
     .map((a) => a.task_id)
     .filter((v): v is string => !!v);
@@ -996,6 +1070,7 @@ export async function getHuddle(
       huddle_id: a.huddle_id,
       title: a.title,
       description: a.description,
+      notes: notesByAgendaId.get(a.id) ?? null,
       estimated_minutes: a.estimated_minutes,
       presenter_id: a.presenter_id,
       position: a.position,
@@ -1383,6 +1458,9 @@ export async function createAgendaItem(
       huddle_id: data.huddle_id,
       title: data.title,
       description: data.description,
+      // Newly created items have no notes yet; the column may also not
+      // exist — either way the safe value is null.
+      notes: null,
       estimated_minutes: data.estimated_minutes,
       presenter_id: data.presenter_id,
       position: data.position,
@@ -1434,6 +1512,46 @@ export async function updateAgendaItem(
     return { success: false, error: error.message };
   }
   revalidatePath(`/workspace/huddles/${existing.huddle_id}`);
+  return { success: true };
+}
+
+// Per-item notes. Defensive: if the huddle_agenda_items.notes column
+// doesn't exist yet (pre-ALTER environments), surface
+// SCHEMA_MISSING so the UI can show a useful placeholder rather than
+// silently failing.
+export async function updateAgendaItemNotes(
+  itemId: string,
+  notes: string,
+): Promise<ActionResult> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated." };
+  const { data: existing } = await supabaseAdmin
+    .from("huddle_agenda_items")
+    .select("id, huddle_id")
+    .eq("id", itemId)
+    .maybeSingle();
+  if (!existing) return { success: false, error: "Item not found." };
+  const access = await ensureCanEdit(ctx, existing.huddle_id);
+  if (!access.ok) return { success: false, error: access.error };
+
+  const { error } = await supabaseAdmin
+    .from("huddle_agenda_items")
+    .update({ notes })
+    .eq("id", itemId);
+  if (error) {
+    if (error.code === "42703") {
+      return {
+        success: false,
+        error:
+          "The agenda notes column isn't applied yet. Run the agenda-notes ALTER in Supabase to enable per-item notes.",
+        code: "SCHEMA_MISSING",
+      };
+    }
+    console.error("[updateAgendaItemNotes] Update error:", error.message);
+    return { success: false, error: error.message };
+  }
+  // Same pattern as updateHuddleNotes — skip revalidate so autosave
+  // doesn't thrash the cache.
   return { success: true };
 }
 
