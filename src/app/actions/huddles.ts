@@ -281,9 +281,13 @@ function deterministicAvatarColor(id: string): string {
 }
 
 // Batched profile hydration for attendee / presenter / assignee joins.
-// Returns email + avatar_url alongside the existing fields so callers
-// can fall back gracefully when full_name or avatar_color is missing
-// (avatar_color is an optional column that not every org has populated).
+// Confirmed via schema query: profiles has (id, organization_id, email,
+// full_name, avatar_url, role, phone, last_active, created_at). There is
+// NO avatar_color column — an older codebase pattern in boards.ts /
+// notifications.ts / profiles.ts references it but those queries silently
+// fail and fall back to hardcoded mint. We avoid the trap by selecting
+// only real columns here and computing the avatar tint deterministically
+// from the user id.
 async function hydrateProfiles(
   ids: (string | null | undefined)[],
 ): Promise<Map<string, ProfileLite>> {
@@ -294,7 +298,7 @@ async function hydrateProfiles(
   if (unique.length === 0) return result;
   const { data, error } = await supabaseAdmin
     .from("profiles")
-    .select("id, full_name, email, avatar_color, avatar_url, role")
+    .select("id, full_name, email, avatar_url, role")
     .in("id", unique);
   if (error) {
     console.error("[hydrateProfiles] Profile select error:", error.message);
@@ -305,7 +309,6 @@ async function hydrateProfiles(
       id: string;
       full_name: string | null;
       email: string | null;
-      avatar_color: string | null;
       avatar_url: string | null;
       role: Role | null;
     }) => {
@@ -317,7 +320,9 @@ async function hydrateProfiles(
         id: p.id,
         full_name: displayName,
         email: p.email,
-        avatar_color: p.avatar_color || deterministicAvatarColor(p.id),
+        // No stored color → derive deterministically so the circle still
+        // varies between users instead of all reading as flat mint.
+        avatar_color: deterministicAvatarColor(p.id),
         avatar_url: p.avatar_url,
         role: p.role ?? null,
       });
