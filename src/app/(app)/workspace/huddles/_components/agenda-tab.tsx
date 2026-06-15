@@ -1,7 +1,16 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { Check, Clock, GripVertical, Plus, X } from "lucide-react";
+import { useEffect, useRef, useState, useTransition } from "react";
+import {
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Clock,
+  GripVertical,
+  Plus,
+  StickyNote,
+  X,
+} from "lucide-react";
 import {
   DndContext,
   PointerSensor,
@@ -22,6 +31,7 @@ import {
   deleteAgendaItem,
   reorderAgendaItems,
   updateAgendaItem,
+  updateAgendaItemNotes,
   type HuddleAgendaItem,
 } from "@/app/actions/huddles";
 
@@ -194,6 +204,10 @@ function Row({
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(item.title);
+  // Notes expansion is auto-open when notes already exist so the
+  // reader sees them by default. Collapsed otherwise to keep the
+  // agenda dense.
+  const [notesOpen, setNotesOpen] = useState(!!item.notes);
   const {
     attributes,
     listeners,
@@ -213,8 +227,9 @@ function Row({
     <li
       ref={setNodeRef}
       style={style}
-      className="group flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[#F8FAFC]"
+      className="rounded-lg hover:bg-[#F8FAFC]"
     >
+      <div className="group flex items-center gap-2 px-2 py-1.5">
       {canEdit && (
         <button
           type="button"
@@ -288,6 +303,23 @@ function Row({
           {item.presenter.full_name}
         </span>
       )}
+      <button
+        type="button"
+        onClick={() => setNotesOpen((v) => !v)}
+        className={`size-6 rounded-md flex items-center justify-center text-[#9CA3AF] hover:text-[#2D333A] hover:bg-[#F4F5F7] transition-colors ${
+          item.notes ? "text-[#5CE1A5]" : ""
+        }`}
+        aria-label={notesOpen ? "Hide notes" : "Show notes"}
+        title="Per-item notes"
+      >
+        {notesOpen ? (
+          <ChevronDown className="size-3.5" />
+        ) : item.notes ? (
+          <StickyNote className="size-3.5" />
+        ) : (
+          <ChevronRight className="size-3.5" />
+        )}
+      </button>
       {canEdit && (
         <button
           type="button"
@@ -298,6 +330,101 @@ function Row({
           <X className="size-3" />
         </button>
       )}
+      </div>
+      {notesOpen && (
+        <ItemNotes
+          itemId={item.id}
+          initialNotes={item.notes}
+          canEdit={canEdit}
+        />
+      )}
     </li>
+  );
+}
+
+// Per-item notes with debounced autosave. Gracefully degrades when
+// the huddle_agenda_items.notes column hasn't been added yet — the
+// server action returns SCHEMA_MISSING and the input flips to a
+// disabled placeholder with the upgrade instruction.
+function ItemNotes({
+  itemId,
+  initialNotes,
+  canEdit,
+}: {
+  itemId: string;
+  initialNotes: string | null;
+  canEdit: boolean;
+}) {
+  const [value, setValue] = useState(initialNotes ?? "");
+  const [savedHint, setSavedHint] = useState<string | null>(null);
+  const [schemaMissing, setSchemaMissing] = useState(false);
+  const dirtyRef = useRef(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Flush on unmount so a quick collapse-after-typing doesn't lose work.
+  useEffect(() => {
+    return () => {
+      if (timer.current) clearTimeout(timer.current);
+      if (dirtyRef.current) {
+        updateAgendaItemNotes(itemId, value).catch(() => {});
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itemId]);
+
+  function handleChange(next: string) {
+    if (schemaMissing) return;
+    setValue(next);
+    dirtyRef.current = true;
+    setSavedHint(null);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(async () => {
+      const res = await updateAgendaItemNotes(itemId, next);
+      if (!res.success) {
+        if (res.code === "SCHEMA_MISSING") {
+          setSchemaMissing(true);
+          setSavedHint(res.error);
+        } else {
+          setSavedHint(res.error);
+        }
+        return;
+      }
+      dirtyRef.current = false;
+      setSavedHint("Saved");
+      setTimeout(() => setSavedHint(null), 1500);
+    }, 1800);
+  }
+
+  return (
+    <div className="px-2 pb-2">
+      <textarea
+        value={schemaMissing ? "" : value}
+        onChange={(e) => handleChange(e.target.value)}
+        rows={3}
+        disabled={!canEdit || schemaMissing}
+        placeholder={
+          schemaMissing
+            ? "Per-item notes need the huddle_agenda_items.notes column. Run the agenda-notes ALTER in Supabase to enable."
+            : canEdit
+              ? "Notes for this topic — discussion, links, anything specific to this item."
+              : "No notes for this topic yet."
+        }
+        className="w-full px-3 py-2 rounded-lg border border-[#E5E7EB] bg-white text-[13px] text-[#2D333A] placeholder-[#9CA3AF] outline-none focus:border-[#5CE1A5] resize-vertical disabled:bg-[#F8FAFC] disabled:cursor-not-allowed"
+        style={{
+          fontFamily: "var(--font-source-sans)",
+          minHeight: "72px",
+        }}
+      />
+      {savedHint && (
+        <p
+          className={`text-[11px] mt-1 ${
+            schemaMissing ? "text-amber-700" : "text-[#9CA3AF]"
+          }`}
+          style={{ fontFamily: "var(--font-source-sans)" }}
+        >
+          {savedHint}
+        </p>
+      )}
+    </div>
   );
 }
