@@ -42,17 +42,35 @@ export function HuddleCard({ huddle }: { huddle: HuddleListItem }) {
             >
               {huddle.title}
             </h3>
-            <span
-              className="inline-flex h-5 px-1.5 rounded-md text-[10px] uppercase tracking-wider"
-              style={{
-                backgroundColor: status.bg,
-                color: status.fg,
-                fontFamily: "var(--font-poppins)",
-                fontWeight: 700,
-              }}
-            >
-              {STATUS_LABEL[huddle.status]}
-            </span>
+            {huddle.status === "in_progress" ? (
+              <span
+                className="inline-flex h-5 pl-1.5 pr-2 rounded-md text-[10px] uppercase tracking-wider items-center gap-1.5"
+                style={{
+                  backgroundColor: "#10B98118",
+                  color: "#059669",
+                  fontFamily: "var(--font-poppins)",
+                  fontWeight: 700,
+                }}
+              >
+                <span className="relative inline-flex">
+                  <span className="size-1.5 rounded-full bg-[#10B981] animate-pulse" />
+                  <span className="absolute inset-0 size-1.5 rounded-full bg-[#10B981]/40 animate-ping" />
+                </span>
+                Live
+              </span>
+            ) : (
+              <span
+                className="inline-flex h-5 px-1.5 rounded-md text-[10px] uppercase tracking-wider"
+                style={{
+                  backgroundColor: status.bg,
+                  color: status.fg,
+                  fontFamily: "var(--font-poppins)",
+                  fontWeight: 700,
+                }}
+              >
+                {STATUS_LABEL[huddle.status]}
+              </span>
+            )}
           </div>
 
           {huddle.description && (

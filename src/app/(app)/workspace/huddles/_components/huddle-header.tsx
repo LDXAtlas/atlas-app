@@ -19,6 +19,7 @@ import {
   startHuddle,
   updateHuddle,
   type HuddleDetail,
+  type HuddleStatus,
 } from "@/app/actions/huddles";
 import { MeetingSourceBadge } from "./meeting-source-badge";
 
@@ -65,15 +66,81 @@ export function HuddleHeader({ huddle, onPatch }: HuddleHeaderProps) {
     });
   }
 
-  function fire(action: () => Promise<unknown>) {
+  const [toast, setToast] = useState<string | null>(null);
+
+  // Optimistic lifecycle transition. We flip status (and the relevant
+  // actual_* timestamp) immediately so the button ladder + the
+  // "in progress" banner update in the same paint, then run the server
+  // action. On failure we revert and surface a toast.
+  function lifecycle(
+    nextStatus: HuddleStatus,
+    timestampField: "actual_start" | "actual_end" | null,
+    action: () => Promise<{ success: boolean; error?: string }>,
+  ) {
+    const previous = {
+      status: huddle.status,
+      actual_start: huddle.actual_start,
+      actual_end: huddle.actual_end,
+    };
+    const nowIso = new Date().toISOString();
+    onPatch({
+      status: nextStatus,
+      ...(timestampField === "actual_start" ? { actual_start: nowIso } : {}),
+      ...(timestampField === "actual_end" ? { actual_end: nowIso } : {}),
+    });
     startTransition(async () => {
-      await action();
+      const res = await action();
+      if (!res.success) {
+        onPatch(previous);
+        setToast(res.error || "Couldn't update the huddle.");
+        setTimeout(() => setToast(null), 3500);
+        return;
+      }
+      // Quietly refresh so any server-side recalculation (e.g.
+      // related-task badges) flows back without a full reload.
       router.refresh();
     });
   }
 
   return (
     <header className="bg-white border-b border-[#E5E7EB] px-5 py-4">
+      {/* In-progress banner — pulses gently so it's obvious the huddle
+          is live. Renders above the header content so it survives any
+          future header redesign. */}
+      {huddle.status === "in_progress" && (
+        <div
+          className="-mx-5 -mt-4 mb-4 px-5 py-2 bg-[#5CE1A5]/10 border-b border-[#5CE1A5]/30 flex items-center gap-2"
+          role="status"
+          aria-live="polite"
+        >
+          <span className="relative inline-flex">
+            <span className="size-2 rounded-full bg-[#10B981] animate-pulse" />
+            <span className="absolute inset-0 size-2 rounded-full bg-[#10B981]/40 animate-ping" />
+          </span>
+          <span
+            className="text-[12.5px] text-[#059669]"
+            style={{
+              fontFamily: "var(--font-poppins)",
+              fontWeight: 700,
+            }}
+          >
+            Meeting in progress
+          </span>
+        </div>
+      )}
+      {toast && (
+        <div
+          className="-mx-5 -mt-4 mb-4 px-5 py-2 bg-red-50 border-b border-red-200"
+          role="alert"
+        >
+          <p
+            className="text-[12.5px] text-red-700"
+            style={{ fontFamily: "var(--font-source-sans)" }}
+          >
+            {toast}
+          </p>
+        </div>
+      )}
       <div className="max-w-5xl mx-auto">
         <div className="flex items-center gap-3 mb-3">
           <button
@@ -177,7 +244,11 @@ export function HuddleHeader({ huddle, onPatch }: HuddleHeaderProps) {
                 {huddle.status === "scheduled" && (
                   <button
                     type="button"
-                    onClick={() => fire(() => startHuddle(huddle.id))}
+                    onClick={() =>
+                      lifecycle("in_progress", "actual_start", () =>
+                        startHuddle(huddle.id),
+                      )
+                    }
                     disabled={pending}
                     className="h-9 px-3.5 rounded-xl bg-[#5CE1A5] text-white text-[13px] font-semibold inline-flex items-center gap-1.5 hover:bg-[#4DD395] disabled:opacity-50"
                     style={{ fontFamily: "var(--font-poppins)" }}
@@ -189,7 +260,11 @@ export function HuddleHeader({ huddle, onPatch }: HuddleHeaderProps) {
                 {huddle.status === "in_progress" && (
                   <button
                     type="button"
-                    onClick={() => fire(() => endHuddle(huddle.id))}
+                    onClick={() =>
+                      lifecycle("completed", "actual_end", () =>
+                        endHuddle(huddle.id),
+                      )
+                    }
                     disabled={pending}
                     className="h-9 px-3.5 rounded-xl bg-[#F59E0B] text-white text-[13px] font-semibold inline-flex items-center gap-1.5 hover:bg-[#D97706] disabled:opacity-50"
                     style={{ fontFamily: "var(--font-poppins)" }}
@@ -201,7 +276,11 @@ export function HuddleHeader({ huddle, onPatch }: HuddleHeaderProps) {
                 {(huddle.status === "completed" || huddle.status === "ready") && (
                   <button
                     type="button"
-                    onClick={() => fire(() => finalizeHuddle(huddle.id))}
+                    onClick={() =>
+                      lifecycle("archived", null, () =>
+                        finalizeHuddle(huddle.id),
+                      )
+                    }
                     disabled={pending}
                     className="h-9 px-3.5 rounded-xl bg-[#0F172A] text-white text-[13px] font-semibold inline-flex items-center gap-1.5 hover:bg-[#1E293B] disabled:opacity-50"
                     style={{ fontFamily: "var(--font-poppins)" }}
@@ -223,9 +302,14 @@ export function HuddleHeader({ huddle, onPatch }: HuddleHeaderProps) {
                   type="button"
                   onClick={() => {
                     if (!window.confirm("Delete this huddle? This can't be undone.")) return;
-                    fire(async () => {
-                      await deleteHuddle(huddle.id);
-                      router.push("/workspace/huddles");
+                    startTransition(async () => {
+                      const res = await deleteHuddle(huddle.id);
+                      if (res.success) {
+                        router.push("/workspace/huddles");
+                      } else {
+                        setToast(res.error || "Couldn't delete the huddle.");
+                        setTimeout(() => setToast(null), 3500);
+                      }
                     });
                   }}
                   disabled={pending}
