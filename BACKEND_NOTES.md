@@ -33,11 +33,44 @@ Expanded Sorting Parameters (NEW): We moved sorting from a global dropdown direc
 TypeScript Interface Update Required (NEW): In @/app/actions/attachments, the type definition for the arguments accepted by getLibraryFiles() needs to be updated. Its sortBy property must be expanded to union the new sort strings mentioned above. (The frontend currently has a temporary as any cast on line 175 of library-view.tsx to bypass the type error until this is updated). 05/14 ben
 
 
-### Huddles Phase 2 — Recording, transcription, summary
-- Phase 1 (meeting orchestration shell) ships in this PR. Phase 2 is the AI layer on top.
-- Needs: an upload Route Handler that streams audio to Supabase Storage (use the existing `huddle_recordings` table — Phase 1 left it empty), the transcription pipeline that calls `transcribeAudio()` post-upload (writes a `huddle_transcripts` row), and a summary action that calls `callAI({ feature: 'huddle_summary', complexity: 'standard' })` (writes a `huddle_summaries` row).
-- Don't forget action-item extraction (`feature: 'huddle_action_extraction'`) — the schema is ready (`huddle_action_items.source = 'ai_extracted'`), the prompt + UI aren't designed yet.
-- The status enum already has `processing` and `ready` for the post-upload pipeline.
+### Huddles Phase 2 & beyond — planning notes (2026-06-15 session)
+Defined ideas from Lucas, sequenced for future phases. Do NOT build yet — these depend on the Phase 2 AI work below and should be built with AI consumption designed in from the start. The four sub-blocks below (Phase 2 AI / Phase 2 Live Notes / Phase 2.5 Agenda / Phase 6 Video) are entries under this planning umbrella.
+
+### Huddles Phase 2 — AI Layer (next major Huddles session)
+Builds on Phase 0 infrastructure (`src/lib/ai/`) which is already live.
+- Audio recording — browser MediaRecorder API, 24 kbps mono Opus @ 16 kHz. Stores to a SEPARATE `huddle-recordings` Supabase bucket (NOT the attachments bucket). 30-day default retention via `default_recording_retention_days`.
+- Whisper transcription via existing `transcribeAudio()`. 1 credit per minute of audio.
+- Claude summary + action item extraction via existing `callAI()`. AI output is always SUGGESTIONS requiring human Accept/Edit/Reject, never auto-applied.
+- Transcription display lives in Outcomes tab.
+- Review/accept flow: accepted action items become real tasks (reuse `promoteActionItemToTask` pattern), accepted decisions go to the decisions log.
+- Phase 1 schema is ready: `huddle_recordings`, `huddle_transcripts`, `huddle_summaries` tables exist and are empty. The status enum already has `processing` and `ready` for the post-upload pipeline. Action-item extraction will use `feature: 'huddle_action_extraction'` (`huddle_action_items.source = 'ai_extracted'`).
+
+### Huddles Phase 2 — Live Notes as Color-Coded Message Thread (DECIDE DATA MODEL BEFORE BUILDING PHASE 2)
+Replace the current single freeform `huddle_notes` blob with a timestamped, attributed entry model:
+- Notes become a series of timestamped entries (like a group chat / message thread), NOT one textarea.
+- Each entry attributed to its author with a distinct color/avatar per person.
+- Each attendee adds entries from their own device.
+- Use Supabase Realtime so entries appear live — BUT use the "separate entries" model (each note is its own row), NOT true simultaneous-editing-of-one-document. If two people post at once, both entries just appear in the thread. This sidesteps operational-transform complexity.
+- WHY: gives AI far better-structured, attributed, timestamped input for summarization than one text blob. Also correlates with transcript timestamps in Phase 2.
+- Likely needs a new `huddle_note_entries` table (id, huddle_id, author_id, content, created_at) alongside or replacing the current `huddle_notes` single-blob table. Decide BEFORE building the Phase 2 AI pipeline so we don't build on the blob model then migrate.
+
+### Huddles Phase 2.5 — Richer Agenda (after beta validates how much structure churches want)
+Current agenda is a flat list with per-item notes. Enhancements to consider:
+- Sections / grouping — items grouped under headers (e.g. "Worship," "Budget," "Volunteers").
+- Richer per-item detail — talking points, desired outcome, linked resources.
+- Visible time-boxing — running total + visual allocation of meeting time.
+- More visible per-item ownership.
+- CAUTION: do NOT over-build into a full document editor. Hold complex role-gated editing permissions per section until a real church asks for it. Build the light version first.
+
+### Huddles Phase 6 — Native Video (DO NOT BUILD)
+Atlas does NOT build native video calling. Position is "the brain, not the pipes."
+- `meeting_source` already supports an `atlas_video` value architecturally if ever truly needed.
+- Progression is toward better INTEGRATION, NOT hosting video: Phase 3 = upload recordings from any platform → AI processes them; Phase 4 = direct Zoom/Meet/Teams API integration → auto-import recordings.
+- Only revisit if ALL of: a competitor ships native church video AND gains share, multiple paying customers call it a deal-breaker, Atlas has 200+ paying churches, and a real differentiator is identified.
+
+### avatar_color cleanup
+- `boards.ts` (~10 sites), `notifications.ts`, `profiles.ts` all SELECT a nonexistent `profiles.avatar_color` column. Queries silently fail but hardcoded `"#5CE1A5"` + email-based name fallbacks mask it. Harmless today but technically broken.
+- Dedicated pass: remove all dead `avatar_color` references; use `avatar_url` + a deterministic-color helper everywhere (huddles already does this correctly).
 
 ### Huddles Phase 1 — Notification type follow-up
 - `huddle_invited` and `huddle_action_assigned` aren't in the `notifications.type` CHECK constraint. Phase 1 reuses `mention` for huddle invites and `task_assigned` for promoted action items so notifications still fire today.
@@ -75,6 +108,12 @@ TypeScript Interface Update Required (NEW): In @/app/actions/attachments, the ty
 ---
 
 ## DONE
+
+### Session 2026-06-15 — Huddles bug fixes, restructure, and security cleanup
+Additional ships during the same session as Phase 1, layered on top of the entry below:
+- **Bug fixes**: lifecycle optimistic UI flip (Start/End/Finalize updates the badge before the server round-trip and reverts on error), attendee profile hydration root-caused (`avatar_color` was the false trail — the real fix was `avatar_url` + deterministic color), role management (`updateAttendeeRole` + dropdown + organizer-required guard), calendar population (added `'huddle'` to default `activeFilters` Set + backfilled department metadata), `Your Huddles` rail wired correctly inside the My Tasks scroll container, in-progress pulsing indicator on detail + list cards.
+- **Four-tab restructure**: Overview / Agenda / Notes / Outcomes, Overview is the default. Attendance + role management moved from Outcomes to Overview where it belongs. `huddle-settings-panel.tsx` modal added behind a header gear (visibility / department / recording-retention-days / delete with two-step confirm). Per-agenda-item notes added with a defensive `42703` fallback — `updateAgendaItemNotes` returns `SCHEMA_MISSING` and the UI flips to a disabled placeholder until the `ALTER TABLE huddle_agenda_items ADD COLUMN notes text` ships.
+- **Security advisor cleanup**: fixed mutable `search_path` on 4 functions, revoked PUBLIC / anon / authenticated execute on 4 SECURITY DEFINER functions (`consume_ai_credits`, `update_org_storage_on_attachment`, `handle_new_user`, `rls_auto_enable`), enabled leaked-password protection. All advisor warnings cleared.
 
 ### Huddles Phase 1 — Meeting orchestration shell — Completed 2026-06-15
 - Migration documentation: `supabase/migrations/20260615_huddles_phase_1.sql` mirrors the live schema for `huddles` (with status / visibility / meeting_source CHECK constraints), `huddle_attendees` (profile_id XOR member_id), `huddle_agenda_items`, `huddle_notes` (one row per huddle, PK = huddle_id), `huddle_decisions`, `huddle_action_items` (task_id FK), plus the empty Phase 2 placeholders (`huddle_recordings`, `huddle_transcripts`, `huddle_summaries`) and the new `tasks.source` + `tasks.source_huddle_id` columns.
