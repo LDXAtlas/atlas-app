@@ -1574,6 +1574,12 @@ export function CalendarView({
   const [activeFilters, setActiveFilters] = useState<Set<string>>(
     new Set([
       "general", "service", "meeting", "rehearsal", "class", "outreach", "social", "other",
+      // Huddles are their own event_type. Without this entry the
+      // hasActiveType check in expandedEvents (~line 1606) silently
+      // drops them. Departments fallback only catches huddles with a
+      // matching department_id, which most early test huddles won't
+      // have.
+      "huddle",
       ...departments.map(d => d.id)
     ])
   );

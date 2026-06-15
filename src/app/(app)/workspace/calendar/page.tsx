@@ -141,26 +141,35 @@ export default async function CalendarPage({
         .filter((h) =>
           !ministryId ? true : h.department_id === ministryId,
         )
-        .map((h) => ({
-          id: `huddle:${h.id}`,
-          title: h.title,
-          description: null,
-          event_type: "huddle",
-          starts_at: h.scheduled_start,
-          ends_at: h.scheduled_end,
-          is_all_day: false,
-          location: null,
-          location_type:
-            h.meeting_source === "in_person" ? "in_person" : "virtual",
-          virtual_url: null,
-          color: "#10B981",
-          status: h.status,
-          department_id: h.department_id,
-          departments: [],
-          recurrence_rule: null,
-          is_huddle: true,
-          huddle_id: h.id,
-        }));
+        .map((h) => {
+          // Carry department metadata onto the event so the calendar's
+          // department-filter checkboxes can match it. Without this, a
+          // user who unticks the 'huddle' type filter loses the huddle
+          // even when they have the matching department ticked.
+          const dept = h.department_id ? deptMap.get(h.department_id) : null;
+          return {
+            id: `huddle:${h.id}`,
+            title: h.title,
+            description: null,
+            event_type: "huddle",
+            starts_at: h.scheduled_start,
+            ends_at: h.scheduled_end,
+            is_all_day: false,
+            location: null,
+            location_type:
+              h.meeting_source === "in_person" ? "in_person" : "virtual",
+            virtual_url: null,
+            color: "#10B981",
+            status: h.status,
+            department_id: h.department_id,
+            departments: dept && h.department_id
+              ? [{ id: h.department_id, name: dept.name, color: dept.color }]
+              : [],
+            recurrence_rule: null,
+            is_huddle: true,
+            huddle_id: h.id,
+          };
+        });
 
       events = (eventsRes.data ?? []).map((e) => {
         const primaryDept = e.department_id ? deptMap.get(e.department_id) : null;
