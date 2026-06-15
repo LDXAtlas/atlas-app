@@ -47,6 +47,13 @@ export interface CalendarEvent {
   department_id: string | null;
   departments: { id: string; name: string; color: string }[];
   recurrence_rule: string | null;
+  // Huddles share this shape so they can interleave with events on the
+  // calendar grid. When is_huddle is true, clicks route to
+  // /workspace/huddles/<huddle_id> instead of opening the event detail
+  // modal. Edit / reschedule / delete actions are deferred to a future
+  // pass — the calendar treats huddles as read-only here.
+  is_huddle?: boolean;
+  huddle_id?: string;
 }
 
 interface CalendarViewProps {
@@ -70,6 +77,9 @@ const EVENT_TYPE_COLORS: Record<string, string> = {
   social: "#10B981",
   general: "#6B7280",
   holiday: "#9CA3AF",
+  // Huddles are tinted mint with a touch more saturation than the
+  // service color so they're visually distinct in dense grids.
+  huddle: "#10B981",
   other: "#6B7280",
 };
 
@@ -82,6 +92,7 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
   social: "Social",
   general: "General",
   holiday: "Holiday",
+  huddle: "Huddle",
   other: "Other",
 };
 
@@ -1747,6 +1758,12 @@ export function CalendarView({
   }
 
   function handleEventClick(event: CalendarEvent) {
+    // Huddles live on a different route and own their own detail page.
+    // The calendar treats them as read-only display cells.
+    if (event.is_huddle && event.huddle_id) {
+      router.push(`/workspace/huddles/${event.huddle_id}`);
+      return;
+    }
     setDetailEvent(event);
   }
 

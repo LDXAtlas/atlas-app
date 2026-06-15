@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { CalendarView, type CalendarEvent } from "./calendar-view";
 import { MinistryFilterBanner } from "../../_components/ministry-filter-banner";
+import { getHuddlesForCalendar } from "@/app/actions/huddles";
 
 export default async function CalendarPage({
   searchParams,
@@ -131,6 +132,36 @@ export default async function CalendarPage({
         }
       }
 
+      // Pull scheduled huddles for this viewer and map them into the
+      // CalendarEvent shape with event_type='huddle'. Clicks route to
+      // /workspace/huddles/<id> via the is_huddle branch in
+      // CalendarView's handleEventClick.
+      const huddlesRes = await getHuddlesForCalendar();
+      const huddleEvents: CalendarEvent[] = (huddlesRes.success && huddlesRes.data ? huddlesRes.data : [])
+        .filter((h) =>
+          !ministryId ? true : h.department_id === ministryId,
+        )
+        .map((h) => ({
+          id: `huddle:${h.id}`,
+          title: h.title,
+          description: null,
+          event_type: "huddle",
+          starts_at: h.scheduled_start,
+          ends_at: h.scheduled_end,
+          is_all_day: false,
+          location: null,
+          location_type:
+            h.meeting_source === "in_person" ? "in_person" : "virtual",
+          virtual_url: null,
+          color: "#10B981",
+          status: h.status,
+          department_id: h.department_id,
+          departments: [],
+          recurrence_rule: null,
+          is_huddle: true,
+          huddle_id: h.id,
+        }));
+
       events = (eventsRes.data ?? []).map((e) => {
         const primaryDept = e.department_id ? deptMap.get(e.department_id) : null;
         const multiDepts = eventDeptMap.get(e.id) ?? [];
@@ -158,6 +189,12 @@ export default async function CalendarPage({
           recurrence_rule: e.recurrence_rule ?? null,
         };
       });
+      // Interleave huddles. They render with the 'huddle' event_type so
+      // they pick up the dedicated palette + label without leaking into
+      // the regular event detail modal.
+      events = [...events, ...huddleEvents].sort((a, b) =>
+        a.starts_at.localeCompare(b.starts_at),
+      );
     }
   }
 
