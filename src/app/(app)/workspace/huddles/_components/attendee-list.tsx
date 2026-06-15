@@ -6,9 +6,12 @@ import {
   addHuddleAttendee,
   markAttendance,
   removeHuddleAttendee,
+  updateAttendeeRole,
+  type AttendeeRole,
   type HuddleAttendee,
 } from "@/app/actions/huddles";
 import { searchProfiles } from "@/app/actions/profiles";
+import { AttendeeAvatar, displayName } from "./attendee-avatar";
 
 interface AttendeeListProps {
   huddleId: string;
@@ -184,69 +187,148 @@ export function AttendeeList({
       ) : (
         <ul className="space-y-1">
           {attendees.map((a) => (
-            <li
+            <AttendeeRow
               key={a.id}
-              className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[#F8FAFC]"
-            >
-              <span
-                className="size-7 rounded-full flex items-center justify-center text-[11px] font-semibold text-[#0F172A] shrink-0"
-                style={{ backgroundColor: a.profile?.avatar_color || "#5CE1A5" }}
-              >
-                {initials(a.profile?.full_name || "?")}
-              </span>
-              <div className="flex-1 min-w-0">
-                <p
-                  className="text-[13px] text-[#2D333A] truncate"
-                  style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}
-                >
-                  {a.profile?.full_name || "Teammate"}
-                </p>
-                <p
-                  className="text-[11px] text-[#9CA3AF]"
-                  style={{ fontFamily: "var(--font-source-sans)" }}
-                >
-                  {a.role === "organizer" ? "Organizer" : a.role === "presenter" ? "Presenter" : "Attendee"}
-                </p>
-              </div>
-              {canManage && (
-                <>
-                  <label
-                    className="inline-flex items-center gap-1.5 text-[11.5px] text-[#6B7280]"
-                    style={{ fontFamily: "var(--font-source-sans)" }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={a.attended}
-                      onChange={() => toggleAttendance(a)}
-                      className="size-3.5 rounded text-[#5CE1A5] border-[#E5E7EB]"
-                    />
-                    Present
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => remove(a)}
-                    className="size-6 rounded-md flex items-center justify-center text-[#CBD5E1] hover:text-red-600 hover:bg-red-50"
-                    aria-label="Remove attendee"
-                  >
-                    <X className="size-3" />
-                  </button>
-                </>
-              )}
-            </li>
+              attendee={a}
+              canManage={canManage}
+              onRoleChange={(role) => changeRole(a, role)}
+              onToggleAttendance={() => toggleAttendance(a)}
+              onRemove={() => remove(a)}
+            />
           ))}
         </ul>
       )}
     </section>
   );
+
+  function changeRole(attendee: HuddleAttendee, role: AttendeeRole) {
+    if (attendee.role === role) return;
+    onChange(
+      attendees.map((a) =>
+        a.id === attendee.id ? { ...a, role } : a,
+      ),
+    );
+    updateAttendeeRole(attendee.id, role).then((res) => {
+      if (!res.success) {
+        // Revert on failure.
+        onChange(
+          attendees.map((a) =>
+            a.id === attendee.id ? { ...a, role: attendee.role } : a,
+          ),
+        );
+      }
+    });
+  }
 }
 
-function initials(name: string): string {
+function AttendeeRow({
+  attendee: a,
+  canManage,
+  onRoleChange,
+  onToggleAttendance,
+  onRemove,
+}: {
+  attendee: HuddleAttendee;
+  canManage: boolean;
+  onRoleChange: (role: AttendeeRole) => void;
+  onToggleAttendance: () => void;
+  onRemove: () => void;
+}) {
+  const name = displayName(a.profile, "Guest");
   return (
-    name
-      .split(/\s+/)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((p) => p[0]?.toUpperCase() ?? "")
-      .join("") || "·"
+    <li className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[#F8FAFC]">
+      <AttendeeAvatar profile={a.profile} fallbackLabel="Guest" size={28} />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <p
+            className="text-[13px] text-[#2D333A] truncate"
+            style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}
+          >
+            {name}
+          </p>
+          {a.role === "organizer" && (
+            <span
+              className="inline-flex h-4 px-1.5 rounded text-[9.5px] uppercase tracking-wider"
+              style={{
+                backgroundColor: "#F59E0B22",
+                color: "#B45309",
+                fontFamily: "var(--font-poppins)",
+                fontWeight: 700,
+              }}
+            >
+              Organizer
+            </span>
+          )}
+          {a.role === "presenter" && (
+            <span
+              className="inline-flex h-4 px-1.5 rounded text-[9.5px] uppercase tracking-wider"
+              style={{
+                backgroundColor: "#8B5CF622",
+                color: "#6D28D9",
+                fontFamily: "var(--font-poppins)",
+                fontWeight: 700,
+              }}
+            >
+              Presenter
+            </span>
+          )}
+          {a.role === "optional" && (
+            <span
+              className="inline-flex h-4 px-1.5 rounded text-[9.5px] uppercase tracking-wider bg-[#F3F4F6] text-[#6B7280]"
+              style={{ fontFamily: "var(--font-poppins)", fontWeight: 700 }}
+            >
+              Optional
+            </span>
+          )}
+        </div>
+        {a.profile?.email && (
+          <p
+            className="text-[11px] text-[#9CA3AF] truncate"
+            style={{ fontFamily: "var(--font-source-sans)" }}
+          >
+            {a.profile.email}
+          </p>
+        )}
+      </div>
+      {canManage && (
+        <>
+          {/* Role dropdown — organizer can shuffle anyone but themselves. */}
+          <select
+            value={a.role}
+            onChange={(e) => onRoleChange(e.target.value as AttendeeRole)}
+            className="h-7 px-2 rounded-md border border-[#E5E7EB] bg-white text-[11.5px] text-[#2D333A] outline-none focus:border-[#5CE1A5]"
+            style={{ fontFamily: "var(--font-source-sans)" }}
+            aria-label="Attendee role"
+          >
+            <option value="organizer">Organizer</option>
+            <option value="presenter">Presenter</option>
+            <option value="attendee">Attendee</option>
+            <option value="optional">Optional</option>
+          </select>
+          <label
+            className="inline-flex items-center gap-1.5 text-[11.5px] text-[#6B7280]"
+            style={{ fontFamily: "var(--font-source-sans)" }}
+          >
+            <input
+              type="checkbox"
+              checked={a.attended}
+              onChange={onToggleAttendance}
+              className="size-3.5 rounded text-[#5CE1A5] border-[#E5E7EB]"
+            />
+            Present
+          </label>
+          {a.role !== "organizer" && (
+            <button
+              type="button"
+              onClick={onRemove}
+              className="size-6 rounded-md flex items-center justify-center text-[#CBD5E1] hover:text-red-600 hover:bg-red-50"
+              aria-label="Remove attendee"
+            >
+              <X className="size-3" />
+            </button>
+          )}
+        </>
+      )}
+    </li>
   );
 }

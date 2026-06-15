@@ -61,7 +61,11 @@ export type HuddleListItem = {
 export type ProfileLite = {
   id: string;
   full_name: string;
+  /** Email used as a humane fallback when full_name is empty/null. */
+  email: string | null;
   avatar_color: string;
+  /** Optional avatar URL for orgs that have uploaded photos. */
+  avatar_url: string | null;
   role: Role | null;
 };
 
@@ -253,7 +257,33 @@ async function loadHuddleForViewer(
   };
 }
 
+// Deterministic avatar tint from a uuid so attendees who haven't set a
+// custom color still get visually distinct circles. Same hashing
+// approach as elsewhere in Atlas — first byte mod palette length.
+const AVATAR_FALLBACK_PALETTE = [
+  "#5CE1A5",
+  "#3B82F6",
+  "#8B5CF6",
+  "#F59E0B",
+  "#F97316",
+  "#EF4444",
+  "#EC4899",
+  "#10B981",
+  "#06B6D4",
+  "#14B8A6",
+  "#A855F7",
+  "#6366F1",
+];
+function deterministicAvatarColor(id: string): string {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
+  return AVATAR_FALLBACK_PALETTE[hash % AVATAR_FALLBACK_PALETTE.length];
+}
+
 // Batched profile hydration for attendee / presenter / assignee joins.
+// Returns email + avatar_url alongside the existing fields so callers
+// can fall back gracefully when full_name or avatar_color is missing
+// (avatar_color is an optional column that not every org has populated).
 async function hydrateProfiles(
   ids: (string | null | undefined)[],
 ): Promise<Map<string, ProfileLite>> {
@@ -262,21 +292,33 @@ async function hydrateProfiles(
   );
   const result = new Map<string, ProfileLite>();
   if (unique.length === 0) return result;
-  const { data } = await supabaseAdmin
+  const { data, error } = await supabaseAdmin
     .from("profiles")
-    .select("id, full_name, avatar_color, role")
+    .select("id, full_name, email, avatar_color, avatar_url, role")
     .in("id", unique);
+  if (error) {
+    console.error("[hydrateProfiles] Profile select error:", error.message);
+    return result;
+  }
   (data ?? []).forEach(
     (p: {
       id: string;
       full_name: string | null;
+      email: string | null;
       avatar_color: string | null;
+      avatar_url: string | null;
       role: Role | null;
     }) => {
+      const displayName =
+        (p.full_name && p.full_name.trim()) ||
+        (p.email ? p.email.split("@")[0] : "") ||
+        "Teammate";
       result.set(p.id, {
         id: p.id,
-        full_name: p.full_name || "Teammate",
-        avatar_color: p.avatar_color || "#5CE1A5",
+        full_name: displayName,
+        email: p.email,
+        avatar_color: p.avatar_color || deterministicAvatarColor(p.id),
+        avatar_url: p.avatar_url,
         role: p.role ?? null,
       });
     },
@@ -1079,6 +1121,57 @@ export async function removeHuddleAttendee(
     .eq("id", attendeeId);
   if (error) {
     console.error("[removeHuddleAttendee] Delete error:", error.message);
+    return { success: false, error: error.message };
+  }
+  revalidatePath(`/workspace/huddles/${attendee.huddle_id}`);
+  return { success: true };
+}
+
+export async function updateAttendeeRole(
+  attendeeId: string,
+  role: AttendeeRole,
+): Promise<ActionResult> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated." };
+
+  const { data: attendee } = await supabaseAdmin
+    .from("huddle_attendees")
+    .select("id, huddle_id, role")
+    .eq("id", attendeeId)
+    .maybeSingle();
+  if (!attendee) return { success: false, error: "Attendee not found." };
+
+  const access = await loadHuddleForViewer(ctx, attendee.huddle_id);
+  if (!access.ok) return { success: false, error: access.error };
+  if (!access.canManage)
+    return {
+      success: false,
+      error: "Only the organizer or an admin can change attendee roles.",
+      code: "FORBIDDEN",
+    };
+
+  // Prevent demoting the only organizer — leaves the huddle ownerless.
+  if (attendee.role === "organizer" && role !== "organizer") {
+    const { data: others } = await supabaseAdmin
+      .from("huddle_attendees")
+      .select("id")
+      .eq("huddle_id", attendee.huddle_id)
+      .eq("role", "organizer")
+      .neq("id", attendeeId);
+    if (!others || others.length === 0)
+      return {
+        success: false,
+        error: "Promote another attendee to organizer before demoting this one.",
+        code: "ORGANIZER_REQUIRED",
+      };
+  }
+
+  const { error } = await supabaseAdmin
+    .from("huddle_attendees")
+    .update({ role })
+    .eq("id", attendeeId);
+  if (error) {
+    console.error("[updateAttendeeRole] Update error:", error.message);
     return { success: false, error: error.message };
   }
   revalidatePath(`/workspace/huddles/${attendee.huddle_id}`);
