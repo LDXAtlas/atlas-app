@@ -756,6 +756,100 @@ export async function getHuddlesForCalendar(): Promise<
   };
 }
 
+// Returns scheduled / in-progress huddles where the caller is on the
+// attendee list. Used by the My Tasks page to render a 'Your Huddles'
+// section above the task list — huddles are NOT promoted to fake
+// tasks; they're a parallel object type the user can browse alongside
+// their work.
+export async function getMyUpcomingHuddles(): Promise<
+  ActionResult<HuddleListItem[]>
+> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated." };
+
+  // Pull attendee links first so the huddles query stays org-scoped.
+  const { data: links } = await supabaseAdmin
+    .from("huddle_attendees")
+    .select("huddle_id")
+    .eq("profile_id", ctx.userId);
+  const huddleIds = Array.from(
+    new Set((links ?? []).map((r: { huddle_id: string }) => r.huddle_id)),
+  );
+  if (huddleIds.length === 0) return { success: true, data: [] };
+
+  const { data: rows, error } = await supabaseAdmin
+    .from("huddles")
+    .select(
+      "id, title, description, scheduled_start, scheduled_end, actual_start, actual_end, meeting_source, external_meeting_url, location, status, visibility, department_id, created_by, created_at",
+    )
+    .eq("organization_id", ctx.organizationId)
+    .in("id", huddleIds)
+    .in("status", ["scheduled", "in_progress"]);
+  if (error) {
+    console.error("[getMyUpcomingHuddles] Select error:", error.message);
+    return { success: false, error: error.message };
+  }
+
+  // Counts for the standard list-card shape.
+  const idList = (rows ?? []).map((r) => r.id);
+  const counts = {
+    attendees: new Map<string, number>(),
+    agenda: new Map<string, number>(),
+    actions: new Map<string, number>(),
+  };
+  if (idList.length > 0) {
+    const [aRes, gRes, iRes] = await Promise.all([
+      supabaseAdmin.from("huddle_attendees").select("huddle_id").in("huddle_id", idList),
+      supabaseAdmin.from("huddle_agenda_items").select("huddle_id").in("huddle_id", idList),
+      supabaseAdmin.from("huddle_action_items").select("huddle_id").in("huddle_id", idList),
+    ]);
+    (aRes.data ?? []).forEach((r: { huddle_id: string }) =>
+      counts.attendees.set(r.huddle_id, (counts.attendees.get(r.huddle_id) ?? 0) + 1),
+    );
+    (gRes.data ?? []).forEach((r: { huddle_id: string }) =>
+      counts.agenda.set(r.huddle_id, (counts.agenda.get(r.huddle_id) ?? 0) + 1),
+    );
+    (iRes.data ?? []).forEach((r: { huddle_id: string }) =>
+      counts.actions.set(r.huddle_id, (counts.actions.get(r.huddle_id) ?? 0) + 1),
+    );
+  }
+
+  const items: HuddleListItem[] = (rows ?? []).map((h) => ({
+    id: h.id,
+    title: h.title,
+    description: h.description,
+    scheduled_start: h.scheduled_start,
+    scheduled_end: h.scheduled_end,
+    actual_start: h.actual_start ?? null,
+    actual_end: h.actual_end ?? null,
+    meeting_source: h.meeting_source as HuddleMeetingSource,
+    external_meeting_url: h.external_meeting_url,
+    location: h.location,
+    status: h.status as HuddleStatus,
+    visibility: h.visibility as HuddleVisibility,
+    department_id: h.department_id,
+    created_by: h.created_by,
+    created_at: h.created_at,
+    attendee_count: counts.attendees.get(h.id) ?? 0,
+    agenda_count: counts.agenda.get(h.id) ?? 0,
+    action_item_count: counts.actions.get(h.id) ?? 0,
+  }));
+
+  // Sort: in_progress first (live meetings need attention), then by
+  // scheduled_start ascending. Null start times drift to the end.
+  items.sort((a, b) => {
+    if (a.status !== b.status) {
+      if (a.status === "in_progress") return -1;
+      if (b.status === "in_progress") return 1;
+    }
+    const av = a.scheduled_start ? new Date(a.scheduled_start).getTime() : Infinity;
+    const bv = b.scheduled_start ? new Date(b.scheduled_start).getTime() : Infinity;
+    return av - bv;
+  });
+
+  return { success: true, data: items };
+}
+
 // ─── Detail (single huddle) ───────────────────────────────
 
 export async function getHuddle(

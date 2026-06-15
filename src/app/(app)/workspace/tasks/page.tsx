@@ -4,6 +4,8 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { TasksView } from "./tasks-view";
 import type { Task, TeamMember, Department } from "./tasks-view";
 import { MinistryFilterBanner } from "../../_components/ministry-filter-banner";
+import { getMyUpcomingHuddles } from "@/app/actions/huddles";
+import { YourHuddlesSection } from "./your-huddles-section";
 
 export default async function TasksPage({
   searchParams,
@@ -51,7 +53,7 @@ export default async function TasksPage({
     tasksQuery.or(`assigned_to.eq.${user.id},assigned_by.eq.${user.id}`);
   }
 
-  const [tasksRes, profilesRes, departmentsRes] = await Promise.all([
+  const [tasksRes, profilesRes, departmentsRes, myHuddlesRes] = await Promise.all([
     tasksQuery.order("position", { ascending: true }),
     supabaseAdmin
       .from("profiles")
@@ -63,7 +65,13 @@ export default async function TasksPage({
       .select("id, name, color, icon")
       .eq("organization_id", orgId)
       .order("name", { ascending: true }),
+    // Huddles the current viewer is an attendee on — surfaced as a
+    // separate rail above tasks so people see upcoming meetings
+    // alongside their work without conflating the two object types.
+    getMyUpcomingHuddles(),
   ]);
+  const myHuddles =
+    myHuddlesRes.success && myHuddlesRes.data ? myHuddlesRes.data : [];
 
   const rawTasks = tasksRes.data ?? [];
   const profiles = (profilesRes.data ?? []) as TeamMember[];
@@ -137,6 +145,9 @@ export default async function TasksPage({
           basePath="/workspace/tasks"
         />
       )}
+      <div className="px-5 pt-4">
+        <YourHuddlesSection huddles={myHuddles} />
+      </div>
       <TasksView
         tasks={tasks}
         teamMembers={profiles}
