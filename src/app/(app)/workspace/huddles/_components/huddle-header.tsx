@@ -9,11 +9,10 @@ import {
   ExternalLink,
   Lock,
   Play,
+  Settings,
   StopCircle,
-  Trash2,
 } from "lucide-react";
 import {
-  deleteHuddle,
   endHuddle,
   finalizeHuddle,
   startHuddle,
@@ -43,9 +42,14 @@ const STATUS_COLOR: Record<HuddleDetail["status"], { bg: string; fg: string }> =
 interface HuddleHeaderProps {
   huddle: HuddleDetail;
   onPatch: (patch: Partial<HuddleDetail>) => void;
+  onOpenSettings?: () => void;
 }
 
-export function HuddleHeader({ huddle, onPatch }: HuddleHeaderProps) {
+export function HuddleHeader({
+  huddle,
+  onPatch,
+  onOpenSettings,
+}: HuddleHeaderProps) {
   const router = useRouter();
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(huddle.title);
@@ -300,24 +304,12 @@ export function HuddleHeader({ huddle, onPatch }: HuddleHeaderProps) {
                 )}
                 <button
                   type="button"
-                  onClick={() => {
-                    if (!window.confirm("Delete this huddle? This can't be undone.")) return;
-                    startTransition(async () => {
-                      const res = await deleteHuddle(huddle.id);
-                      if (res.success) {
-                        router.push("/workspace/huddles");
-                      } else {
-                        setToast(res.error || "Couldn't delete the huddle.");
-                        setTimeout(() => setToast(null), 3500);
-                      }
-                    });
-                  }}
-                  disabled={pending}
-                  className="size-9 rounded-xl flex items-center justify-center text-[#9CA3AF] hover:text-red-600 hover:bg-red-50"
-                  aria-label="Delete huddle"
-                  title="Delete huddle"
+                  onClick={() => onOpenSettings?.()}
+                  className="size-9 rounded-xl flex items-center justify-center text-[#9CA3AF] hover:text-[#2D333A] hover:bg-[#F4F5F7]"
+                  aria-label="Huddle settings"
+                  title="Settings"
                 >
-                  <Trash2 className="size-3.5" />
+                  <Settings className="size-3.5" />
                 </button>
               </>
             )}
