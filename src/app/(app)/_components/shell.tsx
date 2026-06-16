@@ -8,6 +8,8 @@ import { getUnreadNotificationCount } from "@/app/actions/notifications";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { motion, AnimatePresence } from "motion/react";
 import { NotificationsDropdown } from "./notifications-dropdown";
+import { Avatar } from "@/components/avatar";
+import { OrgLogo } from "@/components/org-logo";
 import {
   LayoutGrid,
   Blocks,
@@ -217,11 +219,26 @@ function getUpgradePath(moduleId: string, itemHref?: string): string {
 interface AppShellProps {
   userName: string;
   userId: string;
+  /** profiles.avatar_url for the current user — drives the sidebar
+   *  bottom + topbar avatar slots. Null = render colored initials. */
+  userAvatarUrl?: string | null;
   tier: SubscriptionTier;
+  /** organizations.name + logo_url — drives the sidebar top-left
+   *  brand block via the shared <OrgLogo> component. */
+  orgName?: string | null;
+  orgLogoUrl?: string | null;
   children: React.ReactNode;
 }
 
-export function AppShell({ userName, userId, tier, children }: AppShellProps) {
+export function AppShell({
+  userName,
+  userId,
+  userAvatarUrl,
+  tier,
+  orgName,
+  orgLogoUrl,
+  children,
+}: AppShellProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -319,19 +336,25 @@ export function AppShell({ userName, userId, tier, children }: AppShellProps) {
         transition={{ duration: 0.3, ease: [0.23, 1, 0.32, 1] }}
         className={`fixed inset-y-0 left-0 z-50 flex flex-col bg-white border-r border-[#E5E7EB] ${collapsed ? "overflow-visible" : "overflow-hidden"}`}
       >
-        {/* Logo */}
+        {/* Org brand — uploaded church logo when present, gradient
+            first-letter fallback otherwise. Square-cornered rounding
+            (rounded-xl on a 40px slot) preserves the prior visual
+            footprint so the sidebar header height stays identical. */}
         <div className={`flex items-center gap-3 min-h-[80px] ${collapsed ? "px-0 justify-center" : "px-6"} py-6`}>
-          <div className="size-10 rounded-xl bg-gradient-to-br from-[#5CE1A5] to-[#3DB882] flex items-center justify-center shrink-0 shadow-sm">
-            <span className="text-white font-bold text-lg" style={{ fontFamily: "var(--font-poppins)" }}>A</span>
-          </div>
+          <OrgLogo
+            name={orgName ?? "Atlas Church"}
+            logoUrl={orgLogoUrl ?? null}
+            size={40}
+            className="!rounded-xl shadow-sm"
+          />
           {!collapsed && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               className="flex flex-col min-w-0"
             >
-              <span className="text-[#2D333A] font-semibold text-[14px] leading-tight" style={{ fontFamily: "var(--font-poppins)" }}>
-                Atlas Church
+              <span className="text-[#2D333A] font-semibold text-[14px] leading-tight truncate" style={{ fontFamily: "var(--font-poppins)" }}>
+                {orgName ?? "Atlas Church"}
               </span>
               <span className="text-[#6B7280] text-[11px] font-semibold uppercase tracking-widest mt-0.5" style={{ fontFamily: "var(--font-source-sans)" }}>
                 Admin Portal
@@ -389,11 +412,13 @@ export function AppShell({ userName, userId, tier, children }: AppShellProps) {
         {/* User section */}
         <div className="border-t border-[#E5E7EB] px-4 py-4">
           <div className={`flex items-center gap-3 ${collapsed ? "justify-center" : ""}`}>
-            <div className="size-9 rounded-full bg-gradient-to-br from-[#5CE1A5] to-[#3DB882] flex items-center justify-center shrink-0">
-              <span className="text-white text-sm font-semibold" style={{ fontFamily: "var(--font-poppins)" }}>
-                {userName.charAt(0).toUpperCase()}
-              </span>
-            </div>
+            <Avatar
+              id={userId}
+              avatarUrl={userAvatarUrl}
+              fullName={userName}
+              size={36}
+              ring={false}
+            />
             {!collapsed && (
               <div className="flex-1 min-w-0">
                 <p className="text-[#2D333A] text-[13px] font-semibold truncate" style={{ fontFamily: "var(--font-poppins)" }}>
@@ -506,11 +531,23 @@ export function AppShell({ userName, userId, tier, children }: AppShellProps) {
               </AnimatePresence>
             </div>
             
-            <div className="size-8 rounded-full bg-gradient-to-br from-[#5CE1A5] to-[#3DB882] flex items-center justify-center border border-[#E5E7EB] shadow-sm">
-              <span className="text-white text-xs font-semibold" style={{ fontFamily: "var(--font-poppins)" }}>
-                {userName.charAt(0).toUpperCase()}
-              </span>
-            </div>
+            {/* Profile shortcut. Native <Link> for keyboard / right-
+                click / new-tab support. focus-visible ring matches
+                the rest of the topbar's interactive treatments. */}
+            <Link
+              href="/settings/profile"
+              aria-label="Open profile settings"
+              title="Profile settings"
+              className="rounded-full border border-[#E5E7EB] shadow-sm hover:border-[#5CE1A5] hover:shadow-[0_0_0_3px_rgba(92,225,165,0.15)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5CE1A5] focus-visible:ring-offset-2 transition-all cursor-pointer"
+            >
+              <Avatar
+                id={userId}
+                avatarUrl={userAvatarUrl}
+                fullName={userName}
+                size={32}
+                ring={false}
+              />
+            </Link>
           </div>
         </header>
 
