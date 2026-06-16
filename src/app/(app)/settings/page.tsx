@@ -56,25 +56,22 @@ export default function SettingsPage() {
           </div>
         </Link>
 
-        <div className="flex items-start gap-4 p-5 bg-white rounded-2xl border border-[#E5E7EB]">
-          <div className="size-10 rounded-xl bg-[#F4F5F7] flex items-center justify-center shrink-0">
-            <User className="size-5 text-[#6B7280]" />
+        <Link
+          href="/settings/profile"
+          className="group flex items-start gap-4 p-5 bg-white rounded-2xl border border-[#E5E7EB] hover:border-[#5CE1A5] hover:shadow-md transition-all"
+        >
+          <div className="size-10 rounded-xl bg-[#5CE1A5]/10 flex items-center justify-center shrink-0 group-hover:bg-[#5CE1A5]/15 transition-colors">
+            <User className="size-5 text-[#5CE1A5]" />
           </div>
           <div>
             <h3 className="text-[14px] font-semibold text-[#2D333A]" style={{ fontFamily: "var(--font-poppins)" }}>
               Profile
             </h3>
             <p className="text-[13px] text-[#6B7280] mt-0.5" style={{ fontFamily: "var(--font-source-sans)" }}>
-              Update your name, photo, and personal details
+              Update your name, phone, and personal details
             </p>
-            <span
-              className="inline-flex items-center mt-2 px-2 py-0.5 rounded-full text-[11px] font-medium text-[#5CE1A5] bg-[#5CE1A5]/8"
-              style={{ fontFamily: "var(--font-poppins)" }}
-            >
-              Coming Soon
-            </span>
           </div>
-        </div>
+        </Link>
 
         <Link
           href="/settings/notifications"
