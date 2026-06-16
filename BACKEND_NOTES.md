@@ -68,6 +68,10 @@ Atlas does NOT build native video calling. Position is "the brain, not the pipes
 - Progression is toward better INTEGRATION, NOT hosting video: Phase 3 = upload recordings from any platform → AI processes them; Phase 4 = direct Zoom/Meet/Teams API integration → auto-import recordings.
 - Only revisit if ALL of: a competitor ships native church video AND gains share, multiple paying customers call it a deal-breaker, Atlas has 200+ paying churches, and a real differentiator is identified.
 
+### Profile photo upload — deferred
+- `/settings/profile` ships today with the editable name + phone fields and the role / email / org read-only block, but the "Change photo" button is intentionally disabled with a "Soon" pill.
+- Needed: a Supabase Storage bucket for avatars (org-scoped path, e.g. `avatars/{org_id}/{user_id}/{timestamp}.webp`), an upload Route Handler that writes to that bucket and updates `profiles.avatar_url`, and image-resize/crop UX. Pair this with the Project Boards avatar migration below so both ship together.
+
 ### Avatar component migration for Project Boards (7 files) + photo-upload UI — deferred, do together
 - 7 components under `src/app/(app)/workspace/projects/[id]/_components/` (`board-view`, `board-detail-header`, `card-detail-panel`, `comments-section`, `kanban-card`, `activity-log`, plus one more) still render avatars inline via `avatar_color` styling. They already show per-user deterministic colors via the fixed actions layer — varied tints instead of uniform mint — so no functional gap today.
 - Full migration to the shared `<Avatar>` from `src/components/avatar.tsx` (with `avatar_url` image support) is deferred until the photo-upload UI lands so both moves ship together. Pre-work is done: `CardAssignee` and `CommentAuthor` types both carry an `avatar_url` field, populated server-side from `profiles.avatar_url` already.
@@ -105,6 +109,12 @@ Atlas does NOT build native video calling. Position is "the brain, not the pipes
 ---
 
 ## DONE
+
+### Profile edit page — Completed 2026-06-16
+- `/settings/profile` replaces the prior "Coming Soon" placeholder card on the settings index. Editable: `full_name` (required, max 120) and `phone` (optional, lenient `+()-./` regex, max 32). Read-only: email (note: "Contact an admin to change"), role (badge with `src/lib/roles.ts` colors + icons), organization name.
+- Server actions in `src/app/actions/profiles.ts`: `getMyProfile()` returns the caller's profile + org name; `updateMyProfile({ full_name, phone })` writes only those two columns, bound to `.eq("id", auth.uid())` so neither `role` / `email` / `organization_id` nor another user's row can be touched even if input is steered. revalidatePath busts settings, dashboard, and directory since the user's name appears in shell chrome.
+- Avatar renders via the shared `<Avatar size={80}>` (image-or-deterministic-initials). "Change photo" button is intentionally disabled with a "Soon" pill — photo upload deferred (see PENDING).
+- Settings index card flipped from a non-link Coming Soon card to a real `<Link href="/settings/profile">` with mint icon styling matching the other index cards. Shell breadcrumb map adds `/settings/profile → "My Profile"`.
 
 ### Avatar cleanup — Completed 2026-06-16
 - `profiles.avatar_color` doesn't exist on the DB. Five action-file SELECTs (`boards.ts` × 4 in `joinCommentAuthors` and three other hydrate paths, `tasks.ts` × 1 in `joinTaskCommentAuthors`) were silently failing PostgREST and getting masked by hardcoded mint fallbacks downstream. Replaced with `'.select(id, full_name, email, avatar_url, role)'`.
