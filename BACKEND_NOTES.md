@@ -68,9 +68,9 @@ Atlas does NOT build native video calling. Position is "the brain, not the pipes
 - Progression is toward better INTEGRATION, NOT hosting video: Phase 3 = upload recordings from any platform → AI processes them; Phase 4 = direct Zoom/Meet/Teams API integration → auto-import recordings.
 - Only revisit if ALL of: a competitor ships native church video AND gains share, multiple paying customers call it a deal-breaker, Atlas has 200+ paying churches, and a real differentiator is identified.
 
-### avatar_color cleanup
-- `boards.ts` (~10 sites), `notifications.ts`, `profiles.ts` all SELECT a nonexistent `profiles.avatar_color` column. Queries silently fail but hardcoded `"#5CE1A5"` + email-based name fallbacks mask it. Harmless today but technically broken.
-- Dedicated pass: remove all dead `avatar_color` references; use `avatar_url` + a deterministic-color helper everywhere (huddles already does this correctly).
+### Avatar component migration for Project Boards (7 files) + photo-upload UI — deferred, do together
+- 7 components under `src/app/(app)/workspace/projects/[id]/_components/` (`board-view`, `board-detail-header`, `card-detail-panel`, `comments-section`, `kanban-card`, `activity-log`, plus one more) still render avatars inline via `avatar_color` styling. They already show per-user deterministic colors via the fixed actions layer — varied tints instead of uniform mint — so no functional gap today.
+- Full migration to the shared `<Avatar>` from `src/components/avatar.tsx` (with `avatar_url` image support) is deferred until the photo-upload UI lands so both moves ship together. Pre-work is done: `CardAssignee` and `CommentAuthor` types both carry an `avatar_url` field, populated server-side from `profiles.avatar_url` already.
 
 ### Huddles Phase 1 — Notification type follow-up
 - `huddle_invited` and `huddle_action_assigned` aren't in the `notifications.type` CHECK constraint. Phase 1 reuses `mention` for huddle invites and `task_assigned` for promoted action items so notifications still fire today.
@@ -105,6 +105,15 @@ Atlas does NOT build native video calling. Position is "the brain, not the pipes
 ---
 
 ## DONE
+
+### Avatar cleanup — Completed 2026-06-16
+- `profiles.avatar_color` doesn't exist on the DB. Five action-file SELECTs (`boards.ts` × 4 in `joinCommentAuthors` and three other hydrate paths, `tasks.ts` × 1 in `joinTaskCommentAuthors`) were silently failing PostgREST and getting masked by hardcoded mint fallbacks downstream. Replaced with `'.select(id, full_name, email, avatar_url, role)'`.
+- Hardcoded-mint fallback paths in `notifications.ts`, `profiles.ts`, and three sites in `attachments.ts` (`uploaderMap`, `resolveUploader`, `hydrateLibraryFiles`) plus two inline assignee constructions in `boards.ts` (`getBoard` + `createCard`) now populate `avatar_color: deterministicAvatarColor(profile.id)` — varied per user instead of uniform mint.
+- New shared helpers at `src/lib/avatar.ts` (palette + `deterministicAvatarColor` + `initials` + `displayName`) and shared `<Avatar>` component at `src/components/avatar.tsx` (renders `avatar_url` image when present, deterministic colored initials otherwise). Imported by every non-huddles consumer that needs it.
+- Type-additive across every type: existing `avatar_color: string` field stays, new `avatar_url: string | null` added alongside. Old consumers reading `.avatar_color` continue to work unchanged.
+- Three consumer components migrated to the shared `<Avatar>`: `notifications-dropdown.tsx`, `library/file-list.tsx`, and `components/file-preview.tsx`. Each call passes id (for deterministic color when avatar_url is null), avatar_url, full_name, and an appropriate size + ring setting.
+- Deferred to a future "photo-upload UI" pass: full migration of the 7 Project Boards components under `projects/[id]/_components/` to the shared `<Avatar>`. They render varied per-user colors automatically via the fixed actions layer today; the `<Avatar>` migration ships when image upload does. (Three of those board components received one-line additive `avatar_url: null` edits to satisfy the widened types — no rendering changes.)
+- Huddles folder untouched. Huddles already had its own correct pattern (`attendee-avatar.tsx` + private `deterministicAvatarColor` in `huddles.ts`); the shared helpers in `lib/avatar.ts` mirror that pattern so a future huddles migration is straightforward.
 
 ### AI infrastructure — Monthly credit reset cron — Completed 2026-06-16
 - `public.reset_monthly_ai_credits()` runs daily at 00:05 UTC via `pg_cron` (`SELECT cron.schedule('reset-monthly-ai-credits', '5 0 * * *', ...)`). Each tick zeroes `ai_credits_used` and rolls `ai_credits_reset_at` forward one calendar month for every org whose reset date has passed.
