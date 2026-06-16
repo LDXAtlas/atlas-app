@@ -68,14 +68,6 @@ Atlas does NOT build native video calling. Position is "the brain, not the pipes
 - Progression is toward better INTEGRATION, NOT hosting video: Phase 3 = upload recordings from any platform → AI processes them; Phase 4 = direct Zoom/Meet/Teams API integration → auto-import recordings.
 - Only revisit if ALL of: a competitor ships native church video AND gains share, multiple paying customers call it a deal-breaker, Atlas has 200+ paying churches, and a real differentiator is identified.
 
-### Profile photo upload — deferred
-- `/settings/profile` ships today with the editable name + phone fields and the role / email / org read-only block, but the "Change photo" button is intentionally disabled with a "Soon" pill.
-- Needed: a Supabase Storage bucket for avatars (org-scoped path, e.g. `avatars/{org_id}/{user_id}/{timestamp}.webp`), an upload Route Handler that writes to that bucket and updates `profiles.avatar_url`, and image-resize/crop UX. Pair this with the Project Boards avatar migration below so both ship together.
-
-### Avatar component migration for Project Boards (7 files) + photo-upload UI — deferred, do together
-- 7 components under `src/app/(app)/workspace/projects/[id]/_components/` (`board-view`, `board-detail-header`, `card-detail-panel`, `comments-section`, `kanban-card`, `activity-log`, plus one more) still render avatars inline via `avatar_color` styling. They already show per-user deterministic colors via the fixed actions layer — varied tints instead of uniform mint — so no functional gap today.
-- Full migration to the shared `<Avatar>` from `src/components/avatar.tsx` (with `avatar_url` image support) is deferred until the photo-upload UI lands so both moves ship together. Pre-work is done: `CardAssignee` and `CommentAuthor` types both carry an `avatar_url` field, populated server-side from `profiles.avatar_url` already.
-
 ### Huddles Phase 1 — Notification type follow-up
 - `huddle_invited` and `huddle_action_assigned` aren't in the `notifications.type` CHECK constraint. Phase 1 reuses `mention` for huddle invites and `task_assigned` for promoted action items so notifications still fire today.
 - To clean up the messaging copy: extend the constraint via `ALTER TABLE notifications ... DROP CONSTRAINT ... ADD CONSTRAINT ... CHECK (type IN (... 'huddle_invited', 'huddle_action_assigned'))`, add the two strings to `src/lib/notifications-config.ts` (union + DEFAULT_NOTIFICATION_PREFERENCES + NOTIFICATION_CATEGORIES), then swap the two call sites in `src/app/actions/huddles.ts` (createHuddle, addHuddleAttendee, promoteActionItemToTask).
@@ -106,6 +98,14 @@ Atlas does NOT build native video calling. Position is "the brain, not the pipes
 ---
 
 ## DONE
+
+### Image upload — user avatars + org logos + Project Boards avatar migration — Completed 2026-06-16
+- **User avatars**: `uploadMyAvatar(formData)` + `removeMyAvatar()` in `src/app/actions/profiles.ts`. Auth via `auth.uid()`, mime/size validation (jpeg/png/webp, 5 MB cap), sharp pipeline does EXIF rotate + 256×256 cover-crop centred + webp@88. Writes to the public `avatars` bucket at `{user_id}/avatar.webp` (storage policies already enforce per-folder write), saves the public URL + `?v=timestamp` cache-bust to `profiles.avatar_url`. Profile settings page's previously-disabled "Change photo · Soon" button is now a real picker with "Upload / Change / Remove" affordances and a Loader2 spinner. Revalidates `/settings`, `/dashboard`, `/directory` so the new image appears everywhere immediately.
+- **Org logos**: new `src/app/actions/organizations.ts` with `uploadOrgLogo` + `removeOrgLogo` + `getMyOrgSummary`. Admin-gated via `can.editOrganization` re-checked server-side. Sharp uses `fit: 'contain'` with transparent background so wide wordmarks / tall lockups aren't cropped. Writes to the public `org-logos` bucket at `{organization_id}/logo.webp`, saves URL to `organizations.logo_url`. New `OrgLogoCard` UI on `/settings/organization` (admin-only controls; non-admins see read-only logo with a hint).
+- **Shared `<OrgLogo>` component** at `src/components/org-logo.tsx` mirrors the `<Avatar>` API. Uses the same `bg-gradient-to-br from-[#5CE1A5] to-[#3DB882]` treatment as the sidebar user-avatar circle so the two feel like siblings. Image when `logoUrl` is present, first-letter fallback otherwise.
+- **Dashboard greeting**: added a 44px `<OrgLogo>` to the left of "Good morning, {firstName}". Once an admin uploads a logo it shows immediately on the dashboard hero. Settings → Organization page header swapped its generic Users icon for the real `<OrgLogo>` too.
+- **Project Boards avatar migration**: 5 components under `projects/[id]/_components/` (`kanban-card`, `comments-section`, `card-detail-panel`, `board-detail-header`, `activity-log`) migrated from inline `avatar_color` spans to the shared `<Avatar>`. Once a user uploads a profile photo it now shows on every kanban card / comment / assignee picker / member list / activity row without any further code changes. `board-view.tsx` and `card-detail-panel.tsx` each retain a single synthetic `{ avatar_color: '#5CE1A5', avatar_url: null }` literal inside an optimistic patch — that gets overwritten on next refresh and isn't a render site.
+- Constraints respected: no files under `src/app/(app)/workspace/huddles/` touched; sharp pattern + Supabase storage client + Resend infra all reused; admin gates enforced server-side, not just UI.
 
 ### Notification email templates — task_comment / board_card_comment / board_card_mention / mention — Completed 2026-06-16
 - Four new Resend templates under `src/lib/email/`: `send-task-comment-email.ts`, `send-board-card-comment-email.ts`, `send-board-card-mention-email.ts`, `send-mention-email.ts`. Shared layout helper at `src/lib/email/_template.ts` (gradient header, mint CTA pill, quoted-snippet card, "Adjust your notification preferences" footer link) matches the existing `send-invitation` + `send-board-member-added` look.
