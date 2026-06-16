@@ -100,12 +100,20 @@ Atlas does NOT build native video calling. Position is "the brain, not the pipes
 - Background "where this file is used" widening — show every entity (not just the original parent) once attachments get re-attached across entities. Today an attachment has a single `entity_type` / `entity_id`, so the UI accurately reflects one parent.
 
 ### Phase 2 notification follow-ups
-- Email delivery for the rest of the notification types — currently only the invitation email (`send-invitation`) and the board-member-added email (`send-board-member-added`) actually send. The `email_enabled` toggle in `/settings/notifications` records the preference but won't fire emails for `task_assigned` / `event_invited` / `announcement_posted` / `task_comment` / `board_card_comment` / `board_card_mention` / etc. until each type gets its own `send-*` template + Resend hook.
-- Remaining Phase-2 types (`task_due_soon`, `announcement_mention`, `event_reminder`) — wired into the type union and preferences, but no action emits them yet. Add them when each feature lands. (`board_card_mention`, `board_card_comment`, `task_comment`, and generic `mention` now fire — see DONE below.)
+- Email delivery for the remaining notification types — `task_assigned`, `event_invited`, `announcement_posted`, `board_card_assigned`, `board_member_added` (already has a sender — verify it still fires), `team_member_invited`, `team_member_joined`, `department_assigned`. Each needs a `send-*-email.ts` template and either central wiring (the createNotification dispatcher pattern landed for `task_comment` / `board_card_comment` / `board_card_mention` / `mention`) or a per-call-site sender depending on payload shape.
+- Remaining Phase-2 types (`task_due_soon`, `announcement_mention`, `event_reminder`) — wired into the type union and preferences, but no action emits them yet. Add them when each feature lands.
 
 ---
 
 ## DONE
+
+### Notification email templates — task_comment / board_card_comment / board_card_mention / mention — Completed 2026-06-16
+- Four new Resend templates under `src/lib/email/`: `send-task-comment-email.ts`, `send-board-card-comment-email.ts`, `send-board-card-mention-email.ts`, `send-mention-email.ts`. Shared layout helper at `src/lib/email/_template.ts` (gradient header, mint CTA pill, quoted-snippet card, "Adjust your notification preferences" footer link) matches the existing `send-invitation` + `send-board-member-added` look.
+- All four use `notifications@atlaschurchsolutions.com` as the from address to keep them separate from the transactional `invites@` mailbox.
+- Wired into `createNotification` via an `EMAIL_DISPATCH_TYPES` Set + `dispatchEmailNotification(params)` helper that runs after the in-app insert. Fire-and-forget (`void promise.catch(...)`) so Resend hiccups never undermine the in-app row that already landed. Best-effort try/catch + console log on failure.
+- Preference gate: reads `notification_preferences.email_enabled` for the recipient + type, falls back to `DEFAULT_NOTIFICATION_PREFERENCES[type].email`. Users who toggle email off at `/settings/notifications` for one of these four types stop receiving the email immediately; in-app is unaffected.
+- Each type-branch knows the exact title + body composition its originating call site uses (`createTaskComment` in tasks.ts, `createCardComment` for both comment + mention branches in boards.ts, `addHuddleAttendee` + `createHuddle` for huddle invites + promoted action items), extracts the entity title + snippet via `firstQuoted` / `stringMeta` helpers, then dynamically imports the matching template sender.
+- Self-notify check already lives at the top of `createNotification` — the email branch can't accidentally email the actor about their own action. `createNotificationsBatch` (announcements, events, org-wide invites) intentionally bypasses the dispatcher; none of its current callers fire any of the four email-dispatch types.
 
 ### Project Boards Phase 4 — Duplicate card — Completed 2026-06-16
 - New `duplicateCard(cardId)` server action in `src/app/actions/boards.ts`. Permission check via `loadBoardForViewer` matches `updateCard`. Position handling: shifts every card in the source's column with `position > source.position` by +1, then inserts the copy at `source.position + 1` so the duplicate appears immediately below the original.
