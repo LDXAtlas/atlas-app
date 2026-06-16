@@ -1,8 +1,10 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getRoleFromProfile } from "@/lib/permissions";
+import type { Role } from "@/lib/permissions";
 import { deterministicAvatarColor } from "@/lib/avatar";
 
 export type ProfileSearchResult = {
@@ -125,4 +127,169 @@ export async function searchProfiles(
   );
 
   return { data: results };
+}
+
+// ─── Self-service profile actions ──────────────────────────
+//
+// Both of the actions below are intentionally scoped to the
+// authenticated user's OWN profile row. They never read or write
+// another profile — full_name and phone are the only editable fields.
+// Email is tied to auth and changes require re-verification.
+// role / organization_id are security boundaries that only an admin
+// can change through a separate code path.
+
+export type MyProfile = {
+  id: string;
+  full_name: string;
+  email: string;
+  avatar_url: string | null;
+  phone: string | null;
+  role: Role;
+  organization_id: string;
+  organization_name: string | null;
+  last_active: string | null;
+  created_at: string;
+};
+
+export type UpdateMyProfileInput = {
+  full_name: string;
+  phone?: string | null;
+};
+
+export type ActionResult<T = unknown> =
+  | { success: true; data?: T }
+  | { success: false; error: string; code?: string };
+
+export async function getMyProfile(): Promise<
+  ActionResult<MyProfile>
+> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { success: false, error: "Not authenticated.", code: "UNAUTHENTICATED" };
+  }
+
+  // Direct lookup by auth.uid() — never falls through to any other user.
+  const { data: profile, error } = await supabaseAdmin
+    .from("profiles")
+    .select(
+      "id, full_name, email, avatar_url, phone, role, organization_id, last_active, created_at",
+    )
+    .eq("id", user.id)
+    .maybeSingle();
+  if (error) {
+    console.error("[getMyProfile] Select error:", error.message);
+    return { success: false, error: error.message };
+  }
+  if (!profile) {
+    return { success: false, error: "Profile not found." };
+  }
+
+  // Pull the org name in a second lightweight query so the settings
+  // page can show "You're in <Org Name>" without another round trip
+  // from the client.
+  let organization_name: string | null = null;
+  if (profile.organization_id) {
+    const { data: org } = await supabaseAdmin
+      .from("organizations")
+      .select("name")
+      .eq("id", profile.organization_id)
+      .maybeSingle();
+    organization_name = org?.name ?? null;
+  }
+
+  return {
+    success: true,
+    data: {
+      id: profile.id,
+      full_name: profile.full_name || "",
+      email: profile.email || "",
+      avatar_url: profile.avatar_url ?? null,
+      phone: profile.phone ?? null,
+      role: (profile.role as Role) ?? "member",
+      organization_id: profile.organization_id,
+      organization_name,
+      last_active: profile.last_active ?? null,
+      created_at: profile.created_at,
+    },
+  };
+}
+
+// Phone formatting — lenient. Allows digits, spaces, hyphens, parens,
+// dots, and an optional leading '+'. Anything else is rejected so we
+// don't accidentally store a paragraph of text in the phone column.
+const PHONE_RE = /^[+]?[\d\s().\-]{6,32}$/;
+
+export async function updateMyProfile(
+  input: UpdateMyProfileInput,
+): Promise<ActionResult<MyProfile>> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { success: false, error: "Not authenticated.", code: "UNAUTHENTICATED" };
+  }
+
+  const trimmedName = input.full_name?.trim() ?? "";
+  if (!trimmedName) {
+    return {
+      success: false,
+      error: "Full name is required.",
+      code: "BAD_INPUT",
+    };
+  }
+  if (trimmedName.length > 120) {
+    return {
+      success: false,
+      error: "Full name is too long (max 120 characters).",
+      code: "BAD_INPUT",
+    };
+  }
+
+  // Phone is optional — coerce empty string / whitespace to null.
+  let phone: string | null = null;
+  if (input.phone !== null && input.phone !== undefined) {
+    const trimmedPhone = String(input.phone).trim();
+    if (trimmedPhone.length > 0) {
+      if (!PHONE_RE.test(trimmedPhone)) {
+        return {
+          success: false,
+          error:
+            "Phone format isn't recognized. Use digits, spaces, or +()-./",
+          code: "BAD_INPUT",
+        };
+      }
+      phone = trimmedPhone;
+    }
+  }
+
+  // Critical: scope the UPDATE to the authenticated user's id only.
+  // This is the security boundary — without `.eq("id", user.id)` an
+  // attacker who controls input could in theory steer the write. The
+  // service-role client bypasses RLS so we re-enforce here.
+  const { error } = await supabaseAdmin
+    .from("profiles")
+    .update({
+      full_name: trimmedName,
+      phone,
+    })
+    .eq("id", user.id);
+  if (error) {
+    console.error("[updateMyProfile] Update error:", error.message);
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath("/settings");
+  revalidatePath("/settings/profile");
+  // Settings shell, dashboard, and directory all show the user's name
+  // in nav / chrome — bust those caches too.
+  revalidatePath("/dashboard");
+  revalidatePath("/directory");
+
+  // Return the fresh profile so the form can render the saved state
+  // without an extra round trip.
+  return getMyProfile();
 }
