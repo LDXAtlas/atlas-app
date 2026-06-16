@@ -78,6 +78,16 @@ async function getAuthContext(): Promise<{ userId: string } | null> {
   return { userId: user.id };
 }
 
+// Types whose notifications should also send an email. Other types
+// continue to fire in-app only (or use their own per-call-site sender
+// for unique-content payloads like board invites).
+const EMAIL_DISPATCH_TYPES = new Set<NotificationType>([
+  "task_comment",
+  "board_card_comment",
+  "board_card_mention",
+  "mention",
+]);
+
 // ─── createNotification (called by other server actions) ───
 //
 // Best-effort write. The caller's primary work shouldn't roll back on
@@ -138,6 +148,23 @@ export async function createNotification(
     console.error("[createNotification] Insert error:", error.message);
     return { success: false, error: error.message };
   }
+
+  // Email dispatch for the four comment / mention types. Centralized
+  // here (rather than at each call site) because the four types share
+  // a uniform "actor did Y on Z + snippet + link" shape — and because
+  // we want one preference check + one email lookup + one try/catch
+  // covering all of them. Other types (board_member_added, invitations)
+  // intentionally keep their per-call-site senders, since those payloads
+  // are unique.
+  if (EMAIL_DISPATCH_TYPES.has(params.type)) {
+    void dispatchEmailNotification(params).catch((err) => {
+      // Never let an email failure leak back to the caller — the in-app
+      // notification already succeeded. void + .catch makes sure the
+      // promise's rejection doesn't bubble as an unhandled rejection.
+      console.error("[createNotification] Email dispatch failed:", err);
+    });
+  }
+
   return { success: true, data: { id: data.id } };
 }
 
@@ -458,4 +485,200 @@ export async function resetNotificationPreferences(): Promise<ActionResult> {
     return { success: false, error: error.message };
   }
   return { success: true };
+}
+
+// ─── Email dispatch ─────────────────────────────────────────
+//
+// Loaded lazily so a Resend hiccup never delays the in-app insert
+// above. The dispatcher:
+//   1. Resolves the recipient's email_enabled preference for this
+//      notification type (default true via DEFAULT_NOTIFICATION_PREFERENCES).
+//   2. Looks up the recipient profile for {email, full_name}. No email
+//      on file -> bail silently.
+//   3. Resolves the actor's name (or "A teammate" fallback).
+//   4. Switches on the type to call the matching template sender.
+
+async function dispatchEmailNotification(
+  params: CreateNotificationParams,
+): Promise<void> {
+  // 1. Preference gate.
+  const { data: prefRow } = await supabaseAdmin
+    .from("notification_preferences")
+    .select("email_enabled")
+    .eq("user_id", params.recipientId)
+    .eq("notification_type", params.type)
+    .maybeSingle();
+  const defaultPref = DEFAULT_NOTIFICATION_PREFERENCES[params.type];
+  const emailEnabled = prefRow?.email_enabled ?? defaultPref?.email ?? false;
+  if (!emailEnabled) return;
+
+  // 2. Recipient lookup.
+  const { data: recipient } = await supabaseAdmin
+    .from("profiles")
+    .select("email, full_name")
+    .eq("id", params.recipientId)
+    .maybeSingle();
+  if (!recipient?.email) return;
+
+  // 3. Actor name.
+  let actorName = "A teammate";
+  if (params.actorId) {
+    const { data: actor } = await supabaseAdmin
+      .from("profiles")
+      .select("full_name, email")
+      .eq("id", params.actorId)
+      .maybeSingle();
+    if (actor) {
+      actorName =
+        actor.full_name?.trim() ||
+        actor.email?.split("@")[0] ||
+        "A teammate";
+    }
+  }
+
+  // 4. Type-keyed dispatch. Each branch knows the exact shape the
+  // matching call site composes its title + body in (see
+  // tasks.ts#createTaskComment, boards.ts#createCardComment, and
+  // huddles.ts#{createHuddle, addHuddleAttendee, ...}), so we extract
+  // the entity title + clean snippet right here rather than via fragile
+  // shared regex. The metadata column is also consulted when set.
+  const href = params.actionUrl || "/dashboard";
+
+  try {
+    if (params.type === "task_comment") {
+      // createTaskComment composes:
+      //   title = `${actor} commented on "${taskTitle}"`
+      //   body  = trimmed.slice(0, 180)   // pure snippet
+      const taskTitle =
+        firstQuoted(params.title) ??
+        stringMeta(params.metadata, "task_title") ??
+        "a task";
+      const { sendTaskCommentEmail } = await import(
+        "@/lib/email/send-task-comment-email"
+      );
+      await sendTaskCommentEmail({
+        to: recipient.email,
+        recipientName: recipient.full_name ?? null,
+        actorName,
+        taskTitle,
+        taskHref: href,
+        commentSnippet: params.body ?? null,
+      });
+      return;
+    }
+
+    if (params.type === "board_card_comment") {
+      // createCardComment composes:
+      //   title = `${actor} commented on "${cardTitle}"`
+      //   body  = `${snippet} · ${boardName}`
+      const cardTitle =
+        firstQuoted(params.title) ??
+        stringMeta(params.metadata, "card_title") ??
+        "a card";
+      const body = params.body ?? "";
+      const sepIdx = body.lastIndexOf(" · ");
+      const snippet = sepIdx >= 0 ? body.slice(0, sepIdx).trim() : body;
+      const boardName =
+        sepIdx >= 0
+          ? body.slice(sepIdx + 3).trim()
+          : stringMeta(params.metadata, "board_name") ?? "the board";
+      const { sendBoardCardCommentEmail } = await import(
+        "@/lib/email/send-board-card-comment-email"
+      );
+      await sendBoardCardCommentEmail({
+        to: recipient.email,
+        recipientName: recipient.full_name ?? null,
+        actorName,
+        cardTitle,
+        boardName,
+        cardHref: href,
+        commentSnippet: snippet || null,
+      });
+      return;
+    }
+
+    if (params.type === "board_card_mention") {
+      // createCardComment mention branch composes:
+      //   title = `${actor} mentioned you`
+      //   body  = `On "${cardTitle}" — ${snippet}`
+      const body = params.body ?? "";
+      const cardTitle =
+        firstQuoted(body) ??
+        stringMeta(params.metadata, "card_title") ??
+        "a card";
+      // Strip the "On \"...\" — " prefix to leave just the snippet.
+      const dashIdx = body.indexOf("—");
+      const snippet =
+        dashIdx >= 0 ? body.slice(dashIdx + 1).trim() : body;
+      const boardName =
+        stringMeta(params.metadata, "board_name") ?? "the board";
+      const { sendBoardCardMentionEmail } = await import(
+        "@/lib/email/send-board-card-mention-email"
+      );
+      await sendBoardCardMentionEmail({
+        to: recipient.email,
+        recipientName: recipient.full_name ?? null,
+        actorName,
+        cardTitle,
+        boardName,
+        cardHref: href,
+        commentSnippet: snippet || null,
+      });
+      return;
+    }
+
+    if (params.type === "mention") {
+      // Generic mention — currently used for huddle invites
+      // (title = `${actor} invited you to a huddle`, body = huddle name)
+      // and promoted-action-item mentions (body = snippet).
+      // The body string is the most reliable context label across both
+      // shapes since the title alone doesn't carry an entity name.
+      const contextLabel =
+        params.body?.trim() ||
+        firstQuoted(params.title) ||
+        stringMeta(params.metadata, "context_label") ||
+        "Atlas";
+      const { sendMentionEmail } = await import(
+        "@/lib/email/send-mention-email"
+      );
+      await sendMentionEmail({
+        to: recipient.email,
+        recipientName: recipient.full_name ?? null,
+        actorName,
+        contextLabel,
+        href,
+        // For mention we treat the body as the context label, not the
+        // snippet, so there's no separate snippet to render.
+        bodySnippet: null,
+      });
+      return;
+    }
+  } catch (err) {
+    // Templates throw on Resend failure; swallow so the in-app
+    // notification's success isn't undermined.
+    console.error(
+      `[createNotification] Email send failed for type=${params.type}:`,
+      err,
+    );
+  }
+}
+
+// Pulls the first quoted substring out of a string. Tolerates straight
+// quotes and the curly variants some call sites compose.
+function firstQuoted(s: string | null | undefined): string | null {
+  if (!s) return null;
+  const straight = s.match(/"([^"]+)"/);
+  if (straight?.[1]) return straight[1];
+  const curly = s.match(/[“‘]([^”’]+)[”’]/);
+  if (curly?.[1]) return curly[1];
+  return null;
+}
+
+function stringMeta(
+  metadata: Record<string, unknown> | undefined,
+  key: string,
+): string | null {
+  if (!metadata) return null;
+  const v = metadata[key];
+  return typeof v === "string" && v.trim() ? v.trim() : null;
 }
