@@ -5,6 +5,7 @@ import { Bookmark, MoreHorizontal, ArrowDown, ArrowUp } from "lucide-react";
 import { formatBytes } from "@/lib/file-utils";
 import type { LibraryFile } from "@/app/actions/attachments";
 import { fileCategoryLabel, fileIconFor } from "./file-icon-helper";
+import { Avatar } from "@/components/avatar";
 
 type SortMode =
   | "date_newest" | "date_oldest"
@@ -251,12 +252,14 @@ function Row({
       </Td>
       <Td>
         <div className="flex items-center gap-1.5">
-          <span
-            className="size-5 rounded-full flex items-center justify-center text-[9px] font-semibold text-[#0F172A]"
-            style={{ backgroundColor: file.uploader?.avatar_color ?? "#5CE1A5" }}
-          >
-            {initials(file.uploader?.full_name || "·")}
-          </span>
+          <Avatar
+            id={file.uploader?.id ?? file.uploaded_by}
+            avatarUrl={file.uploader?.avatar_url ?? null}
+            fullName={file.uploader?.full_name}
+            fallbackLabel="Unknown"
+            size={20}
+            ring={false}
+          />
           <span
             className="text-[12px] text-[#6B7280] truncate"
             style={{ fontFamily: "var(--font-source-sans)" }}

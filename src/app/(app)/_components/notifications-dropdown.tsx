@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Bell, Check, Settings, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { Avatar } from "@/components/avatar";
 import {
   getNotifications,
   markAllNotificationsAsRead,
@@ -353,17 +354,13 @@ function NotificationRow({
           backgroundColor: flashing ? "rgba(92, 225, 165, 0.08)" : undefined,
         }}
       >
-        <span
-          className="size-8 rounded-full text-white text-[11px] flex items-center justify-center shrink-0"
-          style={{
-            fontFamily: "var(--font-poppins)",
-            fontWeight: 600,
-            backgroundColor: n.actor?.avatar_color || "#5CE1A5",
-          }}
-          aria-hidden
-        >
-          {initialsOf(actorName)}
-        </span>
+        <Avatar
+          id={n.actor?.id ?? n.actor_id}
+          avatarUrl={n.actor?.avatar_url ?? null}
+          fullName={n.actor?.full_name ?? actorName}
+          size={32}
+          ring={false}
+        />
         <div className="flex-1 min-w-0">
           <p
             className="text-[13px] text-[#2D333A] leading-snug"

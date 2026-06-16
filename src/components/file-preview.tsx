@@ -23,6 +23,7 @@ import {
   type Attachment,
 } from "@/app/actions/attachments";
 import { formatBytes, type FileCategory } from "@/lib/file-utils";
+import { Avatar } from "@/components/avatar";
 
 interface FilePreviewProps {
   attachment: Attachment;
@@ -276,16 +277,14 @@ export function FilePreview({
 
       {/* Hover-only inline metadata badge — keeps the row clean at rest. */}
       {attachment.uploader && (
-        <span
-          className="hidden md:flex shrink-0 size-7 rounded-full text-white text-[10px] items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-          style={{
-            fontFamily: "var(--font-poppins)",
-            fontWeight: 600,
-            backgroundColor: attachment.uploader.avatar_color,
-          }}
-          title={attachment.uploader.full_name}
-        >
-          {initialsOf(attachment.uploader.full_name)}
+        <span className="hidden md:inline-flex shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+          <Avatar
+            id={attachment.uploader.id}
+            avatarUrl={attachment.uploader.avatar_url}
+            fullName={attachment.uploader.full_name}
+            size={28}
+            ring={false}
+          />
         </span>
       )}
 
