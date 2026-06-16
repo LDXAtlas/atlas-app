@@ -23,6 +23,7 @@ export default async function DashboardPage() {
 
   // Default data in case org is not found
   let orgName = "Your Organization";
+  let orgLogoUrl: string | null = null;
   let subscriptionTier = "workspace";
   let seatLimit = 5;
   let aiCreditsLimit = 500;
@@ -65,12 +66,13 @@ export default async function DashboardPage() {
     // Fetch org first to get ID
     const { data: org } = await supabaseAdmin
       .from("organizations")
-      .select("id, name, subscription_tier, slug")
+      .select("id, name, subscription_tier, slug, logo_url")
       .eq("slug", organizationSlug)
       .single();
 
     if (org) {
       orgName = org.name || orgName;
+      orgLogoUrl = (org as { logo_url: string | null }).logo_url ?? null;
       subscriptionTier = (org.subscription_tier || "workspace")
         .trim()
         .toLowerCase();
@@ -219,6 +221,7 @@ export default async function DashboardPage() {
     <DashboardClient
       userName={userName}
       orgName={orgName}
+      orgLogoUrl={orgLogoUrl}
       subscriptionTier={subscriptionTier}
       seatLimit={seatLimit}
       aiCreditsLimit={aiCreditsLimit}

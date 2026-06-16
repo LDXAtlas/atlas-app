@@ -87,10 +87,10 @@ export default async function OrganizationPage() {
     created_at: i.created_at,
   }));
 
-  // Fetch seat limit from organizations table
+  // Fetch seat limit + name + logo from organizations table
   const { data: org } = await supabaseAdmin
     .from("organizations")
-    .select("seat_limit")
+    .select("seat_limit, name, logo_url")
     .eq("id", organizationId)
     .single();
 
@@ -103,6 +103,10 @@ export default async function OrganizationPage() {
       seatLimit={seatLimit}
       currentUserRole={currentProfile.role || "staff"}
       currentUserEmail={user.email || ""}
+      orgName={org?.name ?? "Your organization"}
+      orgLogoUrl={
+        (org as { logo_url?: string | null } | null)?.logo_url ?? null
+      }
     />
   );
 }

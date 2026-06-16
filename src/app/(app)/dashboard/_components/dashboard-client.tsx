@@ -11,6 +11,7 @@ import { SubscriptionOverview } from "./widgets/subscription-overview";
 import { AnnouncementsFeed } from "./widgets/announcements-feed";
 import { UpcomingEvents, type UpcomingEventData } from "./widgets/upcoming-events";
 import { MyTasks } from "./widgets/my-tasks";
+import { OrgLogo } from "@/components/org-logo";
 import { RecentDepartments } from "./widgets/recent-departments";
 import { WidgetLibrary } from "./widget-library";
 
@@ -28,6 +29,7 @@ export type WidgetId =
 export interface DashboardProps {
   userName: string;
   orgName: string;
+  orgLogoUrl?: string | null;
   subscriptionTier: string;
   seatLimit: number;
   aiCreditsLimit: number;
@@ -174,7 +176,7 @@ function SortableWidget({ item, index, isEditing, onRemove, onMoveUp, onMoveDown
 // ─── Component ──────────────────────────────────────────
 
 export function DashboardClient({
-  userName, orgName, subscriptionTier, seatLimit, aiCreditsLimit, totalMembers,
+  userName, orgName, orgLogoUrl, subscriptionTier, seatLimit, aiCreditsLimit, totalMembers,
   activeMembers, departmentCount, departments, recentMembers, recentAnnouncements, upcomingEvents = []
 }: DashboardProps) {
   const firstName = userName.split(" ")[0] || userName;
@@ -259,13 +261,16 @@ export function DashboardClient({
   return (
     <div className="max-w-[1400px] mx-auto pb-12">
       <div className="py-2 mb-6 flex items-start justify-between gap-4 border-b border-[#E5E7EB]">
-        <div>
-          <h1 className="text-3xl text-[#2D333A] font-bold" style={{ fontFamily: "var(--font-poppins)" }}>
-            {getGreeting()}, {firstName}
-          </h1>
-          <p className="text-[15px] text-[#6B7280] mt-1" style={{ fontFamily: "var(--font-source-sans)" }}>
-            {orgName}
-          </p>
+        <div className="flex items-start gap-3 min-w-0">
+          <OrgLogo name={orgName} logoUrl={orgLogoUrl ?? null} size={44} />
+          <div className="min-w-0">
+            <h1 className="text-3xl text-[#2D333A] font-bold" style={{ fontFamily: "var(--font-poppins)" }}>
+              {getGreeting()}, {firstName}
+            </h1>
+            <p className="text-[15px] text-[#6B7280] mt-1 truncate" style={{ fontFamily: "var(--font-source-sans)" }}>
+              {orgName}
+            </p>
+          </div>
         </div>
 
         {/* Edit Controls with restored "Add Widget" */}

@@ -20,6 +20,8 @@ import {
 import { RoleBadge } from "@/components/role-badge";
 import { ROLE_COLORS } from "@/lib/roles";
 import type { Role } from "@/lib/permissions";
+import { OrgLogo } from "@/components/org-logo";
+import { OrgLogoCard } from "./org-logo-card";
 
 // ─── Types ───────────────────────────────────────────────
 interface TeamMember {
@@ -43,6 +45,8 @@ interface OrganizationPageClientProps {
   seatLimit: number;
   currentUserRole: string;
   currentUserEmail: string;
+  orgName: string;
+  orgLogoUrl: string | null;
 }
 
 // ─── Avatar ─────────────────────────────────────────────
@@ -364,6 +368,8 @@ export function OrganizationPageClient({
   seatLimit,
   currentUserRole,
   currentUserEmail,
+  orgName,
+  orgLogoUrl,
 }: OrganizationPageClientProps) {
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [actionPending, startActionTransition] = useTransition();
@@ -402,15 +408,11 @@ export function OrganizationPageClient({
 
   return (
     <div>
-      {/* Page header */}
-      <div className="mb-8">
+      {/* Page header — replaces the generic Users icon with the real
+          org logo so admins can spot the page identity immediately. */}
+      <div className="mb-6">
         <div className="flex items-center gap-3 mb-1">
-          <div
-            className="size-10 rounded-xl flex items-center justify-center"
-            style={{ backgroundColor: "rgba(92, 225, 165, 0.08)" }}
-          >
-            <Users className="size-5 text-[#5CE1A5]" />
-          </div>
+          <OrgLogo name={orgName} logoUrl={orgLogoUrl} size={40} />
           <h2
             className="text-2xl font-semibold text-[#2D333A]"
             style={{ fontFamily: "var(--font-poppins)" }}
@@ -425,6 +427,12 @@ export function OrganizationPageClient({
           Manage your team members, invitations, and organization settings.
         </p>
       </div>
+
+      <OrgLogoCard
+        orgName={orgName}
+        initialLogoUrl={orgLogoUrl}
+        isAdmin={isAdmin}
+      />
 
       {/* Action feedback toast */}
       <AnimatePresence>
