@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Camera, Check, Loader2, AlertCircle } from "lucide-react";
+import { Camera, Check, Loader2, AlertCircle, Trash2 } from "lucide-react";
 import { Avatar } from "@/components/avatar";
 import {
+  removeMyAvatar,
   updateMyProfile,
+  uploadMyAvatar,
   type MyProfile,
 } from "@/app/actions/profiles";
 import { getRoleStyle, getRoleLabel, getRoleIcon } from "@/lib/roles";
@@ -61,6 +63,52 @@ export function ProfileForm({ initial }: ProfileFormProps) {
   const roleStyle = getRoleStyle(profile.role);
   const roleLabel = getRoleLabel(profile.role);
 
+  // Avatar upload state. The hidden <input type="file"> is driven by a
+  // ref so the visible "Change photo" button can trigger the picker.
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [uploadingAvatar, startAvatarUpload] = useTransition();
+
+  function handlePickPhoto() {
+    fileInputRef.current?.click();
+  }
+
+  function handleFileChosen(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setError(null);
+    const fd = new FormData();
+    fd.append("file", file);
+    startAvatarUpload(async () => {
+      const res = await uploadMyAvatar(fd);
+      if (!res.success) {
+        setError(res.error);
+        return;
+      }
+      if (res.data) {
+        const next = { ...profile, avatar_url: res.data.avatar_url };
+        setProfile(next);
+      }
+      setToast("Photo updated");
+      setTimeout(() => setToast(null), 2500);
+    });
+    // Reset so picking the same file again still fires onChange.
+    e.target.value = "";
+  }
+
+  function handleRemovePhoto() {
+    setError(null);
+    startAvatarUpload(async () => {
+      const res = await removeMyAvatar();
+      if (!res.success) {
+        setError(res.error);
+        return;
+      }
+      setProfile({ ...profile, avatar_url: null });
+      setToast("Photo removed");
+      setTimeout(() => setToast(null), 2500);
+    });
+  }
+
   return (
     <div className="space-y-5">
       {/* Avatar card */}
@@ -89,22 +137,47 @@ export function ProfileForm({ initial }: ProfileFormProps) {
             recognize.
           </p>
         </div>
-        <button
-          type="button"
-          disabled
-          title="Photo upload is coming soon"
-          className="h-9 px-3.5 rounded-xl border border-[#E5E7EB] text-[#9CA3AF] text-[12.5px] font-semibold inline-flex items-center gap-1.5 cursor-not-allowed"
-          style={{ fontFamily: "var(--font-poppins)" }}
-        >
-          <Camera className="size-3.5" />
-          Change photo
-          <span
-            className="ml-1 inline-flex items-center px-1.5 h-4 rounded text-[9.5px] uppercase tracking-wider bg-[#5CE1A5]/12 text-[#059669]"
-            style={{ fontFamily: "var(--font-poppins)", fontWeight: 700 }}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          className="hidden"
+          onChange={handleFileChosen}
+        />
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handlePickPhoto}
+            disabled={uploadingAvatar || pending}
+            className="h-9 px-3.5 rounded-xl border border-[#E5E7EB] text-[#2D333A] text-[12.5px] font-semibold inline-flex items-center gap-1.5 hover:bg-[#F4F5F7] disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{ fontFamily: "var(--font-poppins)" }}
           >
-            Soon
-          </span>
-        </button>
+            {uploadingAvatar ? (
+              <>
+                <Loader2 className="size-3.5 animate-spin" />
+                Uploading…
+              </>
+            ) : (
+              <>
+                <Camera className="size-3.5" />
+                {profile.avatar_url ? "Change photo" : "Upload photo"}
+              </>
+            )}
+          </button>
+          {profile.avatar_url && (
+            <button
+              type="button"
+              onClick={handleRemovePhoto}
+              disabled={uploadingAvatar || pending}
+              className="h-9 px-3 rounded-xl text-[12.5px] text-[#6B7280] hover:text-red-600 hover:bg-red-50 inline-flex items-center gap-1.5 disabled:opacity-50"
+              style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}
+              aria-label="Remove photo"
+            >
+              <Trash2 className="size-3.5" />
+              Remove
+            </button>
+          )}
+        </div>
       </section>
 
       {/* Form card */}

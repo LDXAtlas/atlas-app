@@ -1,5 +1,6 @@
 "use server";
 
+import sharp from "sharp";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
@@ -292,4 +293,154 @@ export async function updateMyProfile(
   // Return the fresh profile so the form can render the saved state
   // without an extra round trip.
   return getMyProfile();
+}
+
+// ─── Avatar upload / removal ───────────────────────────────
+//
+// Both functions scope storage writes to {user_id}/avatar.webp inside
+// the public `avatars` bucket. The storage policies already enforce
+// "users can only write to their own folder" — we still re-check
+// auth.uid() here because we use the service-role client to do the
+// upload (RLS bypass) and we want to be belt-and-suspenders.
+
+const AVATAR_BUCKET = "avatars";
+const AVATAR_MIME_ALLOWLIST = new Set([
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+]);
+const AVATAR_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
+const AVATAR_PIXEL_SIZE = 256;
+
+export async function uploadMyAvatar(
+  formData: FormData,
+): Promise<ActionResult<{ avatar_url: string }>> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { success: false, error: "Not authenticated.", code: "UNAUTHENTICATED" };
+  }
+
+  const file = formData.get("file");
+  if (!(file instanceof File)) {
+    return { success: false, error: "No file provided.", code: "BAD_INPUT" };
+  }
+  if (file.size <= 0) {
+    return { success: false, error: "File is empty.", code: "BAD_INPUT" };
+  }
+  if (file.size > AVATAR_MAX_BYTES) {
+    return {
+      success: false,
+      error: "Image is too large (max 5 MB).",
+      code: "FILE_TOO_LARGE",
+    };
+  }
+  if (!AVATAR_MIME_ALLOWLIST.has(file.type)) {
+    return {
+      success: false,
+      error: "Use a JPG, PNG, or WebP image.",
+      code: "UNSUPPORTED_TYPE",
+    };
+  }
+
+  // Resize + crop to a square, convert to webp. Cover crop keeps the
+  // subject centered — most avatar source images have a head near the
+  // center so this works without face detection.
+  let processed: Buffer;
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    processed = await sharp(Buffer.from(arrayBuffer))
+      .rotate() // honor EXIF orientation
+      .resize(AVATAR_PIXEL_SIZE, AVATAR_PIXEL_SIZE, {
+        fit: "cover",
+        position: "centre",
+      })
+      .webp({ quality: 88 })
+      .toBuffer();
+  } catch (err) {
+    console.error("[uploadMyAvatar] sharp error:", err);
+    return {
+      success: false,
+      error: "Couldn't process this image. Try a different one.",
+      code: "IMAGE_PROCESSING_FAILED",
+    };
+  }
+
+  const path = `${user.id}/avatar.webp`;
+  const { error: uploadErr } = await supabaseAdmin.storage
+    .from(AVATAR_BUCKET)
+    .upload(path, processed, {
+      contentType: "image/webp",
+      cacheControl: "3600",
+      upsert: true,
+    });
+  if (uploadErr) {
+    console.error("[uploadMyAvatar] Storage error:", uploadErr.message);
+    return {
+      success: false,
+      error: "Couldn't save the image. Try again.",
+    };
+  }
+
+  // Public URL + cache-bust so the new image shows immediately even
+  // though the path didn't change (same path = browser will hold the
+  // stale image otherwise).
+  const { data: publicData } = supabaseAdmin.storage
+    .from(AVATAR_BUCKET)
+    .getPublicUrl(path);
+  const avatar_url = `${publicData.publicUrl}?v=${Date.now()}`;
+
+  const { error: updateErr } = await supabaseAdmin
+    .from("profiles")
+    .update({ avatar_url })
+    .eq("id", user.id);
+  if (updateErr) {
+    console.error("[uploadMyAvatar] Profile update error:", updateErr.message);
+    return { success: false, error: updateErr.message };
+  }
+
+  revalidatePath("/settings");
+  revalidatePath("/settings/profile");
+  revalidatePath("/dashboard");
+  revalidatePath("/directory");
+  return { success: true, data: { avatar_url } };
+}
+
+export async function removeMyAvatar(): Promise<ActionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { success: false, error: "Not authenticated.", code: "UNAUTHENTICATED" };
+  }
+
+  // Clear the DB first; storage cleanup is best-effort. If we deleted
+  // the file but failed to clear the column, the UI would briefly try
+  // to load a 404 image.
+  const { error: updateErr } = await supabaseAdmin
+    .from("profiles")
+    .update({ avatar_url: null })
+    .eq("id", user.id);
+  if (updateErr) {
+    console.error("[removeMyAvatar] Update error:", updateErr.message);
+    return { success: false, error: updateErr.message };
+  }
+
+  const { error: deleteErr } = await supabaseAdmin.storage
+    .from(AVATAR_BUCKET)
+    .remove([`${user.id}/avatar.webp`]);
+  if (deleteErr) {
+    // Storage object may not exist (legacy users) — log + continue.
+    console.warn("[removeMyAvatar] Storage delete warning:", deleteErr.message);
+  }
+
+  revalidatePath("/settings");
+  revalidatePath("/settings/profile");
+  revalidatePath("/dashboard");
+  revalidatePath("/directory");
+  return { success: true };
 }
