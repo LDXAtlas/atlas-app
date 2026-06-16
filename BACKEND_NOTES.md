@@ -76,9 +76,6 @@ Atlas does NOT build native video calling. Position is "the brain, not the pipes
 - `huddle_invited` and `huddle_action_assigned` aren't in the `notifications.type` CHECK constraint. Phase 1 reuses `mention` for huddle invites and `task_assigned` for promoted action items so notifications still fire today.
 - To clean up the messaging copy: extend the constraint via `ALTER TABLE notifications ... DROP CONSTRAINT ... ADD CONSTRAINT ... CHECK (type IN (... 'huddle_invited', 'huddle_action_assigned'))`, add the two strings to `src/lib/notifications-config.ts` (union + DEFAULT_NOTIFICATION_PREFERENCES + NOTIFICATION_CATEGORIES), then swap the two call sites in `src/app/actions/huddles.ts` (createHuddle, addHuddleAttendee, promoteActionItemToTask).
 
-### AI infrastructure — Monthly credit reset cron
-- `organizations.ai_credits_reset_at` is being read but no scheduled job resets `ai_credits_used` to 0 on that date yet. Build a Supabase scheduled function (or a Vercel cron hitting an admin route) that loops orgs where `now() >= ai_credits_reset_at`, zeros the counter, and rolls the reset date forward one month.
-
 ### AI infrastructure — Confirm `gpt-5-nano` availability
 - `src/lib/ai/openai-client.ts` defaults the OpenAI fallback to `gpt-5-nano` with a runtime swap to `gpt-4o-mini` if the API returns model-not-found. First production call will log which one is in effect — verify and decide whether to hard-code the working id.
 
@@ -108,6 +105,11 @@ Atlas does NOT build native video calling. Position is "the brain, not the pipes
 ---
 
 ## DONE
+
+### AI infrastructure — Monthly credit reset cron — Completed 2026-06-16
+- `public.reset_monthly_ai_credits()` runs daily at 00:05 UTC via `pg_cron` (`SELECT cron.schedule('reset-monthly-ai-credits', '5 0 * * *', ...)`). Each tick zeroes `ai_credits_used` and rolls `ai_credits_reset_at` forward one calendar month for every org whose reset date has passed.
+- `SECURITY DEFINER` + `SET search_path = public, pg_catalog` follow the security advisor's mutable-search-path rule. `EXECUTE` is revoked from `PUBLIC` / `anon` / `authenticated` so only the cron runner can call the reset — application code can't trigger it by accident.
+- Migration documentation at `supabase/migrations/20260615_monthly_credit_reset_cron.sql` mirrors the live function + REVOKEs + schedule. Marked doc-only at the top — already applied to Supabase.
 
 ### Session 2026-06-15 — Huddles bug fixes, restructure, and security cleanup
 Additional ships during the same session as Phase 1, layered on top of the entry below:
