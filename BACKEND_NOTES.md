@@ -103,12 +103,16 @@ Atlas does NOT build native video calling. Position is "the brain, not the pipes
 - Email delivery for the rest of the notification types — currently only the invitation email (`send-invitation`) and the board-member-added email (`send-board-member-added`) actually send. The `email_enabled` toggle in `/settings/notifications` records the preference but won't fire emails for `task_assigned` / `event_invited` / `announcement_posted` / `task_comment` / `board_card_comment` / `board_card_mention` / etc. until each type gets its own `send-*` template + Resend hook.
 - Remaining Phase-2 types (`task_due_soon`, `announcement_mention`, `event_reminder`) — wired into the type union and preferences, but no action emits them yet. Add them when each feature lands. (`board_card_mention`, `board_card_comment`, `task_comment`, and generic `mention` now fire — see DONE below.)
 
-### Project Boards Phase 4 — "Duplicate card"
-- The card detail panel's three-dot menu shows a disabled "Duplicate · Soon" item. Server action would clone title/description/cover/labels/checklist items (positions remapped) and place at the head of the same column. Don't carry over comments or activity.
-
 ---
 
 ## DONE
+
+### Project Boards Phase 4 — Duplicate card — Completed 2026-06-16
+- New `duplicateCard(cardId)` server action in `src/app/actions/boards.ts`. Permission check via `loadBoardForViewer` matches `updateCard`. Position handling: shifts every card in the source's column with `position > source.position` by +1, then inserts the copy at `source.position + 1` so the duplicate appears immediately below the original.
+- Copies: title (with " (Copy)" appended), description, cover_color, due_date, board_card_labels junction rows, and card_checklist_items (with `is_completed=false` + `completed_at=null` reset so the new card starts as a fresh checklist).
+- Intentionally drops: assigned_to (don't auto-assign), is_completed (default false), comments, attachments, activity log. The duplicator becomes the new `created_by`.
+- Writes a single `card_activity` entry with `action_type='created'` and `metadata.duplicated_from = sourceCardId` so the audit trail still captures the linkage. (The `action_type` CHECK doesn't include `'duplicated'`.)
+- UI: `card-detail-panel.tsx` three-dot menu's previously-disabled "Duplicate · Soon" item is now a real handler that calls `duplicateCard`, emits the new card to the parent via a new `onCardDuplicated` callback, and closes the panel. `board-view.tsx` splices the returned `BoardCardWithMeta` into the source column immediately after the source for optimistic render. No "Soon" pill anywhere on Project Boards anymore.
 
 ### Profile edit page — Completed 2026-06-16
 - `/settings/profile` replaces the prior "Coming Soon" placeholder card on the settings index. Editable: `full_name` (required, max 120) and `phone` (optional, lenient `+()-./` regex, max 32). Read-only: email (note: "Contact an admin to change"), role (badge with `src/lib/roles.ts` colors + icons), organization name.

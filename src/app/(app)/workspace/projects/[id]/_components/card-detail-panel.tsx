@@ -21,10 +21,12 @@ import {
   createCardComment,
   deleteCard,
   deleteCardComment,
+  duplicateCard,
   getCard,
   moveCard,
   updateCard,
   updateCardComment,
+  type BoardCardWithMeta,
   type CardDetail,
   type CardLabel,
 } from "@/app/actions/boards";
@@ -68,6 +70,10 @@ interface CardDetailPanelProps {
     checklist_total?: number;
   }) => void;
   onCardDeleted?: (cardId: string) => void;
+  /** Called after a successful duplicate so the parent kanban can
+   *  splice the new card into the same column immediately after the
+   *  source. The action handles the position shift on the server side. */
+  onCardDuplicated?: (sourceCardId: string, newCard: BoardCardWithMeta) => void;
   /** Columns on the board — used by the "Move to…" menu. */
   columns: { id: string; name: string; color: string }[];
   viewerId: string;
@@ -79,6 +85,7 @@ export function CardDetailPanel({
   onClose,
   onCardChanged,
   onCardDeleted,
+  onCardDuplicated,
   columns,
   viewerId,
   viewerIsAdmin,
@@ -307,6 +314,23 @@ export function CardDetailPanel({
     });
   }
 
+  function handleDuplicate() {
+    if (!detail) return;
+    setCardMenuOpen(false);
+    startTransition(async () => {
+      const res = await duplicateCard(detail.id);
+      if (!res.success || !res.data) {
+        console.error("[card-panel] duplicate:", res.success ? "" : res.error);
+        setError(res.success ? "Duplicate returned no data." : res.error);
+        return;
+      }
+      onCardDuplicated?.(detail.id, res.data);
+      // Closing the panel keeps the focus on the kanban where the new
+      // card just appeared, mirroring how delete behaves.
+      onClose();
+    });
+  }
+
   const labelsChange = (next: CardLabel[]) => {
     if (!detail) return;
     setDetail({ ...detail, labels: next });
@@ -415,15 +439,13 @@ export function CardDetailPanel({
                         </button>
                         <button
                           type="button"
-                          disabled
-                          className="w-full px-3 py-2 text-left text-[13px] text-[#9CA3AF] cursor-not-allowed flex items-center gap-2"
+                          onClick={handleDuplicate}
+                          disabled={pending}
+                          className="w-full px-3 py-2 text-left text-[13px] text-[#2D333A] hover:bg-[#F4F5F7] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                           style={{ fontFamily: "var(--font-source-sans)" }}
-                          title="Duplicate is coming soon"
                         >
+                          <ChevronDown className="size-3.5 rotate-180" />
                           Duplicate
-                          <span className="ml-auto text-[10px] tracking-wider uppercase">
-                            Soon
-                          </span>
                         </button>
                         {detail?.viewer_can_delete && (
                           <button

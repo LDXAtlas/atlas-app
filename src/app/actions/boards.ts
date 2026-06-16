@@ -1531,6 +1531,174 @@ export async function createCard(
   };
 }
 
+// Duplicate an existing card into the same column, immediately after
+// the source. Copies the planning shape (title + " (Copy)",
+// description, cover_color, due_date, labels, checklist items reset
+// to incomplete) and intentionally drops the social / state shape
+// (assignee, is_completed, comments, attachments, activity). One
+// 'created' activity row gets written with metadata pointing back to
+// the source so the audit log can show where the copy came from.
+export async function duplicateCard(
+  cardId: string,
+): Promise<ActionResult<BoardCardWithMeta>> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated." };
+
+  // Pull every field we might copy from the source in a single read.
+  const { data: source, error: sourceErr } = await supabaseAdmin
+    .from("board_cards")
+    .select(
+      "id, board_id, column_id, title, description, cover_color, due_date, position",
+    )
+    .eq("id", cardId)
+    .maybeSingle();
+  if (sourceErr || !source) {
+    return { success: false, error: sourceErr?.message || "Card not found." };
+  }
+
+  const access = await loadBoardForViewer(ctx, source.board_id);
+  if (!access.ok || !access.canEdit)
+    return { success: false, error: "You can't duplicate this card." };
+
+  // Make room for the copy by shifting every card with a position > source
+  // by +1 within the same column. Doing this BEFORE the insert avoids
+  // a transient position collision even though no UNIQUE constraint
+  // protects against one. Modest N — boards rarely exceed a few dozen
+  // cards per column.
+  const { data: shiftTargets } = await supabaseAdmin
+    .from("board_cards")
+    .select("id, position")
+    .eq("column_id", source.column_id)
+    .gt("position", source.position)
+    .order("position", { ascending: true });
+  if (shiftTargets && shiftTargets.length > 0) {
+    for (const row of shiftTargets as { id: string; position: number }[]) {
+      const { error: shiftErr } = await supabaseAdmin
+        .from("board_cards")
+        .update({ position: row.position + 1 })
+        .eq("id", row.id);
+      if (shiftErr) {
+        console.error("[duplicateCard] Position shift error:", shiftErr.message);
+        return { success: false, error: shiftErr.message };
+      }
+    }
+  }
+
+  const newPosition = source.position + 1;
+  const { data: inserted, error: insertErr } = await supabaseAdmin
+    .from("board_cards")
+    .insert({
+      board_id: source.board_id,
+      column_id: source.column_id,
+      title: `${source.title} (Copy)`,
+      description: source.description ?? null,
+      cover_color: source.cover_color ?? null,
+      due_date: source.due_date ?? null,
+      // Intentional drops: assigned_to (don't auto-assign the copy),
+      // is_completed (default false from schema). Source created_by
+      // isn't carried over either — the duplicator is the new creator.
+      position: newPosition,
+      created_by: ctx.userId,
+    })
+    .select(
+      "id, board_id, column_id, title, description, cover_color, due_date, assigned_to, position, is_completed",
+    )
+    .single();
+  if (insertErr || !inserted) {
+    console.error("[duplicateCard] Insert error:", insertErr?.message);
+    return {
+      success: false,
+      error: insertErr?.message || "Couldn't create the duplicate card.",
+    };
+  }
+
+  // Copy labels. Junction-table batched insert. Best-effort; failure
+  // doesn't roll back the duplicate (the card still exists, just
+  // without labels — better than losing the whole operation).
+  const { data: sourceLabels } = await supabaseAdmin
+    .from("board_card_labels")
+    .select("label_id")
+    .eq("card_id", source.id);
+  let copiedLabelCount = 0;
+  if (sourceLabels && sourceLabels.length > 0) {
+    const rows = (sourceLabels as { label_id: string }[]).map((r) => ({
+      card_id: inserted.id,
+      label_id: r.label_id,
+    }));
+    const { error: labelErr } = await supabaseAdmin
+      .from("board_card_labels")
+      .insert(rows);
+    if (labelErr) {
+      console.error("[duplicateCard] Label copy error:", labelErr.message);
+    } else {
+      copiedLabelCount = rows.length;
+    }
+  }
+
+  // Copy checklist items. Reset completion: is_completed=false and
+  // completed_at=null so the new card starts as a fresh checklist
+  // even when the source has progress on it.
+  const { data: sourceChecklist } = await supabaseAdmin
+    .from("card_checklist_items")
+    .select("title, position")
+    .eq("card_id", source.id)
+    .order("position", { ascending: true });
+  let copiedChecklistCount = 0;
+  if (sourceChecklist && sourceChecklist.length > 0) {
+    const rows = (sourceChecklist as { title: string; position: number }[]).map(
+      (r) => ({
+        card_id: inserted.id,
+        title: r.title,
+        position: r.position,
+        is_completed: false,
+        completed_at: null,
+      }),
+    );
+    const { error: checklistErr } = await supabaseAdmin
+      .from("card_checklist_items")
+      .insert(rows);
+    if (checklistErr) {
+      console.error("[duplicateCard] Checklist copy error:", checklistErr.message);
+    } else {
+      copiedChecklistCount = rows.length;
+    }
+  }
+
+  // Single 'created' activity entry with a back-pointer to the source
+  // so the audit log can render "Lucas duplicated this from <source
+  // title>" later if we ever want to display it. The action_type
+  // CHECK constraint doesn't include 'duplicated', so we use 'created'
+  // and stash the linkage in metadata.
+  recordCardActivity(inserted.id, ctx.userId, "created", {
+    title: inserted.title,
+    duplicated_from: source.id,
+  });
+
+  await touchBoard(source.board_id);
+  revalidatePath(`/workspace/projects/${source.board_id}`);
+
+  return {
+    success: true,
+    data: {
+      id: inserted.id,
+      board_id: inserted.board_id,
+      column_id: inserted.column_id,
+      title: inserted.title,
+      description: inserted.description,
+      cover_color: inserted.cover_color,
+      due_date: inserted.due_date,
+      assigned_to: inserted.assigned_to,
+      position: inserted.position,
+      is_completed: !!inserted.is_completed,
+      assignee: null,
+      label_count: copiedLabelCount,
+      comment_count: 0,
+      checklist_completed: 0,
+      checklist_total: copiedChecklistCount,
+    },
+  };
+}
+
 export type UpdateCardInput = Partial<{
   title: string;
   description: string | null;

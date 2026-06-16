@@ -384,6 +384,35 @@ export function BoardView({
     );
   }
 
+  // Insert the duplicate immediately after its source in the same
+  // column. The server already shifted subsequent cards' positions on
+  // the DB side; here we just splice for the optimistic render.
+  function handleCardDuplicated(
+    sourceCardId: string,
+    newCard: BoardCardWithMeta,
+  ) {
+    setColumns((prev) =>
+      prev.map((col) => {
+        if (col.id !== newCard.column_id) return col;
+        const sourceIdx = col.cards.findIndex((c) => c.id === sourceCardId);
+        if (sourceIdx < 0) {
+          // Source isn't in this column anymore (could be stale state) —
+          // fall back to appending at the end.
+          return { ...col, cards: [...col.cards, newCard] };
+        }
+        const insertAt = sourceIdx + 1;
+        return {
+          ...col,
+          cards: [
+            ...col.cards.slice(0, insertAt),
+            newCard,
+            ...col.cards.slice(insertAt),
+          ],
+        };
+      }),
+    );
+  }
+
   async function handleToggleComplete(cardId: string, isCompleted: boolean) {
     setColumns((prev) => prev.map((col) => ({ ...col, cards: col.cards.map((card) => card.id === cardId ? { ...card, is_completed: isCompleted } : card) })));
     const result = await updateCard(cardId, { is_completed: isCompleted });
@@ -595,6 +624,7 @@ export function BoardView({
         viewerIsAdmin={viewerIsAdmin}
         onCardChanged={handleCardPatch}
         onCardDeleted={handleCardRemoved}
+        onCardDuplicated={handleCardDuplicated}
       />
     </div>
   );
