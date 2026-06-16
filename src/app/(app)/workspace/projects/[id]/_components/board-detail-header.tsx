@@ -32,6 +32,7 @@ import { addBoardMember, archiveBoard, deleteBoard } from "@/app/actions/boards"
 import { searchProfiles } from "@/app/actions/profiles";
 import type { ProfileSearchResult } from "@/app/actions/profiles";
 import { WorkspacePill } from "../../_components/boards-list";
+import { Avatar } from "@/components/avatar";
 import type { SortOption } from "./board-view";
 
 function initialsOf(name: string): string {
@@ -621,16 +622,14 @@ export function BoardDetailHeader({
                       key={p.id}
                       className="flex items-center gap-3 px-3 py-2.5 border-b border-emerald-100 last:border-b-0"
                     >
-                      <span
-                        className="size-8 rounded-full text-white text-[11px] flex items-center justify-center shrink-0"
-                        style={{
-                          fontFamily: "var(--font-poppins)",
-                          fontWeight: 600,
-                          backgroundColor: p.avatar_color || "#5CE1A5",
-                        }}
-                      >
-                        {initialsOf(p.full_name)}
-                      </span>
+                      <Avatar
+                        id={p.id}
+                        avatarUrl={p.avatar_url}
+                        fullName={p.full_name}
+                        email={p.email}
+                        size={32}
+                        ring={false}
+                      />
                       <div className="flex-1 min-w-0">
                         <p
                           className="text-[13px] text-[#0F172A] truncate"
@@ -708,16 +707,14 @@ export function BoardDetailHeader({
                             disabled={isAdding}
                             className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-white transition-colors disabled:opacity-60"
                           >
-                            <span
-                              className="size-8 rounded-full text-white text-[11px] flex items-center justify-center shrink-0"
-                              style={{
-                                fontFamily: "var(--font-poppins)",
-                                fontWeight: 600,
-                                backgroundColor: p.avatar_color || "#5CE1A5",
-                              }}
-                            >
-                              {initialsOf(p.full_name)}
-                            </span>
+                            <Avatar
+                              id={p.id}
+                              avatarUrl={p.avatar_url}
+                              fullName={p.full_name}
+                              email={p.email}
+                              size={32}
+                              ring={false}
+                            />
                             <div className="flex-1 min-w-0">
                               <p
                                 className="text-[13px] text-[#0F172A] truncate"

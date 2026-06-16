@@ -7,6 +7,7 @@ import {
   Folder, Pencil, CheckCircle2, Circle, GripVertical, ChevronDown, Check, MoreHorizontal
 } from "lucide-react";
 import type { BoardCardWithMeta } from "@/app/actions/boards";
+import { Avatar } from "@/components/avatar";
 
 interface KanbanCardProps {
   card: BoardCardWithMeta;
@@ -95,7 +96,7 @@ function GridCardBody({ card, isSelected, onEdit, onToggleComplete }: any) {
           <div className="ml-auto flex items-center gap-1.5">
             <div className="flex items-center -space-x-1">
               {card.assignee && (
-                <span className="size-6 rounded-full ring-2 ring-white text-white flex items-center justify-center shrink-0" style={{ fontFamily: "var(--font-poppins)", fontWeight: 600, fontSize: 10, backgroundColor: card.assignee.avatar_color }} title={card.assignee.full_name}>{initialsOf(card.assignee.full_name)}</span>
+                <Avatar id={card.assignee.id} avatarUrl={card.assignee.avatar_url} fullName={card.assignee.full_name} size={24} ring />
               )}
             </div>
             {onEdit && <button type="button" onClick={(e) => { e.stopPropagation(); onEdit(card.id); }} className="size-6 rounded-md flex items-center justify-center text-[#9CA3AF] hover:text-[#2D333A] hover:bg-[#F3F4F6] transition-colors"><Pencil className="size-3" /></button>}
@@ -172,7 +173,7 @@ export function KanbanCard({ card, isOverlay = false, isSelected = false, viewMo
           <div className="w-[120px] shrink-0">
             {card.assignee && (
               <div className="flex items-center gap-2">
-                <span className="size-6 rounded-full text-white flex items-center justify-center shrink-0" style={{ fontFamily: "var(--font-poppins)", fontWeight: 600, fontSize: 10, backgroundColor: card.assignee.avatar_color }} title={card.assignee.full_name}>{initialsOf(card.assignee.full_name)}</span>
+                <Avatar id={card.assignee.id} avatarUrl={card.assignee.avatar_url} fullName={card.assignee.full_name} size={24} ring={false} />
               </div>
             )}
           </div>

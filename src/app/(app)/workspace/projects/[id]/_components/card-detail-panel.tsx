@@ -32,6 +32,7 @@ import {
 } from "@/app/actions/boards";
 import { searchProfiles } from "@/app/actions/profiles";
 import { AttachmentsSection } from "@/components/attachments-section";
+import { Avatar } from "@/components/avatar";
 import { ChecklistSection } from "./checklist-section";
 import { CommentsSection, type CommentShape } from "./comments-section";
 import { ActivityLog } from "./activity-log";
@@ -716,15 +717,13 @@ export function CardDetailPanel({
                           >
                             {detail.assignee ? (
                               <>
-                                <span
-                                  className="size-5 rounded-full flex items-center justify-center text-[9px] font-semibold text-[#0F172A] shrink-0"
-                                  style={{
-                                    backgroundColor:
-                                      detail.assignee.avatar_color,
-                                  }}
-                                >
-                                  {initials(detail.assignee.full_name)}
-                                </span>
+                                <Avatar
+                                  id={detail.assignee.id}
+                                  avatarUrl={detail.assignee.avatar_url}
+                                  fullName={detail.assignee.full_name}
+                                  size={20}
+                                  ring={false}
+                                />
                                 <span
                                   className="text-[12.5px] text-[#2D333A] truncate"
                                   style={{
@@ -893,14 +892,13 @@ export function CardDetailPanel({
                       {detail.creator && (
                         <SidebarBlock label="Created by">
                           <div className="flex items-center gap-2 px-1 py-1.5">
-                            <span
-                              className="size-5 rounded-full flex items-center justify-center text-[9px] font-semibold text-[#0F172A] shrink-0"
-                              style={{
-                                backgroundColor: detail.creator.avatar_color,
-                              }}
-                            >
-                              {initials(detail.creator.full_name)}
-                            </span>
+                            <Avatar
+                              id={detail.creator.id}
+                              avatarUrl={detail.creator.avatar_url}
+                              fullName={detail.creator.full_name}
+                              size={20}
+                              ring={false}
+                            />
                             <span
                               className="text-[12.5px] text-[#2D333A] truncate"
                               style={{

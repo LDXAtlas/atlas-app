@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { ChevronDown, History } from "lucide-react";
+import { Avatar } from "@/components/avatar";
 import type {
   CardActivityActionType,
   CardActivityEntry,
@@ -86,12 +87,13 @@ function ActivityRow({ entry }: { entry: CardActivityEntry }) {
   const actorName = entry.actor?.full_name || "Someone";
   return (
     <li className="flex items-start gap-2">
-      <span
-        className="size-6 rounded-full flex items-center justify-center text-[10px] font-semibold text-[#0F172A] shrink-0"
-        style={{ backgroundColor: entry.actor?.avatar_color || "#5CE1A5" }}
-      >
-        {initials(actorName)}
-      </span>
+      <Avatar
+        id={entry.actor?.id ?? entry.actor_id}
+        avatarUrl={entry.actor?.avatar_url ?? null}
+        fullName={entry.actor?.full_name ?? actorName}
+        size={24}
+        ring={false}
+      />
       <div className="flex-1 min-w-0">
         <p
           className="text-[12.5px] text-[#2D333A] leading-snug"

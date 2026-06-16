@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { Avatar } from "@/components/avatar";
 import {
   MentionInput,
   MentionRenderer,
@@ -21,6 +22,7 @@ export type CommentShape = {
     id: string;
     full_name: string;
     avatar_color: string;
+    avatar_url: string | null;
     role: string | null;
   } | null;
 };
@@ -196,12 +198,13 @@ function CommentRow({
       transition={{ duration: 0.18 }}
       className="flex gap-3"
     >
-      <span
-        className="size-8 rounded-full flex items-center justify-center text-[12px] font-semibold text-[#0F172A] shrink-0"
-        style={{ backgroundColor: c.author?.avatar_color || "#5CE1A5" }}
-      >
-        {initials(c.author?.full_name || "·")}
-      </span>
+      <Avatar
+        id={c.author?.id ?? c.author_id}
+        avatarUrl={c.author?.avatar_url ?? null}
+        fullName={c.author?.full_name ?? null}
+        size={32}
+        ring={false}
+      />
       <div className="flex-1 min-w-0">
         <div className="flex items-baseline gap-2 mb-1">
           <span
