@@ -336,6 +336,7 @@ export function BoardView({
                   id: patch.assigned_to,
                   full_name: patch.assignee_full_name || "Teammate",
                   avatar_color: current.assignee?.avatar_color || "#5CE1A5",
+                  avatar_url: current.assignee?.avatar_url ?? null,
                 }
               : null
             : current.assignee,

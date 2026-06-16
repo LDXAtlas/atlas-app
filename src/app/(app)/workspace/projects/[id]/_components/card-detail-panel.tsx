@@ -222,6 +222,7 @@ export function CardDetailPanel({
             id: profileId,
             full_name: fullName || "Teammate",
             avatar_color: "#5CE1A5",
+            avatar_url: null,
             role: null,
           }
         : null,

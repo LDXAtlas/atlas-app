@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { can, getRoleFromProfile } from "@/lib/permissions";
 import type { Role } from "@/lib/permissions";
+import { deterministicAvatarColor } from "@/lib/avatar";
 
 // ─── Types ──────────────────────────────────────────────
 export type TaskInput = {
@@ -341,7 +342,10 @@ function parseTaskMentions(content: string): string[] {
 export type TaskCommentAuthor = {
   id: string;
   full_name: string;
+  /** Deterministic-per-id color for the initial circle. */
   avatar_color: string;
+  /** Optional uploaded photo. */
+  avatar_url: string | null;
   role: Role | null;
 };
 
@@ -369,20 +373,22 @@ async function joinTaskCommentAuthors(
   const ids = Array.from(new Set(rows.map((r) => r.author_id)));
   const { data: profiles } = await supabaseAdmin
     .from("profiles")
-    .select("id, full_name, avatar_color, role")
+    .select("id, full_name, email, avatar_url, role")
     .in("id", ids);
   const byId = new Map<string, TaskCommentAuthor>();
   (profiles ?? []).forEach(
     (p: {
       id: string;
       full_name: string | null;
-      avatar_color: string | null;
+      email: string | null;
+      avatar_url: string | null;
       role: Role | null;
     }) => {
       byId.set(p.id, {
         id: p.id,
-        full_name: p.full_name || "Teammate",
-        avatar_color: p.avatar_color || "#5CE1A5",
+        full_name: p.full_name || p.email?.split("@")[0] || "Teammate",
+        avatar_color: deterministicAvatarColor(p.id),
+        avatar_url: p.avatar_url,
         role: p.role ?? null,
       });
     },

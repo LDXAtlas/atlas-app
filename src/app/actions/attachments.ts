@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getRoleFromProfile } from "@/lib/permissions";
 import type { Role } from "@/lib/permissions";
+import { deterministicAvatarColor } from "@/lib/avatar";
 import {
   ALLOWED_MIME_TYPES,
   MAX_FILE_BYTES,
@@ -46,6 +47,7 @@ export type Attachment = {
     id: string;
     full_name: string;
     avatar_color: string;
+    avatar_url: string | null;
   } | null;
 };
 
@@ -500,19 +502,25 @@ export async function getAttachments(
   );
   const uploaderMap = new Map<
     string,
-    { id: string; full_name: string; avatar_color: string }
+    { id: string; full_name: string; avatar_color: string; avatar_url: string | null }
   >();
   if (uploaderIds.length > 0) {
     const { data: profiles } = await supabaseAdmin
       .from("profiles")
-      .select("id, full_name, email")
+      .select("id, full_name, email, avatar_url")
       .in("id", uploaderIds);
     (profiles ?? []).forEach(
-      (p: { id: string; full_name: string | null; email: string | null }) => {
+      (p: {
+        id: string;
+        full_name: string | null;
+        email: string | null;
+        avatar_url: string | null;
+      }) => {
         uploaderMap.set(p.id, {
           id: p.id,
           full_name: p.full_name || p.email?.split("@")[0] || "Unnamed",
-          avatar_color: "#5CE1A5",
+          avatar_color: deterministicAvatarColor(p.id),
+          avatar_url: p.avatar_url,
         });
       },
     );
@@ -723,14 +731,15 @@ async function resolveUploader(
 ): Promise<Attachment["uploader"]> {
   const { data } = await supabaseAdmin
     .from("profiles")
-    .select("id, full_name, email")
+    .select("id, full_name, email, avatar_url")
     .eq("id", userId)
     .maybeSingle();
   if (!data) return null;
   return {
     id: data.id,
     full_name: data.full_name || data.email?.split("@")[0] || "Unnamed",
-    avatar_color: "#5CE1A5",
+    avatar_color: deterministicAvatarColor(data.id),
+    avatar_url: data.avatar_url ?? null,
   };
 }
 
@@ -792,7 +801,7 @@ export type LibraryFile = {
   view_count: number;
   download_count: number;
   last_accessed_at: string | null;
-  uploader: { id: string; full_name: string; avatar_color: string } | null;
+  uploader: { id: string; full_name: string; avatar_color: string; avatar_url: string | null } | null;
   tags: LibraryTag[];
 };
 
@@ -928,7 +937,7 @@ async function hydrateLibraryFiles(
   const [{ data: profiles }, { data: tagJoins }] = await Promise.all([
     supabaseAdmin
       .from("profiles")
-      .select("id, full_name, email")
+      .select("id, full_name, email, avatar_url")
       .in("id", uploaderIds),
     supabaseAdmin
       .from("attachment_tags")
@@ -940,15 +949,21 @@ async function hydrateLibraryFiles(
 
   const uploaderById = new Map<
     string,
-    { id: string; full_name: string; avatar_color: string }
+    { id: string; full_name: string; avatar_color: string; avatar_url: string | null }
   >();
   (profiles ?? []).forEach(
-    (p: { id: string; full_name: string | null; email: string | null }) => {
+    (p: {
+      id: string;
+      full_name: string | null;
+      email: string | null;
+      avatar_url: string | null;
+    }) => {
       uploaderById.set(p.id, {
         id: p.id,
         full_name:
           p.full_name || p.email?.split("@")[0] || "Unnamed",
-        avatar_color: "#5CE1A5",
+        avatar_color: deterministicAvatarColor(p.id),
+        avatar_url: p.avatar_url,
       });
     },
   );

@@ -3,12 +3,16 @@
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getRoleFromProfile } from "@/lib/permissions";
+import { deterministicAvatarColor } from "@/lib/avatar";
 
 export type ProfileSearchResult = {
   id: string;
   full_name: string;
   email: string;
+  /** Deterministic-per-id color for the initial circle. */
   avatar_color: string;
+  /** Optional uploaded photo. */
+  avatar_url: string | null;
   role: string;
 };
 
@@ -69,7 +73,7 @@ export async function searchProfiles(
   const trimmed = query.trim();
   let queryBuilder = supabaseAdmin
     .from("profiles")
-    .select("id, full_name, email, role")
+    .select("id, full_name, email, avatar_url, role")
     .eq("organization_id", ctx.organizationId)
     .limit(10)
     .order("full_name", { ascending: true });
@@ -108,14 +112,14 @@ export async function searchProfiles(
       id: string;
       full_name: string | null;
       email: string | null;
+      avatar_url: string | null;
       role: string | null;
     }) => ({
       id: p.id,
       full_name: p.full_name || p.email?.split("@")[0] || "Unnamed",
       email: p.email || "",
-      // Avatar color mirrors the mint-fallback used elsewhere in the app.
-      // Future: pull from profile's primary department color.
-      avatar_color: "#5CE1A5",
+      avatar_color: deterministicAvatarColor(p.id),
+      avatar_url: p.avatar_url,
       role: getRoleFromProfile({ role: p.role }),
     }),
   );

@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { can, getRoleFromProfile } from "@/lib/permissions";
 import type { Role } from "@/lib/permissions";
+import { deterministicAvatarColor } from "@/lib/avatar";
 
 // ─── Types ──────────────────────────────────────────────────
 export type BoardVisibility =
@@ -84,8 +85,12 @@ export type BoardMemberInfo = {
 export type CardAssignee = {
   id: string;
   full_name: string;
-  /** Background color for the initials avatar. Mint fallback. */
+  /** Background color for the initials avatar. Derived deterministically
+   *  from the profile id (the avatar_color column doesn't actually
+   *  exist on profiles). */
   avatar_color: string;
+  /** Optional uploaded photo. Null when the user hasn't uploaded one. */
+  avatar_url: string | null;
 };
 
 export type BoardCardWithMeta = {
@@ -727,7 +732,8 @@ export async function getBoard(
             ? {
                 id: c.assigned_to,
                 full_name: profile.full_name,
-                avatar_color: "#5CE1A5",
+                avatar_color: deterministicAvatarColor(c.assigned_to),
+                avatar_url: profile.avatar_url,
               }
             : null,
         label_count: labelCountByCard.get(c.id) ?? 0,
@@ -1446,7 +1452,7 @@ export async function createCard(
   if (inserted.assigned_to) {
     const { data: prof } = await supabaseAdmin
       .from("profiles")
-      .select("id, full_name, email")
+      .select("id, full_name, email, avatar_url")
       .eq("id", inserted.assigned_to)
       .maybeSingle();
     if (prof) {
@@ -1454,7 +1460,8 @@ export async function createCard(
         id: prof.id,
         full_name:
           prof.full_name || prof.email?.split("@")[0] || "Unnamed",
-        avatar_color: "#5CE1A5",
+        avatar_color: deterministicAvatarColor(prof.id),
+        avatar_url: prof.avatar_url ?? null,
       };
     }
   }
@@ -1818,7 +1825,10 @@ export type ChecklistItem = {
 export type CommentAuthor = {
   id: string;
   full_name: string;
+  /** Deterministic-per-id color for the initial circle. */
   avatar_color: string;
+  /** Optional uploaded photo. */
+  avatar_url: string | null;
   role: Role | null;
 };
 
@@ -2128,14 +2138,15 @@ async function joinCommentAuthors(
   const ids = Array.from(new Set(rows.map((r) => r.author_id)));
   const { data: profiles } = await supabaseAdmin
     .from("profiles")
-    .select("id, full_name, avatar_color, role")
+    .select("id, full_name, email, avatar_url, role")
     .in("id", ids);
   const byId = new Map<string, CommentAuthor>();
-  (profiles ?? []).forEach((p: { id: string; full_name: string | null; avatar_color: string | null; role: Role | null }) => {
+  (profiles ?? []).forEach((p: { id: string; full_name: string | null; email: string | null; avatar_url: string | null; role: Role | null }) => {
     byId.set(p.id, {
       id: p.id,
       full_name: p.full_name || "Teammate",
-      avatar_color: p.avatar_color || "#5CE1A5",
+      avatar_color: deterministicAvatarColor(p.id),
+      avatar_url: p.avatar_url,
       role: p.role ?? null,
     });
   });
@@ -2562,15 +2573,16 @@ export async function getCardActivity(
   const actorIds = Array.from(new Set(data.map((r) => r.actor_id)));
   const { data: profiles } = await supabaseAdmin
     .from("profiles")
-    .select("id, full_name, avatar_color, role")
+    .select("id, full_name, email, avatar_url, role")
     .in("id", actorIds);
   const byId = new Map<string, CommentAuthor>();
   (profiles ?? []).forEach(
-    (p: { id: string; full_name: string | null; avatar_color: string | null; role: Role | null }) => {
+    (p: { id: string; full_name: string | null; email: string | null; avatar_url: string | null; role: Role | null }) => {
       byId.set(p.id, {
         id: p.id,
         full_name: p.full_name || "Teammate",
-        avatar_color: p.avatar_color || "#5CE1A5",
+        avatar_color: deterministicAvatarColor(p.id),
+      avatar_url: p.avatar_url,
         role: p.role ?? null,
       });
     },
@@ -2656,7 +2668,7 @@ export async function getCard(
     // Pre-fetch the assignee + creator profiles in a single query.
     supabaseAdmin
       .from("profiles")
-      .select("id, full_name, avatar_color, role")
+      .select("id, full_name, email, avatar_url, role")
       .in(
         "id",
         Array.from(
@@ -2671,11 +2683,12 @@ export async function getCard(
 
   const profileById = new Map<string, CommentAuthor>();
   (profilesRes.data ?? []).forEach(
-    (p: { id: string; full_name: string | null; avatar_color: string | null; role: Role | null }) => {
+    (p: { id: string; full_name: string | null; email: string | null; avatar_url: string | null; role: Role | null }) => {
       profileById.set(p.id, {
         id: p.id,
         full_name: p.full_name || "Teammate",
-        avatar_color: p.avatar_color || "#5CE1A5",
+        avatar_color: deterministicAvatarColor(p.id),
+      avatar_url: p.avatar_url,
         role: p.role ?? null,
       });
     },
@@ -2706,14 +2719,15 @@ export async function getCard(
   if (missingActorIds.length > 0) {
     const { data: extra } = await supabaseAdmin
       .from("profiles")
-      .select("id, full_name, avatar_color, role")
+      .select("id, full_name, email, avatar_url, role")
       .in("id", missingActorIds);
     (extra ?? []).forEach(
-      (p: { id: string; full_name: string | null; avatar_color: string | null; role: Role | null }) => {
+      (p: { id: string; full_name: string | null; email: string | null; avatar_url: string | null; role: Role | null }) => {
         profileById.set(p.id, {
           id: p.id,
           full_name: p.full_name || "Teammate",
-          avatar_color: p.avatar_color || "#5CE1A5",
+          avatar_color: deterministicAvatarColor(p.id),
+      avatar_url: p.avatar_url,
           role: p.role ?? null,
         });
       },

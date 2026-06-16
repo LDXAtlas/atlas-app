@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { deterministicAvatarColor } from "@/lib/avatar";
 import {
   DEFAULT_NOTIFICATION_PREFERENCES,
   type NotificationType,
@@ -33,7 +34,10 @@ export type Notification = {
 export type NotificationActor = {
   id: string;
   full_name: string;
+  /** Deterministic-per-id color for the initial circle. */
   avatar_color: string;
+  /** Optional uploaded photo. */
+  avatar_url: string | null;
   role: string;
 };
 
@@ -237,20 +241,21 @@ export async function getNotifications(
   if (actorIds.length > 0) {
     const { data: profiles } = await supabaseAdmin
       .from("profiles")
-      .select("id, full_name, email, role")
+      .select("id, full_name, email, avatar_url, role")
       .in("id", actorIds);
     (profiles ?? []).forEach(
       (p: {
         id: string;
         full_name: string | null;
         email: string | null;
+        avatar_url: string | null;
         role: string | null;
       }) => {
         actorMap.set(p.id, {
           id: p.id,
           full_name: p.full_name || p.email?.split("@")[0] || "Unnamed",
-          // Mint fallback matches the rest of the app's avatar treatment.
-          avatar_color: "#5CE1A5",
+          avatar_color: deterministicAvatarColor(p.id),
+          avatar_url: p.avatar_url,
           role: p.role || "member",
         });
       },
