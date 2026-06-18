@@ -128,7 +128,12 @@ export const AI_FEATURE_REGISTRY: Record<AIFeatureKey, AIFeatureRegistryEntry> =
       "Catch-all bucket — used by the admin test endpoint and any unregistered ad-hoc usage.",
     minTier: null,
     canToggle: false,
-    usesGuidelines: false,
+    // Safer default: catch-all and ad-hoc usage SHOULD inherit org
+    // guidelines so any new feature that forgets to register still
+    // sounds on-brand. The previous `false` value also caused the
+    // /api/ai/test endpoint to silently skip terminology / voice —
+    // hiding the bug we spent three rounds debugging.
+    usesGuidelines: true,
   },
 };
 
