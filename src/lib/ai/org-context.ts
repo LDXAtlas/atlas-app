@@ -46,7 +46,7 @@ export async function getOrgAIContext(
   // act exactly as they did before the Control Center shipped.
   if (!row) return DEFAULT_CONTEXT;
 
-  const block = composeGuidelinesBlock({
+  const block = composeOrgPrefixBody({
     voice_tone: row.voice_tone ?? null,
     terminology: row.terminology ?? null,
     about_church: row.about_church ?? null,
@@ -77,20 +77,13 @@ interface GuidelineFields {
   additional_guidelines: string | null;
 }
 
-// Per-section framing. Terminology / Voice & tone / Naming are
-// AUTHORITATIVE customizations — the org has explicitly told us how
-// they want to sound and what to call things. Earlier copy framed
-// them as "preferences" the model could weigh against its own
-// instincts, and Claude was treating them as suggestions (e.g.,
-// reading `Always say "life groups" instead of "small groups"` as a
-// conditional substitution rule that didn't apply when neither term
-// was mentioned). The base Atlas safety/accuracy rules above still
-// outrank everything in this block.
+// Per-section framing for the SOFT conventions block. Terminology is
+// NOT in this map — it gets a separate, harder-line block above the
+// conventions because it routinely loses to strong model defaults
+// (e.g., 'small group') when treated as one section among several.
 const SECTION_DIRECTIVES: Record<string, string> = {
   "Voice & tone":
     "Match this voice in every response. Apply it consistently, not only when the user explicitly asks for a particular tone.",
-  Terminology:
-    "Use these names actively. When the listed terms apply to a concept you're describing, substitute them — even if the user didn't use them in their message and even if a more generic word would also fit. Do not invent alternatives (e.g., 'home groups', 'community groups') when the organization has named the concept.",
   "About this church":
     "Treat as background context the church has shared with you. Lean on it when relevant; do not contradict it.",
   "Things to avoid":
@@ -99,12 +92,28 @@ const SECTION_DIRECTIVES: Record<string, string> = {
     "Follow these alongside the conventions above.",
 };
 
+// Hard, prominent terminology block placed RIGHT AFTER the Atlas base
+// rules — before the softer conventions block. Empirically (June 2026
+// live testing on org 758dfdd7), when terminology like
+// `Always say "life groups" instead of "small groups"` sat inside the
+// general conventions block, Claude was still leading with "small
+// group" and only listing "life group" as a parenthetical alternative.
+// Reframing as a forceful, isolated directive that explicitly forbids
+// the replaced term — even parenthetically — fixes that.
+function composeTerminologyBlock(terminology: string): string {
+  return `## REQUIRED TERMINOLOGY (apply without exception)
+
+This organization requires specific terminology. You MUST use these exact terms in every response and MUST NOT use the terms they replace — not as the primary term, not as a parenthetical alternative, not as a "previously called" reference, not as an example, and not as a clarification. Do not list synonyms for these terms. Do not offer alternatives. The organization's terms are the only correct ones for the concepts they cover. Apply them whether or not the user prompt mentions the replaced term — if you are describing a concept the terminology covers, you must use the organization's term.
+
+${terminology}`;
+}
+
 function composeGuidelinesBlock(fields: GuidelineFields): string {
+  // Soft conventions sections — everything EXCEPT terminology, which
+  // gets its own forceful block built separately by callers below.
   const sections: { label: string; value: string }[] = [];
   if (fields.voice_tone?.trim())
     sections.push({ label: "Voice & tone", value: fields.voice_tone.trim() });
-  if (fields.terminology?.trim())
-    sections.push({ label: "Terminology", value: fields.terminology.trim() });
   if (fields.about_church?.trim())
     sections.push({
       label: "About this church",
@@ -126,11 +135,11 @@ function composeGuidelinesBlock(fields: GuidelineFields): string {
   // Framing: legitimate customization is authoritative within the
   // bounds of the Atlas base rules above. Safety/accuracy still wins
   // (an org can't paste jailbreaky text into voice_tone and override
-  // the refusal rules); but voice, terminology, and naming choices
-  // are firm and Claude should apply them actively rather than
-  // weighing them against its own defaults.
+  // the refusal rules); but voice, naming, and emphasis choices are
+  // firm and Claude should apply them actively rather than weighing
+  // them against its own defaults.
   const intro =
-    "The following are this organization's authoritative conventions for terminology, voice, and emphasis. Apply them consistently in every response. They MUST NOT override the safety or accuracy rules above, but within those bounds they are not optional — treat them as direct instructions, not suggestions.";
+    "The following are this organization's authoritative conventions for voice, framing, and emphasis. Apply them consistently in every response. They MUST NOT override the safety or accuracy rules above, but within those bounds they are not optional — treat them as direct instructions, not suggestions.";
 
   const body = sections
     .map((s) => {
@@ -141,6 +150,20 @@ function composeGuidelinesBlock(fields: GuidelineFields): string {
     .join("\n\n");
 
   return `## Organization conventions (authoritative within Atlas base rules)\n\n${intro}\n\n${body}`;
+}
+
+// Public composer used by getOrgAIContext below. Builds the full
+// org-side prefix in the right order: terminology FIRST (hard), then
+// conventions (soft). Both sit BELOW the Atlas base rules in the
+// final cached prefix — see buildCachedSystemPrefix.
+function composeOrgPrefixBody(fields: GuidelineFields): string {
+  const parts: string[] = [];
+  if (fields.terminology?.trim()) {
+    parts.push(composeTerminologyBlock(fields.terminology.trim()));
+  }
+  const softBlock = composeGuidelinesBlock(fields);
+  if (softBlock) parts.push(softBlock);
+  return parts.join("\n\n");
 }
 
 // Atlas base rules — non-negotiable layer that sits ABOVE any

@@ -78,8 +78,13 @@ export async function POST(request: Request) {
     userId: user.id,
     feature: "other",
     complexity,
+    // Representative framing so org guidelines (terminology, voice,
+    // etc.) actually fire the way they would in a real feature call.
+    // The previous "you are being tested" prompt was so generic it
+    // suppressed the kind of substantive output we needed to verify
+    // the AI Control Center against.
     system:
-      "You are a helpful assistant being tested. Respond briefly to confirm you received the message.",
+      "You are Atlas AI, the assistant inside the Atlas Church Solutions ministry-operations platform. Answer the user's request directly and concisely, using the organization's voice and terminology.",
     messages: [{ role: "user", content: message }],
     maxTokens: 256,
     metadata: { source: "api/ai/test", test_invocation: true },
