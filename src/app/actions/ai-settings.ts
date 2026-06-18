@@ -4,60 +4,15 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { can, getRoleFromProfile } from "@/lib/permissions";
-
-// ─── Types ────────────────────────────────────────────────
-
-export type ModelPreference = "speed" | "balanced" | "quality";
-
-export type ActionResult<T = unknown> =
-  | { success: true; data?: T }
-  | { success: false; error: string; code?: string };
-
-export interface OrgAISettings {
-  voice_tone: string | null;
-  terminology: string | null;
-  about_church: string | null;
-  things_to_avoid: string | null;
-  additional_guidelines: string | null;
-  model_preference: ModelPreference;
-  ai_enabled: boolean;
-  updated_by: string | null;
-  updated_at: string | null;
-  updater_name: string | null;
-}
-
-// Application-level character limits — enforced server-side. Keeps
-// the cached prompt size predictable and bounds the cost of every
-// AI call.
-export const AI_SETTINGS_LIMITS = {
-  voice_tone: 500,
-  terminology: 1000,
-  about_church: 1000,
-  things_to_avoid: 1000,
-  additional_guidelines: 2000,
-} as const;
-
-const ALLOWED_PREFERENCES: ModelPreference[] = [
-  "speed",
-  "balanced",
-  "quality",
-];
-
-// Default values returned by getOrgAISettings when the org has no row
-// yet. Mirrors the column defaults in the live schema so the page can
-// render even before the org has saved once.
-const DEFAULT_SETTINGS: OrgAISettings = {
-  voice_tone: null,
-  terminology: null,
-  about_church: null,
-  things_to_avoid: null,
-  additional_guidelines: null,
-  model_preference: "balanced",
-  ai_enabled: true,
-  updated_by: null,
-  updated_at: null,
-  updater_name: null,
-};
+import {
+  AI_SETTINGS_LIMITS,
+  ALLOWED_MODEL_PREFERENCES,
+  DEFAULT_AI_SETTINGS,
+  type ActionResult,
+  type ModelPreference,
+  type OrgAISettings,
+  type UpdateOrgAISettingsInput,
+} from "@/lib/ai/ai-settings-constants";
 
 // ─── Auth helpers ─────────────────────────────────────────
 
@@ -134,7 +89,7 @@ export async function getOrgAISettings(): Promise<
         updated_at: row.updated_at,
         updater_name: updaterName,
       }
-    : DEFAULT_SETTINGS;
+    : DEFAULT_AI_SETTINGS;
 
   return {
     success: true,
@@ -147,16 +102,6 @@ export async function getOrgAISettings(): Promise<
 }
 
 // ─── Update ───────────────────────────────────────────────
-
-export interface UpdateOrgAISettingsInput {
-  voice_tone?: string | null;
-  terminology?: string | null;
-  about_church?: string | null;
-  things_to_avoid?: string | null;
-  additional_guidelines?: string | null;
-  model_preference?: ModelPreference;
-  ai_enabled?: boolean;
-}
 
 function trimOrNull(v: string | null | undefined): string | null {
   if (v === undefined) return undefined as unknown as string | null;
@@ -216,7 +161,7 @@ export async function updateOrgAISettings(
   }
 
   if (input.model_preference !== undefined) {
-    if (!ALLOWED_PREFERENCES.includes(input.model_preference)) {
+    if (!ALLOWED_MODEL_PREFERENCES.includes(input.model_preference)) {
       return {
         success: false,
         error: "Invalid model preference.",

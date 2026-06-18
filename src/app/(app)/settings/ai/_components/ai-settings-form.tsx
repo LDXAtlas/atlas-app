@@ -12,12 +12,12 @@ import {
   Sparkles,
   Zap,
 } from "lucide-react";
+import { updateOrgAISettings } from "@/app/actions/ai-settings";
 import {
   AI_SETTINGS_LIMITS,
-  updateOrgAISettings,
   type ModelPreference,
   type OrgAISettings,
-} from "@/app/actions/ai-settings";
+} from "@/lib/ai/ai-settings-constants";
 
 interface AISettingsFormProps {
   initial: OrgAISettings & { isAdmin: boolean };

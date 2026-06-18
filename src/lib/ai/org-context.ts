@@ -8,7 +8,7 @@
 //   - Tests / one-off scripts can stub it without dragging in callAI.
 
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import type { ModelPreference } from "@/app/actions/ai-settings";
+import type { ModelPreference } from "@/lib/ai/ai-settings-constants";
 
 export interface OrgAIContext {
   aiEnabled: boolean;
