@@ -38,6 +38,11 @@ export interface SelectModelParams {
   /** Feature id — must match the ai_usage_log.feature CHECK constraint. */
   feature: string;
   complexity?: ModelComplexity;
+  /** Org's AI Control Center preference. Applied WITHIN tier bounds —
+   *  never lets an org exceed its tier's cost ceiling. Default
+   *  'balanced' when omitted, which produces today's pre-Control-
+   *  Center selection for every tier. */
+  modelPreference?: "speed" | "balanced" | "quality";
 }
 
 // ─── Constants ─────────────────────────────────────────────
@@ -71,7 +76,11 @@ export const MODEL_PRICING: Record<
 export async function selectModel(
   params: SelectModelParams,
 ): Promise<ModelSelection> {
-  const { organizationId, complexity = "standard" } = params;
+  const {
+    organizationId,
+    complexity = "standard",
+    modelPreference = "balanced",
+  } = params;
 
   // One round trip: tier + remaining credits via the RPC.
   const [{ data: org }, { data: remaining }] = await Promise.all([
@@ -102,14 +111,15 @@ export async function selectModel(
     };
   }
 
-  if (tier === "ultimate" && complexity === "complex") {
-    return {
-      provider: "anthropic",
-      model: MODEL_TIERS.ultimate_complex,
-      isFallback: false,
-      modelTier: tier,
-    };
-  }
+  // Tier × preference matrix (see AI_CONTROL_CENTER.md):
+  //   Workspace : always Haiku — preference is acknowledged in the UI
+  //               (upgrade nudge) but never lets the org exceed its
+  //               cost envelope.
+  //   Suite     : speed -> Haiku for simple complexity, Sonnet otherwise.
+  //               balanced/quality -> Sonnet.
+  //   Ultimate  : speed -> Haiku for simple complexity, Sonnet otherwise.
+  //               balanced -> Sonnet.
+  //               quality -> Opus for complex tasks, Sonnet otherwise.
   if (tier === "workspace") {
     return {
       provider: "anthropic",
@@ -118,10 +128,47 @@ export async function selectModel(
       modelTier: tier,
     };
   }
-  // Suite, or Ultimate non-complex.
+
+  if (tier === "suite") {
+    const model =
+      modelPreference === "speed" && complexity === "simple"
+        ? MODEL_TIERS.workspace
+        : MODEL_TIERS.suite;
+    return {
+      provider: "anthropic",
+      model,
+      isFallback: false,
+      modelTier: tier,
+    };
+  }
+
+  // Ultimate.
+  if (modelPreference === "speed") {
+    return {
+      provider: "anthropic",
+      model:
+        complexity === "simple"
+          ? MODEL_TIERS.workspace
+          : MODEL_TIERS.ultimate_standard,
+      isFallback: false,
+      modelTier: tier,
+    };
+  }
+  if (modelPreference === "quality" && complexity === "complex") {
+    return {
+      provider: "anthropic",
+      model: MODEL_TIERS.ultimate_complex,
+      isFallback: false,
+      modelTier: tier,
+    };
+  }
+  // Balanced (default) and quality-non-complex both land on Sonnet.
+  // Preserves today's behavior for ai_credits tests and orgs without
+  // an explicit preference set.
+  void modelPreference;
   return {
     provider: "anthropic",
-    model: MODEL_TIERS.suite,
+    model: MODEL_TIERS.ultimate_standard,
     isFallback: false,
     modelTier: tier,
   };

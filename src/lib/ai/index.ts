@@ -28,6 +28,8 @@ import {
   type AIFeature,
   type AIProvider,
 } from "./credit-accounting";
+import { getOrgAIContext, buildCachedSystemPrefix } from "./org-context";
+import { featureUsesGuidelines } from "./feature-registry";
 
 // Re-export common types for callers.
 export type { AIFeature, AIProvider } from "./credit-accounting";
@@ -80,13 +82,43 @@ export async function callAI(params: CallAIParams): Promise<CallAIResponse> {
     metadata,
   } = params;
 
-  // Pick the model up front so credit math + downstream dispatch use the
-  // same selection.
+  // ─── AI Control Center context (guidelines + preference + master switch).
+  //
+  // Single small read. Orgs without an organization_ai_settings row
+  // get the defaults (no guidelines, balanced, ai_enabled true) —
+  // so the existing test endpoint behaves exactly as it did before
+  // the Control Center shipped.
+  const orgContext = await getOrgAIContext(organizationId);
+
+  // Master switch. When an admin has turned AI off for the whole org
+  // the call short-circuits gracefully so features can render
+  // "AI turned off" UI instead of a network error.
+  if (!orgContext.aiEnabled) {
+    return {
+      success: false,
+      error:
+        "AI is turned off for this organization. An admin can re-enable it in Settings > AI Control Center.",
+    };
+  }
+
+  // Pick the model up front so credit math + downstream dispatch use
+  // the same selection. modelPreference is tier-bounded inside
+  // selectModel — no org can exceed its tier's cost ceiling.
   const selection = await selectModel({
     organizationId,
     feature,
     complexity,
+    modelPreference: orgContext.modelPreference,
   });
+
+  // Compose the cached system prompt prefix: Atlas base rules + org
+  // guidelines (when the feature opts in via the registry). Cached
+  // content stays stable per org -> ~90% cheaper input on Anthropic.
+  // The task-specific `system` passed in by the feature is sent as a
+  // separate uncached block downstream.
+  const cachedPrefix = featureUsesGuidelines(feature)
+    ? buildCachedSystemPrefix(orgContext.guidelinesBlock)
+    : buildCachedSystemPrefix(""); // base only; no org guidelines.
 
   // Pre-flight credit estimate is purely informational — actual
   // deduction uses the post-call response token count rounded up to a
@@ -112,6 +144,7 @@ export async function callAI(params: CallAIParams): Promise<CallAIResponse> {
     providerResponse = await callClaude({
       model: selection.model,
       system,
+      cachedPrefix,
       messages,
       maxTokens,
       enableCaching,
@@ -122,8 +155,16 @@ export async function callAI(params: CallAIParams): Promise<CallAIResponse> {
       role: m.role,
       content: m.content,
     }));
+    // OpenAI doesn't expose Anthropic-style cache control on the same
+    // free tier, but we still want the guidelines to apply when the
+    // org falls through to the credit-exhaustion fallback — same
+    // voice / terminology regardless of provider. Concatenate into
+    // one system string for callGPTNanoFallback's API.
+    const fallbackSystem = cachedPrefix
+      ? `${cachedPrefix}\n\n${system}`
+      : system;
     providerResponse = await callGPTNanoFallback({
-      system,
+      system: fallbackSystem,
       messages: gptMessages,
       maxTokens,
       ...(temperature !== undefined ? { temperature } : {}),

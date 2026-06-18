@@ -31,11 +31,21 @@ export type ClaudeResponse =
 
 export interface CallClaudeParams {
   model: ClaudeModel | string;
+  /** Task-specific system prompt. When `cachedPrefix` is set, this
+   *  portion is sent as a second uncached block per the
+   *  AI_CONTROL_CENTER.md layering model — base + org guidelines
+   *  cache; the feature's task prompt does not. */
   system: string;
+  /** Optional stable system prompt (Atlas base rules + org
+   *  guidelines) that's safe to cache across calls. Composed by
+   *  callAI() via buildCachedSystemPrefix() in org-context.ts. When
+   *  omitted, behaviour is unchanged from before the Control Center
+   *  shipped — `system` itself becomes the cached block. */
+  cachedPrefix?: string;
   messages: ClaudeMessage[];
   maxTokens?: number;
   temperature?: number;
-  /** Sets cache_control: { type: 'ephemeral' } on the system prompt. Default true. */
+  /** Sets cache_control: { type: 'ephemeral' } on the cached block. Default true. */
   enableCaching?: boolean;
   /** Request timeout in ms. Default 60_000. */
   timeout?: number;
@@ -107,6 +117,7 @@ export async function callClaude(
   const {
     model,
     system,
+    cachedPrefix,
     messages,
     maxTokens = 4096,
     temperature = 0.7,
@@ -116,18 +127,46 @@ export async function callClaude(
 
   const client = getAnthropicClient();
 
-  // The Messages API accepts a string system prompt OR an array of blocks.
-  // When caching is on, we use the block form so we can flag the prompt
-  // with cache_control. The SDK types accept this shape directly.
-  const systemPayload = enableCaching
-    ? [
-        {
-          type: "text" as const,
-          text: system,
-          cache_control: { type: "ephemeral" as const },
-        },
-      ]
-    : system;
+  // The Messages API accepts a string system prompt OR an array of
+  // text blocks. We use the array form whenever we either have caching
+  // on, a cachedPrefix to layer, or both — only marking the stable
+  // prefix block with cache_control. The task-specific block stays
+  // uncached so it doesn't bloat the cache key.
+  //
+  // Per AI_CONTROL_CENTER.md:
+  //   cached:   Atlas base rules + org guidelines (stable per org)
+  //   uncached: feature task prompt (varies per call)
+  const systemPayload = (() => {
+    if (cachedPrefix && cachedPrefix.length > 0) {
+      const blocks: {
+        type: "text";
+        text: string;
+        cache_control?: { type: "ephemeral" };
+      }[] = [
+        enableCaching
+          ? {
+              type: "text",
+              text: cachedPrefix,
+              cache_control: { type: "ephemeral" },
+            }
+          : { type: "text", text: cachedPrefix },
+        { type: "text", text: system },
+      ];
+      return blocks;
+    }
+    // Legacy single-block path: preserves the pre-Control-Center
+    // behavior for callers that don't pass cachedPrefix (e.g. the
+    // admin test endpoint with no org context).
+    return enableCaching
+      ? [
+          {
+            type: "text" as const,
+            text: system,
+            cache_control: { type: "ephemeral" as const },
+          },
+        ]
+      : system;
+  })();
 
   let lastError: unknown = null;
   for (let attempt = 0; attempt < RETRY_BACKOFF_MS.length; attempt++) {
