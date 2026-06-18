@@ -90,6 +90,24 @@ export async function callAI(params: CallAIParams): Promise<CallAIResponse> {
   // the Control Center shipped.
   const orgContext = await getOrgAIContext(organizationId);
 
+  // RUNTIME DEBUG (gated by AI_DEBUG=1) — diagnose whether org
+  // guidelines actually reach a live callAI() invocation. See
+  // VERCEL_DEBUG.md for how to enable in production.
+  const aiDebug = process.env.AI_DEBUG === "1";
+  if (aiDebug) {
+    console.log(
+      "[callAI:orgContext]",
+      JSON.stringify({
+        organizationId,
+        feature,
+        aiEnabled: orgContext.aiEnabled,
+        modelPreference: orgContext.modelPreference,
+        guidelinesBlockLength: orgContext.guidelinesBlock.length,
+        guidelinesBlockPreview: orgContext.guidelinesBlock.slice(0, 400),
+      }),
+    );
+  }
+
   // Master switch. When an admin has turned AI off for the whole org
   // the call short-circuits gracefully so features can render
   // "AI turned off" UI instead of a network error.
@@ -120,6 +138,22 @@ export async function callAI(params: CallAIParams): Promise<CallAIResponse> {
     ? buildCachedSystemPrefix(orgContext.guidelinesBlock)
     : buildCachedSystemPrefix(""); // base only; no org guidelines.
 
+  if (aiDebug) {
+    console.log(
+      "[callAI:cachedPrefix]",
+      JSON.stringify({
+        organizationId,
+        feature,
+        featureUsesGuidelines: featureUsesGuidelines(feature),
+        cachedPrefixLength: cachedPrefix.length,
+        cachedPrefixContainsTerminology: cachedPrefix.includes(
+          "REQUIRED TERMINOLOGY",
+        ),
+        cachedPrefix,
+      }),
+    );
+  }
+
   // Pre-flight credit estimate is purely informational — actual
   // deduction uses the post-call response token count rounded up to a
   // credit. We keep the estimate for future "you're about to spend X
@@ -141,6 +175,20 @@ export async function callAI(params: CallAIParams): Promise<CallAIResponse> {
     | { success: false; error: string };
 
   if (selection.provider === "anthropic") {
+    if (aiDebug) {
+      console.log(
+        "[callAI:dispatch->callClaude]",
+        JSON.stringify({
+          provider: "anthropic",
+          model: selection.model,
+          paramsHasCachedPrefix: typeof cachedPrefix === "string",
+          cachedPrefixLength: cachedPrefix.length,
+          systemLength: system.length,
+          systemPreview: system.slice(0, 200),
+          enableCaching,
+        }),
+      );
+    }
     providerResponse = await callClaude({
       model: selection.model,
       system,

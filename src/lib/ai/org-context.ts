@@ -28,7 +28,21 @@ const DEFAULT_CONTEXT: OrgAIContext = {
 export async function getOrgAIContext(
   organizationId: string,
 ): Promise<OrgAIContext> {
-  if (!organizationId) return DEFAULT_CONTEXT;
+  // RUNTIME DEBUG (gated by AI_DEBUG=1). See callAI in index.ts.
+  const aiDebug = process.env.AI_DEBUG === "1";
+
+  if (!organizationId) {
+    if (aiDebug) {
+      console.log(
+        "[getOrgAIContext] EARLY RETURN no organizationId -> DEFAULT_CONTEXT",
+      );
+    }
+    return DEFAULT_CONTEXT;
+  }
+
+  if (aiDebug) {
+    console.log("[getOrgAIContext] querying", { organizationId });
+  }
 
   const { data: row, error } = await supabaseAdmin
     .from("organization_ai_settings")
@@ -40,11 +54,38 @@ export async function getOrgAIContext(
 
   if (error) {
     console.error("[getOrgAIContext] Select error:", error.message);
+    if (aiDebug) {
+      console.log(
+        "[getOrgAIContext] RETURNING DEFAULT_CONTEXT because of DB error",
+        { organizationId, errorMessage: error.message },
+      );
+    }
     return DEFAULT_CONTEXT;
   }
   // No row -> default behavior. Existing orgs without explicit settings
   // act exactly as they did before the Control Center shipped.
-  if (!row) return DEFAULT_CONTEXT;
+  if (!row) {
+    if (aiDebug) {
+      console.log(
+        "[getOrgAIContext] RETURNING DEFAULT_CONTEXT because no row found",
+        { organizationId },
+      );
+    }
+    return DEFAULT_CONTEXT;
+  }
+
+  if (aiDebug) {
+    console.log("[getOrgAIContext] row loaded", {
+      organizationId,
+      terminology: row.terminology,
+      voice_tone: row.voice_tone,
+      about_church: row.about_church,
+      things_to_avoid: row.things_to_avoid,
+      additional_guidelines: row.additional_guidelines,
+      model_preference: row.model_preference,
+      ai_enabled: row.ai_enabled,
+    });
+  }
 
   const block = composeOrgPrefixBody({
     voice_tone: row.voice_tone ?? null,
@@ -53,6 +94,15 @@ export async function getOrgAIContext(
     things_to_avoid: row.things_to_avoid ?? null,
     additional_guidelines: row.additional_guidelines ?? null,
   });
+
+  if (aiDebug) {
+    console.log("[getOrgAIContext] composed guidelinesBlock", {
+      organizationId,
+      length: block.length,
+      includesRequiredTerminology: block.includes("REQUIRED TERMINOLOGY"),
+      preview: block.slice(0, 400),
+    });
+  }
 
   return {
     aiEnabled: row.ai_enabled !== false,
