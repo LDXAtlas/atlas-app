@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CreditCard, User, Bell, Settings, Users } from "lucide-react";
+import { CreditCard, User, Bell, Settings, Users, Sparkles } from "lucide-react";
 
 export default function SettingsPage() {
   return (
@@ -69,6 +69,23 @@ export default function SettingsPage() {
             </h3>
             <p className="text-[13px] text-[#6B7280] mt-0.5" style={{ fontFamily: "var(--font-source-sans)" }}>
               Update your name, phone, and personal details
+            </p>
+          </div>
+        </Link>
+
+        <Link
+          href="/settings/ai"
+          className="group flex items-start gap-4 p-5 bg-white rounded-2xl border border-[#E5E7EB] hover:border-[#5CE1A5] hover:shadow-md transition-all"
+        >
+          <div className="size-10 rounded-xl bg-[#5CE1A5]/10 flex items-center justify-center shrink-0 group-hover:bg-[#5CE1A5]/15 transition-colors">
+            <Sparkles className="size-5 text-[#5CE1A5]" />
+          </div>
+          <div>
+            <h3 className="text-[14px] font-semibold text-[#2D333A]" style={{ fontFamily: "var(--font-poppins)" }}>
+              AI Control Center
+            </h3>
+            <p className="text-[13px] text-[#6B7280] mt-0.5" style={{ fontFamily: "var(--font-source-sans)" }}>
+              Tune AI voice, terminology, and model preferences
             </p>
           </div>
         </Link>
