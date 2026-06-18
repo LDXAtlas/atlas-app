@@ -70,52 +70,63 @@ export function AISettingsForm({ initial, tier }: AISettingsFormProps) {
     setTimeout(() => setToast(null), 2500);
   }
 
-  function persist<T>(
-    partial: Parameters<typeof updateOrgAISettings>[0],
-    optimistic: () => void,
-    revert: () => void,
-    successLabel?: string,
-  ): Promise<T | null> {
-    return new Promise((resolve) => {
-      setError(null);
-      optimistic();
-      startTransition(async () => {
-        const res = await updateOrgAISettings(partial);
-        if (!res.success) {
-          revert();
-          setError(res.error);
-          resolve(null);
-          return;
-        }
-        if (res.data) {
-          setSettings(res.data);
-          setVoiceTone(res.data.voice_tone ?? "");
-          setTerminology(res.data.terminology ?? "");
-          setAboutChurch(res.data.about_church ?? "");
-          setThingsToAvoid(res.data.things_to_avoid ?? "");
-          setAdditional(res.data.additional_guidelines ?? "");
-          setPreference(res.data.model_preference);
-          setAiEnabled(res.data.ai_enabled);
-        }
-        if (successLabel) flash(successLabel);
-        resolve(null as unknown as T);
-      });
+  // Every save sends the FULL current form state. This used to be
+  // per-field partial saves, but partial payloads racing against each
+  // other meant a guidelines save (no model_preference key) could
+  // queue while a model-preference auto-save was in flight, and the
+  // server-returned `refreshed` from the slower call would reset the
+  // form state. Sending everything every time makes each save a
+  // total-state checkpoint — last write wins, no race possible.
+  function persistFullState(args: {
+    overrides?: Partial<{
+      voice_tone: string;
+      terminology: string;
+      about_church: string;
+      things_to_avoid: string;
+      additional_guidelines: string;
+      model_preference: ModelPreference;
+      ai_enabled: boolean;
+    }>;
+    optimistic?: () => void;
+    revert?: () => void;
+    successLabel?: string;
+  }) {
+    const { overrides = {}, optimistic, revert, successLabel } = args;
+    setError(null);
+    if (optimistic) optimistic();
+    const payload = {
+      voice_tone: overrides.voice_tone ?? voiceTone,
+      terminology: overrides.terminology ?? terminology,
+      about_church: overrides.about_church ?? aboutChurch,
+      things_to_avoid: overrides.things_to_avoid ?? thingsToAvoid,
+      additional_guidelines:
+        overrides.additional_guidelines ?? additional,
+      model_preference: overrides.model_preference ?? preference,
+      ai_enabled: overrides.ai_enabled ?? aiEnabled,
+    };
+    startTransition(async () => {
+      const res = await updateOrgAISettings(payload);
+      if (!res.success) {
+        if (revert) revert();
+        setError(res.error);
+        return;
+      }
+      if (res.data) {
+        setSettings(res.data);
+        setVoiceTone(res.data.voice_tone ?? "");
+        setTerminology(res.data.terminology ?? "");
+        setAboutChurch(res.data.about_church ?? "");
+        setThingsToAvoid(res.data.things_to_avoid ?? "");
+        setAdditional(res.data.additional_guidelines ?? "");
+        setPreference(res.data.model_preference);
+        setAiEnabled(res.data.ai_enabled);
+      }
+      if (successLabel) flash(successLabel);
     });
   }
 
   function handleSaveGuidelines() {
-    persist(
-      {
-        voice_tone: voiceTone,
-        terminology,
-        about_church: aboutChurch,
-        things_to_avoid: thingsToAvoid,
-        additional_guidelines: additional,
-      },
-      () => {},
-      () => {},
-      "Guidelines saved",
-    );
+    persistFullState({ successLabel: "Guidelines saved" });
   }
 
   function handleCancelGuidelines() {
@@ -129,23 +140,23 @@ export function AISettingsForm({ initial, tier }: AISettingsFormProps) {
 
   function handlePreferenceChange(next: ModelPreference) {
     const previous = preference;
-    persist(
-      { model_preference: next },
-      () => setPreference(next),
-      () => setPreference(previous),
-      "Model preference saved",
-    );
+    persistFullState({
+      overrides: { model_preference: next },
+      optimistic: () => setPreference(next),
+      revert: () => setPreference(previous),
+      successLabel: "Model preference saved",
+    });
   }
 
   function handleToggleAI() {
     const previous = aiEnabled;
     const next = !aiEnabled;
-    persist(
-      { ai_enabled: next },
-      () => setAiEnabled(next),
-      () => setAiEnabled(previous),
-      next ? "AI turned on" : "AI turned off",
-    );
+    persistFullState({
+      overrides: { ai_enabled: next },
+      optimistic: () => setAiEnabled(next),
+      revert: () => setAiEnabled(previous),
+      successLabel: next ? "AI turned on" : "AI turned off",
+    });
   }
 
   const guidelinesDirty =
