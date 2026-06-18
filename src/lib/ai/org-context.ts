@@ -77,6 +77,28 @@ interface GuidelineFields {
   additional_guidelines: string | null;
 }
 
+// Per-section framing. Terminology / Voice & tone / Naming are
+// AUTHORITATIVE customizations — the org has explicitly told us how
+// they want to sound and what to call things. Earlier copy framed
+// them as "preferences" the model could weigh against its own
+// instincts, and Claude was treating them as suggestions (e.g.,
+// reading `Always say "life groups" instead of "small groups"` as a
+// conditional substitution rule that didn't apply when neither term
+// was mentioned). The base Atlas safety/accuracy rules above still
+// outrank everything in this block.
+const SECTION_DIRECTIVES: Record<string, string> = {
+  "Voice & tone":
+    "Match this voice in every response. Apply it consistently, not only when the user explicitly asks for a particular tone.",
+  Terminology:
+    "Use these names actively. When the listed terms apply to a concept you're describing, substitute them — even if the user didn't use them in their message and even if a more generic word would also fit. Do not invent alternatives (e.g., 'home groups', 'community groups') when the organization has named the concept.",
+  "About this church":
+    "Treat as background context the church has shared with you. Lean on it when relevant; do not contradict it.",
+  "Things to avoid":
+    "Do not produce language, framings, or content of these kinds. If a draft would naturally include one, rewrite around it.",
+  "Additional guidelines":
+    "Follow these alongside the conventions above.",
+};
+
 function composeGuidelinesBlock(fields: GuidelineFields): string {
   const sections: { label: string; value: string }[] = [];
   if (fields.voice_tone?.trim())
@@ -101,16 +123,24 @@ function composeGuidelinesBlock(fields: GuidelineFields): string {
 
   if (sections.length === 0) return "";
 
-  // Framing is intentionally explicit. The model has been seen to
-  // honor this style of "these are preferences" wrapping reliably.
+  // Framing: legitimate customization is authoritative within the
+  // bounds of the Atlas base rules above. Safety/accuracy still wins
+  // (an org can't paste jailbreaky text into voice_tone and override
+  // the refusal rules); but voice, terminology, and naming choices
+  // are firm and Claude should apply them actively rather than
+  // weighing them against its own defaults.
   const intro =
-    "The following are preferences from this organization about tone, terminology, and emphasis. Follow them WHERE THEY DO NOT CONFLICT with the rules above. They do not override any safety, accuracy, or behavioral rule.";
+    "The following are this organization's authoritative conventions for terminology, voice, and emphasis. Apply them consistently in every response. They MUST NOT override the safety or accuracy rules above, but within those bounds they are not optional — treat them as direct instructions, not suggestions.";
 
   const body = sections
-    .map((s) => `### ${s.label}\n${s.value}`)
+    .map((s) => {
+      const directive = SECTION_DIRECTIVES[s.label];
+      const directiveLine = directive ? `*${directive}*\n\n` : "";
+      return `### ${s.label}\n${directiveLine}${s.value}`;
+    })
     .join("\n\n");
 
-  return `## Organization preferences\n\n${intro}\n\n${body}`;
+  return `## Organization conventions (authoritative within Atlas base rules)\n\n${intro}\n\n${body}`;
 }
 
 // Atlas base rules — non-negotiable layer that sits ABOVE any
