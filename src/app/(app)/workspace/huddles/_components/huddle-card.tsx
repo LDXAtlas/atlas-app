@@ -15,7 +15,7 @@ const STATUS_LABEL: Record<HuddleListItem["status"], string> = {
 };
 
 const STATUS_COLOR: Record<HuddleListItem["status"], { bg: string; fg: string }> = {
-  scheduled: { bg: "#F3F4F6", fg: "#6B7280" },
+  scheduled: { bg: "#E2E8F0", fg: "#475569" }, // Adjusted slightly so it stands out without the white card background
   in_progress: { bg: "#D1FAE5", fg: "#059669" },
   completed: { bg: "#DBEAFE", fg: "#2563EB" },
   processing: { bg: "#FEF3C7", fg: "#D97706" },
@@ -28,13 +28,16 @@ export function HuddleCard({ huddle }: { huddle: HuddleListItem }) {
   return (
     <Link
       href={`/workspace/huddles/${huddle.id}`}
-      className="block bg-white border border-[#E5E7EB] rounded-2xl px-4 py-3.5 hover:border-[#5CE1A5]/60 hover:shadow-[0_2px_10px_rgba(0,0,0,0.04)] transition-all"
+      className="block bg-transparent rounded-2xl px-4 py-3.5 hover:bg-black/[0.02] transition-all duration-300 group relative overflow-hidden"
     >
+      {/* Subtle left border accent on hover */}
+      <div className="absolute left-0 top-0 bottom-0 w-1 bg-[#5CE1A5] opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+
       <div className="flex items-start gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1.5 flex-wrap">
             <h3
-              className="text-[15px] text-[#0F172A] truncate"
+              className="text-[15px] text-[#0F172A] truncate group-hover:text-[#059669] transition-colors duration-200"
               style={{
                 fontFamily: "var(--font-poppins)",
                 fontWeight: 600,
@@ -60,7 +63,7 @@ export function HuddleCard({ huddle }: { huddle: HuddleListItem }) {
               </span>
             ) : (
               <span
-                className="inline-flex h-5 px-1.5 rounded-md text-[10px] uppercase tracking-wider"
+                className="inline-flex h-5 px-1.5 rounded-md text-[10px] uppercase tracking-wider items-center"
                 style={{
                   backgroundColor: status.bg,
                   color: status.fg,
@@ -75,7 +78,7 @@ export function HuddleCard({ huddle }: { huddle: HuddleListItem }) {
 
           {huddle.description && (
             <p
-              className="text-[13px] text-[#6B7280] mb-2 line-clamp-1"
+              className="text-[13px] text-[#6B7280] mb-2 line-clamp-1 leading-relaxed"
               style={{ fontFamily: "var(--font-source-sans)" }}
             >
               {huddle.description}
@@ -87,11 +90,12 @@ export function HuddleCard({ huddle }: { huddle: HuddleListItem }) {
             style={{ fontFamily: "var(--font-source-sans)" }}
           >
             {huddle.scheduled_start && (
-              <span className="inline-flex items-center gap-1">
-                <Calendar className="size-3" />
+              <span className="inline-flex items-center gap-1 group-hover:text-[#2D333A] transition-colors">
+                <Calendar className="size-3 text-[#94A3B8]" />
                 {formatWhen(huddle.scheduled_start, huddle.scheduled_end)}
               </span>
             )}
+            
             <MeetingSourceBadge
               source={huddle.meeting_source}
               detail={
@@ -102,17 +106,18 @@ export function HuddleCard({ huddle }: { huddle: HuddleListItem }) {
                     : null
               }
             />
-            <span className="inline-flex items-center gap-1">
-              <Users className="size-3" />
+
+            <span className="inline-flex items-center gap-1 group-hover:text-[#2D333A] transition-colors">
+              <Users className="size-3 text-[#94A3B8]" />
               {huddle.attendee_count}
             </span>
-            <span className="inline-flex items-center gap-1">
-              <ListChecks className="size-3" />
-              {huddle.agenda_count} agenda
+            <span className="inline-flex items-center gap-1 group-hover:text-[#2D333A] transition-colors">
+              <ListChecks className="size-3 text-[#94A3B8]" />
+              {huddle.agenda_count} <span className="hidden sm:inline">agenda</span>
             </span>
-            <span className="inline-flex items-center gap-1">
-              <CheckSquare className="size-3" />
-              {huddle.action_item_count} actions
+            <span className="inline-flex items-center gap-1 group-hover:text-[#2D333A] transition-colors">
+              <CheckSquare className="size-3 text-[#94A3B8]" />
+              {huddle.action_item_count} <span className="hidden sm:inline">actions</span>
             </span>
           </div>
         </div>
