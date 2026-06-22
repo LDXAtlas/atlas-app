@@ -696,9 +696,9 @@ function TaskGroup({
               {/* Add Task Button (Opens Modal) */}
               <button
                 onClick={onAddNewTask}
-                className="w-full flex items-center gap-2 px-4 py-2 mt-0.5 rounded-xl text-[#9CA3AF] hover:text-[#5CE1A5] transition-colors group/add"
+                className="w-full flex items-center gap-2 px-4 py-2 mt-0.5 rounded-xl text-[#9CA3AF] hover:text-[#3B82F6] transition-colors group/add"
               >
-                <div className="size-[22px] rounded-full border-2 border-dashed border-[#E5E7EB] group-hover/add:border-[#5CE1A5]/40 flex items-center justify-center flex-shrink-0 transition-colors">
+                <div className="size-[22px] rounded-full border-2 border-dashed border-[#3B82F6] group-hover/add:border-[#3B82F6]/40 flex items-center justify-center flex-shrink-0 transition-colors">
                   <Plus className="size-3" />
                 </div>
                 <span
@@ -1426,7 +1426,7 @@ export function TasksView({
               setEditingTask(null);
               setShowModal(true);
             }}
-            className="flex items-center gap-2 px-6 py-3 bg-[#5CE1A5] text-white rounded-xl text-[14px] hover:bg-[#4CD99A] active:scale-[0.98] transition-all shadow-lg shadow-[#5CE1A5]/20"
+            className="flex items-center gap-2 px-6 py-3 bg-[#3B82F6] text-white rounded-xl text-[14px] hover:bg-[#0859CC] active:scale-[0.98] transition-all shadow-lg shadow-[#3B82F6]/20"
             style={{ fontWeight: 600 }}
           >
             <Plus className="size-4" />
@@ -1563,7 +1563,7 @@ export function TasksView({
                   setEditingTask(null);
                   setShowModal(true);
                 }}
-                className="mt-6 flex items-center gap-2 px-5 py-2.5 bg-[#5CE1A5] text-white rounded-xl text-[14px] hover:bg-[#4CD99A] transition-all"
+                className="mt-6 flex items-center gap-2 px-5 py-2.5 bg-[#3B82F6] text-white rounded-xl text-[14px] hover:bg-[#0859CC] transition-all"
                 style={{ fontWeight: 600 }}
               >
                 <Plus className="size-4" />

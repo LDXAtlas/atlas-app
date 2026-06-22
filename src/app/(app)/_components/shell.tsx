@@ -310,10 +310,15 @@ export function AppShell({
 
   useEffect(() => {
     const active = getModuleForPath(pathname);
-    if (active) {
+    
+    if (collapsed) {
+      // If the sidebar is collapsed, navigation should close any open pop-outs
+      setOpenModules(new Set());
+    } else if (active) {
+      // If the sidebar is open, auto-expand the accordion for the current section
       setOpenModules(new Set([active]));
     }
-  }, [pathname]);
+  }, [pathname, collapsed]);
 
   const toggleModule = (moduleId: string) => {
     setOpenModules((prev) => {

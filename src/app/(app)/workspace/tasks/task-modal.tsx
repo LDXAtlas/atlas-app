@@ -457,7 +457,7 @@ export function TaskModal({
                   <button
                     onClick={handleSubmit}
                     disabled={isPending}
-                    className="flex-1 px-5 py-3 bg-[#5CE1A5] text-white rounded-xl text-[14px] shadow-lg shadow-[#5CE1A5]/20 hover:bg-[#4CD99A] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex-1 px-5 py-3 bg-[#3B82F6] text-white rounded-xl text-[14px] shadow-lg shadow-[#3B82F6]/20 hover:bg-[#0859CC] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     style={{ fontWeight: 600 }}
                   >
                     {isPending

@@ -240,7 +240,7 @@ export function AnnouncementsView({
           <div className="mb-1">
             <button
               onClick={() => { setEditingAnnouncement(null); setShowCompose(true); }}
-              className="flex items-center gap-2 px-6 py-3 bg-[#2D333A] text-white rounded-xl text-[14px] hover:bg-[#1A1F24] transition-all"
+              className="flex items-center gap-2 px-6 py-3 bg-[#3B82F6] text-white rounded-xl text-[14px] hover:bg-[#1A1F24] transition-all"
               style={{ fontWeight: 600 }}
             >
               <Plus className="size-4" />

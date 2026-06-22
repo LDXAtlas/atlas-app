@@ -41,8 +41,7 @@ export function HuddleList({
 
   return (
     <div className="min-h-screen w-full bg-[#F8FAFC]">
-      {/* Corner-aligned header with no white box */}
-      <header className="w-full px-5 md:px-10 lg:px-12 pt-8 md:pt-12 pb-6 flex flex-col md:flex-row md:items-end justify-between gap-5">
+      <header className="w-full px-5 md:px-10 lg:px-12 pt-8 md:pt-12 pb-6 flex flex-col md:flex-row md:items-end justify-between gap-5 border-b border-[#E5E7EB]">
         <div>
           <h1
             className="text-2xl text-[#0F172A]"
@@ -61,7 +60,7 @@ export function HuddleList({
           <button
             type="button"
             onClick={() => setCreateOpen(true)}
-            className="w-full md:w-auto h-9 px-3.5 rounded-xl bg-[#5CE1A5] text-white text-[13px] font-semibold flex items-center justify-center gap-1.5 hover:bg-[#4DD395] hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 active:shadow-none transition-all duration-200"
+            className="w-full md:w-auto h-9 px-3.5 rounded-xl bg-[#3B82F6] text-white text-[13px] font-semibold flex items-center justify-center gap-1.5 hover:bg-[#2563EB] hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 active:shadow-none transition-all duration-200"
             style={{ fontFamily: "var(--font-poppins)" }}
           >
             <Plus className="size-3.5" />
@@ -71,63 +70,64 @@ export function HuddleList({
       </header>
 
       {/* Main Content Area */}
-      <div className="w-full px-5 md:px-10 lg:px-12 py-4">
-        {/* Horizontally scrollable on mobile without showing scrollbars */}
-        <nav
-          className="flex items-center gap-2 mb-6 overflow-x-auto pb-2 -mx-2 px-2 md:mx-0 md:px-0"
-          style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
-        >
-          <style>{`nav::-webkit-scrollbar { display: none; }`}</style>
-          <FilterTab
-            active={filter === "upcoming"}
-            onClick={() => setFilter("upcoming")}
+      <div className="w-full px-5 md:px-10 lg:px-12 py-6">
+        <div className="max-w-4xl mx-auto w-full">
+          <nav
+            className="flex items-center justify-center gap-2 mb-6 overflow-x-auto pb-2 -mx-2 px-2 md:mx-0 md:px-0"
+            style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
           >
-            Upcoming
-          </FilterTab>
-          <FilterTab
-            active={filter === "past"}
-            onClick={() => setFilter("past")}
-          >
-            Past
-          </FilterTab>
-          <FilterTab active={filter === "all"} onClick={() => setFilter("all")}>
-            All
-          </FilterTab>
-        </nav>
+            <style>{`nav::-webkit-scrollbar { display: none; }`}</style>
+            <FilterTab
+              active={filter === "upcoming"}
+              onClick={() => setFilter("upcoming")}
+            >
+              Upcoming
+            </FilterTab>
+            <FilterTab
+              active={filter === "past"}
+              onClick={() => setFilter("past")}
+            >
+              Past
+            </FilterTab>
+            <FilterTab active={filter === "all"} onClick={() => setFilter("all")}>
+              All
+            </FilterTab>
+          </nav>
 
-        <div className="max-w-5xl">
-          {loading ? (
-            <div className="flex flex-col items-center justify-center py-20 opacity-70">
-              <svg 
-                className="size-6 text-[#5CE1A5] animate-spin mb-3" 
-                xmlns="http://www.w3.org/2000/svg" 
-                fill="none" 
-                viewBox="0 0 24 24"
-              >
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-              <p
-                className="text-[13px] text-[#9CA3AF]"
-                style={{ fontFamily: "var(--font-source-sans)" }}
-              >
-                Loading huddles…
-              </p>
-            </div>
-          ) : items.length === 0 ? (
-            <EmptyState canCreate={canCreate} onCreate={() => setCreateOpen(true)} />
-          ) : (
-            <ul className="space-y-3">
-              {items.map((h) => (
-                <li
-                  key={h.id}
-                  className="group transform transition-all duration-300 hover:-translate-y-1"
+          <div className="w-full">
+            {loading ? (
+              <div className="flex flex-col items-center justify-center py-20 opacity-70">
+                <svg 
+                  className="size-6 text-[#3B82F6] animate-spin mb-3" 
+                  xmlns="http://www.w3.org/2000/svg" 
+                  fill="none" 
+                  viewBox="0 0 24 24"
                 >
-                  <HuddleCard huddle={h} />
-                </li>
-              ))}
-            </ul>
-          )}
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <p
+                  className="text-[13px] text-[#9CA3AF]"
+                  style={{ fontFamily: "var(--font-source-sans)" }}
+                >
+                  Loading huddles…
+                </p>
+              </div>
+            ) : items.length === 0 ? (
+              <EmptyState canCreate={canCreate} onCreate={() => setCreateOpen(true)} />
+            ) : (
+              <ul className="space-y-3">
+                {items.map((h) => (
+                  <li
+                    key={h.id}
+                    className="group transform transition-all duration-300 hover:-translate-y-1"
+                  >
+                    <HuddleCard huddle={h} />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
       </div>
 
@@ -156,7 +156,7 @@ function FilterTab({
       onClick={onClick}
       className={`h-8 px-3 rounded-lg text-[12.5px] whitespace-nowrap transition-all duration-200 ${
         active
-          ? "bg-[#5CE1A5]/15 text-[#059669] shadow-sm"
+          ? "bg-[#3B82F6]/15 text-[#2563EB] shadow-sm"
           : "text-[#6B7280] hover:bg-white hover:text-[#2D333A] hover:shadow-sm border border-transparent hover:border-[#E5E7EB]"
       }`}
       style={{
@@ -177,12 +177,12 @@ function EmptyState({
   onCreate: () => void;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center text-center py-16 px-6 border-2 border-dashed border-[#E5E7EB] rounded-3xl transition-colors duration-300 hover:border-[#5CE1A5]/40 hover:bg-[#F8FAFC]/50">
+    <div className="flex flex-col items-center justify-center text-center py-16 px-6 border-2 border-dashed border-[#E5E7EB] rounded-3xl transition-colors duration-300 hover:border-[#3B82F6]/30 hover:bg-[#F8FAFC]/50">
       <div
         className="size-12 rounded-2xl flex items-center justify-center mb-3 transition-transform duration-300 hover:scale-110"
-        style={{ backgroundColor: "rgba(92, 225, 165, 0.10)" }}
+        style={{ backgroundColor: "rgba(59, 130, 246, 0.10)" }}
       >
-        <Users className="size-5 text-[#5CE1A5]" />
+        <Users className="size-5 text-[#3B82F6]" />
       </div>
       <h2
         className="text-[16px] text-[#0F172A]"
@@ -201,7 +201,7 @@ function EmptyState({
         <button
           type="button"
           onClick={onCreate}
-          className="h-9 px-4 rounded-xl bg-[#5CE1A5] text-white text-[13px] font-semibold inline-flex items-center gap-1.5 hover:bg-[#4DD395] hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200"
+          className="h-9 px-4 rounded-xl bg-[#3B82F6] text-white text-[13px] font-semibold inline-flex items-center gap-1.5 hover:bg-[#2563EB] hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200"
           style={{ fontFamily: "var(--font-poppins)" }}
         >
           <Plus className="size-3.5" />

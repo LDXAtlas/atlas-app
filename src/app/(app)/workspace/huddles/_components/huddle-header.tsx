@@ -31,7 +31,7 @@ const STATUS_LABEL: Record<HuddleDetail["status"], string> = {
   archived: "Archived",
 };
 const STATUS_COLOR: Record<HuddleDetail["status"], { bg: string; fg: string }> = {
-  scheduled: { bg: "#F3F4F6", fg: "#6B7280" },
+  scheduled: { bg: "#3B82F6", fg: "#FFFFFF" },
   in_progress: { bg: "#D1FAE5", fg: "#059669" },
   completed: { bg: "#DBEAFE", fg: "#2563EB" },
   processing: { bg: "#FEF3C7", fg: "#D97706" },
@@ -72,10 +72,6 @@ export function HuddleHeader({
 
   const [toast, setToast] = useState<string | null>(null);
 
-  // Optimistic lifecycle transition. We flip status (and the relevant
-  // actual_* timestamp) immediately so the button ladder + the
-  // "in progress" banner update in the same paint, then run the server
-  // action. On failure we revert and surface a toast.
   function lifecycle(
     nextStatus: HuddleStatus,
     timestampField: "actual_start" | "actual_end" | null,
@@ -100,20 +96,15 @@ export function HuddleHeader({
         setTimeout(() => setToast(null), 3500);
         return;
       }
-      // Quietly refresh so any server-side recalculation (e.g.
-      // related-task badges) flows back without a full reload.
       router.refresh();
     });
   }
 
   return (
-    <header className="bg-white border-b border-[#E5E7EB] px-5 py-4">
-      {/* In-progress banner — pulses gently so it's obvious the huddle
-          is live. Renders above the header content so it survives any
-          future header redesign. */}
+    <div className="w-full">
       {huddle.status === "in_progress" && (
         <div
-          className="-mx-5 -mt-4 mb-4 px-5 py-2 bg-[#5CE1A5]/10 border-b border-[#5CE1A5]/30 flex items-center gap-2"
+          className="w-full px-5 md:px-10 lg:px-12 py-2 bg-[#5CE1A5]/10 border-b border-[#5CE1A5]/30 flex items-center gap-2"
           role="status"
           aria-live="polite"
         >
@@ -132,9 +123,10 @@ export function HuddleHeader({
           </span>
         </div>
       )}
+
       {toast && (
         <div
-          className="-mx-5 -mt-4 mb-4 px-5 py-2 bg-red-50 border-b border-red-200"
+          className="w-full px-5 md:px-10 lg:px-12 py-2 bg-red-50 border-b border-red-200"
           role="alert"
         >
           <p
@@ -145,12 +137,13 @@ export function HuddleHeader({
           </p>
         </div>
       )}
-      <div className="max-w-5xl mx-auto">
+
+      <header className="w-full px-5 md:px-10 lg:px-12 pt-8 md:pt-12 pb-6">
         <div className="flex items-center gap-3 mb-3">
           <button
             type="button"
             onClick={() => router.push("/workspace/huddles")}
-            className="size-9 rounded-xl flex items-center justify-center text-[#6B7280] hover:text-[#2D333A] hover:bg-[#F4F5F7]"
+            className="size-9 rounded-xl flex items-center justify-center text-[#6B7280] hover:text-[#2D333A] hover:bg-[#E5E7EB]"
             aria-label="Back to huddles"
           >
             <ArrowLeft className="size-4" />
@@ -162,7 +155,7 @@ export function HuddleHeader({
             Huddles
           </span>
           <span
-            className="inline-flex h-5 px-1.5 rounded-md text-[10px] uppercase tracking-wider"
+            className="inline-flex h-5 px-1.5 rounded-md text-[10px] uppercase tracking-wider items-center"
             style={{
               backgroundColor: status.bg,
               color: status.fg,
@@ -189,15 +182,15 @@ export function HuddleHeader({
                     setEditingTitle(false);
                   }
                 }}
-                className="w-full text-2xl text-[#0F172A] bg-white border border-[#5CE1A5] rounded-xl px-3 py-1.5 outline-none"
+                className="w-full text-2xl md:text-3xl lg:text-4xl text-[#0F172A] bg-white border border-[#5CE1A5] rounded-xl px-3 py-1.5 outline-none"
                 style={{ fontFamily: "var(--font-poppins)", fontWeight: 700 }}
               />
             ) : (
               <h1
                 onClick={() => huddle.viewer_can_manage && setEditingTitle(true)}
-                className={`text-2xl text-[#0F172A] leading-tight ${
+                className={`text-2xl md:text-3xl lg:text-4xl text-[#0F172A] tracking-tight leading-tight ${
                   huddle.viewer_can_manage
-                    ? "cursor-text hover:bg-[#F8FAFC] rounded-xl -mx-2 px-2 py-1"
+                    ? "cursor-text hover:bg-black/5 rounded-xl -mx-2 px-2 py-1 transition-colors"
                     : ""
                 }`}
                 style={{ fontFamily: "var(--font-poppins)", fontWeight: 700 }}
@@ -207,12 +200,12 @@ export function HuddleHeader({
             )}
 
             <div
-              className="flex items-center gap-3 flex-wrap mt-2 text-[12.5px] text-[#6B7280]"
+              className="flex items-center gap-3 flex-wrap mt-3 text-[12.5px] md:text-[13px] text-[#6B7280]"
               style={{ fontFamily: "var(--font-source-sans)" }}
             >
               {huddle.scheduled_start && (
-                <span className="inline-flex items-center gap-1">
-                  <Calendar className="size-3.5" />
+                <span className="inline-flex items-center gap-1.5">
+                  <Calendar className="size-3.5 text-[#94A3B8]" />
                   {formatWhen(huddle.scheduled_start, huddle.scheduled_end)}
                 </span>
               )}
@@ -236,10 +229,10 @@ export function HuddleHeader({
                 href={huddle.external_meeting_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="h-9 px-3.5 rounded-xl bg-[#3B82F6] text-white text-[13px] font-semibold inline-flex items-center gap-1.5 hover:bg-[#2563EB]"
+                className="h-10 px-4 rounded-xl bg-[#3B82F6] text-white text-[13.5px] font-semibold inline-flex items-center gap-2 hover:bg-[#2563EB] shadow-sm hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200"
                 style={{ fontFamily: "var(--font-poppins)" }}
               >
-                <ExternalLink className="size-3.5" />
+                <ExternalLink className="size-4" />
                 Join Meeting
               </a>
             )}
@@ -254,10 +247,10 @@ export function HuddleHeader({
                       )
                     }
                     disabled={pending}
-                    className="h-9 px-3.5 rounded-xl bg-[#5CE1A5] text-white text-[13px] font-semibold inline-flex items-center gap-1.5 hover:bg-[#4DD395] disabled:opacity-50"
+                    className="h-10 px-4 rounded-xl bg-[#3B82F6] text-white text-[13.5px] font-semibold inline-flex items-center gap-2 hover:bg-[#2563EB] shadow-sm hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 disabled:opacity-50"
                     style={{ fontFamily: "var(--font-poppins)" }}
                   >
-                    <Play className="size-3.5" />
+                    <Play className="size-4" />
                     Start
                   </button>
                 )}
@@ -270,10 +263,10 @@ export function HuddleHeader({
                       )
                     }
                     disabled={pending}
-                    className="h-9 px-3.5 rounded-xl bg-[#F59E0B] text-white text-[13px] font-semibold inline-flex items-center gap-1.5 hover:bg-[#D97706] disabled:opacity-50"
+                    className="h-10 px-4 rounded-xl bg-[#F59E0B] text-white text-[13.5px] font-semibold inline-flex items-center gap-2 hover:bg-[#D97706] shadow-sm hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 disabled:opacity-50"
                     style={{ fontFamily: "var(--font-poppins)" }}
                   >
-                    <StopCircle className="size-3.5" />
+                    <StopCircle className="size-4" />
                     End
                   </button>
                 )}
@@ -286,37 +279,37 @@ export function HuddleHeader({
                       )
                     }
                     disabled={pending}
-                    className="h-9 px-3.5 rounded-xl bg-[#0F172A] text-white text-[13px] font-semibold inline-flex items-center gap-1.5 hover:bg-[#1E293B] disabled:opacity-50"
+                    className="h-10 px-4 rounded-xl bg-[#0F172A] text-white text-[13.5px] font-semibold inline-flex items-center gap-2 hover:bg-[#1E293B] shadow-sm hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 disabled:opacity-50"
                     style={{ fontFamily: "var(--font-poppins)" }}
                   >
-                    <Lock className="size-3.5" />
+                    <Lock className="size-4" />
                     Finalize
                   </button>
                 )}
                 {huddle.status === "archived" && (
                   <span
-                    className="h-9 px-3 rounded-xl bg-[#F3F4F6] text-[#6B7280] text-[12px] inline-flex items-center gap-1.5"
+                    className="h-10 px-3.5 rounded-xl bg-[#E2E8F0] text-[#475569] text-[13px] inline-flex items-center gap-2"
                     style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}
                   >
-                    <CheckCircle2 className="size-3.5" />
+                    <CheckCircle2 className="size-4" />
                     Archived
                   </span>
                 )}
                 <button
                   type="button"
                   onClick={() => onOpenSettings?.()}
-                  className="size-9 rounded-xl flex items-center justify-center text-[#9CA3AF] hover:text-[#2D333A] hover:bg-[#F4F5F7]"
+                  className="size-10 rounded-xl flex items-center justify-center text-[#9CA3AF] hover:text-[#2D333A] hover:bg-[#E5E7EB] transition-colors"
                   aria-label="Huddle settings"
                   title="Settings"
                 >
-                  <Settings className="size-3.5" />
+                  <Settings className="size-4" />
                 </button>
               </>
             )}
           </div>
         </div>
-      </div>
-    </header>
+      </header>
+    </div>
   );
 }
 

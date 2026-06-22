@@ -15,7 +15,7 @@ const STATUS_LABEL: Record<HuddleListItem["status"], string> = {
 };
 
 const STATUS_COLOR: Record<HuddleListItem["status"], { bg: string; fg: string }> = {
-  scheduled: { bg: "#E2E8F0", fg: "#475569" }, // Adjusted slightly so it stands out without the white card background
+  scheduled: { bg: "#3B82F6", fg: "#FFFFFF" },
   in_progress: { bg: "#D1FAE5", fg: "#059669" },
   completed: { bg: "#DBEAFE", fg: "#2563EB" },
   processing: { bg: "#FEF3C7", fg: "#D97706" },
@@ -30,14 +30,13 @@ export function HuddleCard({ huddle }: { huddle: HuddleListItem }) {
       href={`/workspace/huddles/${huddle.id}`}
       className="block bg-transparent rounded-2xl px-4 py-3.5 hover:bg-black/[0.02] transition-all duration-300 group relative overflow-hidden"
     >
-      {/* Subtle left border accent on hover */}
-      <div className="absolute left-0 top-0 bottom-0 w-1 bg-[#5CE1A5] opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+      <div className="absolute left-0 top-0 bottom-0 w-1 bg-[#3B82F6] opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
 
       <div className="flex items-start gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1.5 flex-wrap">
             <h3
-              className="text-[15px] text-[#0F172A] truncate group-hover:text-[#059669] transition-colors duration-200"
+              className="text-[15px] text-[#0F172A] truncate group-hover:text-[#2563EB] transition-colors duration-200"
               style={{
                 fontFamily: "var(--font-poppins)",
                 fontWeight: 600,
