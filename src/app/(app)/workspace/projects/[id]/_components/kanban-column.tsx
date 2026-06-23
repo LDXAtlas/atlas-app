@@ -56,7 +56,6 @@ export function KanbanColumn({
 
   const cardIds = column.cards.map((c) => c.id);
 
-  // ================= LIST VIEW LAYOUT =================
   if (viewMode === "list") {
     return (
       <div ref={isOverlay ? undefined : setNodeRef} style={style} className="w-full flex flex-col mb-8" data-column-id={column.id}>
@@ -70,13 +69,13 @@ export function KanbanColumn({
           <h3 className="text-[15px] text-[#0F172A]" style={{ fontFamily: "var(--font-poppins)", fontWeight: 700 }}>{column.name}</h3>
           <span className="text-[11px] text-[#94A3B8] bg-[#F1F5F9] px-2 h-5 rounded-full flex items-center justify-center font-semibold tabular-nums">{column.cards.length}</span>
           {canEdit && !isOverlay && (
-            <button onClick={() => onAddCard(column.id)} className="ml-2 flex items-center gap-1 text-[12px] text-[#9CA3AF] hover:text-[#5CE1A5] opacity-0 group-hover/header:opacity-100 transition-all font-semibold">
+            <button onClick={() => onAddCard(column.id)} className="ml-2 flex items-center gap-1 text-[12px] text-[#9CA3AF] hover:text-[#3B82F6] opacity-0 group-hover/header:opacity-100 transition-all font-semibold">
               <Plus className="size-3.5"/> Add task
             </button>
           )}
         </div>
         
-        <div ref={setDropRef} className="flex flex-col bg-white border border-[#E5E7EB] rounded-2xl overflow-hidden shadow-sm" style={{ backgroundColor: isOver ? "rgba(92, 225, 165, 0.04)" : "white", minHeight: 40 }}>
+        <div ref={setDropRef} className="flex flex-col bg-white border border-[#E5E7EB] rounded-2xl overflow-hidden shadow-sm" style={{ backgroundColor: isOver ? "rgba(59, 130, 246, 0.04)" : "white", minHeight: 40 }}>
           <SortableContext items={cardIds} strategy={verticalListSortingStrategy}>
             <AnimatePresence initial={false}>
               {column.cards.map((card, index) => (
@@ -94,7 +93,6 @@ export function KanbanColumn({
     );
   }
 
-  // ================= GRID VIEW LAYOUT =================
   return (
     <div ref={isOverlay ? undefined : setNodeRef} style={style} className="shrink-0 w-[320px] rounded-2xl border border-[#E5E7EB] bg-[#F8FAFC] flex flex-col transition-all" data-column-id={column.id}>
       <div className="flex items-center gap-2 px-4 pt-4 pb-3 group/header">
@@ -103,13 +101,13 @@ export function KanbanColumn({
         ) : (<span className="size-4 shrink-0" aria-hidden />)}
         <span className="size-2.5 rounded-full shrink-0" style={{ backgroundColor: column.color }} aria-hidden />
         {renaming ? (
-          <input autoFocus value={draftName} onChange={(e) => setDraftName(e.target.value)} onBlur={() => { const trimmed = draftName.trim(); if (trimmed && trimmed !== column.name) onRename(column.id, trimmed); else setDraftName(column.name); setRenaming(false); }} onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); else if (e.key === "Escape") { setDraftName(column.name); setRenaming(false); } }} className="flex-1 h-7 px-1.5 -mx-1 text-[15px] text-[#0F172A] bg-white border border-[#5CE1A5] rounded outline-none" style={{ fontFamily: "var(--font-poppins)", fontWeight: 700 }} />
+          <input autoFocus value={draftName} onChange={(e) => setDraftName(e.target.value)} onBlur={() => { const trimmed = draftName.trim(); if (trimmed && trimmed !== column.name) onRename(column.id, trimmed); else setDraftName(column.name); setRenaming(false); }} onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); else if (e.key === "Escape") { setDraftName(column.name); setRenaming(false); } }} className="flex-1 h-7 px-1.5 -mx-1 text-[15px] text-[#0F172A] bg-white border border-[#3B82F6] rounded outline-none" style={{ fontFamily: "var(--font-poppins)", fontWeight: 700 }} />
         ) : (
           <h3 className="flex-1 text-[15px] text-[#0F172A] truncate select-none" style={{ fontFamily: "var(--font-poppins)", fontWeight: 700 }} title={column.name}>{column.name}</h3>
         )}
         <span className="text-[12px] text-[#94A3B8] tabular-nums shrink-0" style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}>{column.cards.length}</span>
         {canEdit && !isOverlay && (
-          <button type="button" onClick={() => onAddCard(column.id)} className="size-7 rounded-md flex items-center justify-center text-[#475569] hover:text-[#5CE1A5] hover:bg-white transition-colors"><Plus className="size-3.5" /></button>
+          <button type="button" onClick={() => onAddCard(column.id)} className="size-7 rounded-md flex items-center justify-center text-[#475569] hover:text-[#3B82F6] hover:bg-white transition-colors"><Plus className="size-3.5" /></button>
         )}
         {canEdit && !isOverlay && (
           <div ref={menuRef} className="relative">
@@ -128,7 +126,7 @@ export function KanbanColumn({
         )}
       </div>
 
-      <div ref={setDropRef} className="px-4 pb-4 flex-1 transition-colors rounded-b-2xl" style={{ backgroundColor: isOver ? "rgba(92, 225, 165, 0.06)" : "transparent", minHeight: 40 }}>
+      <div ref={setDropRef} className="px-4 pb-4 flex-1 transition-colors rounded-b-2xl" style={{ backgroundColor: isOver ? "rgba(59, 130, 246, 0.06)" : "transparent", minHeight: 40 }}>
         <SortableContext items={cardIds} strategy={verticalListSortingStrategy}>
           <div className="flex flex-col gap-3">
             <AnimatePresence initial={false}>
@@ -142,7 +140,7 @@ export function KanbanColumn({
         </SortableContext>
         {column.cards.length === 0 && <p className="text-[12px] text-[#94A3B8] px-1 py-3 text-center">No cards yet</p>}
         {canEdit && (
-          <button type="button" onClick={() => onAddCard(column.id)} className="mt-3 w-full flex items-center justify-center gap-1.5 py-2.5 rounded-lg border border-dashed border-[#CBD5E1] text-[12px] text-[#64748B] hover:border-[#5CE1A5] hover:text-[#5CE1A5] hover:bg-white transition-colors">
+          <button type="button" onClick={() => onAddCard(column.id)} className="mt-3 w-full flex items-center justify-center gap-1.5 py-2.5 rounded-lg border border-dashed border-[#CBD5E1] text-[12px] text-[#64748B] hover:border-[#3B82F6] hover:text-[#3B82F6] hover:bg-white transition-colors">
             <Plus className="size-3.5" /> Add card
           </button>
         )}

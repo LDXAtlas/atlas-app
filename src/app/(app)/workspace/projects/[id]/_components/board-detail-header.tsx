@@ -55,8 +55,8 @@ interface BoardDetailHeaderProps {
   setActiveAssigneeTop: (id: string | null) => void;
   viewMode: "grid" | "list";
   setViewMode: (v: "grid" | "list") => void;
-  activeTab: "board" | "overview"; // <-- ADD THIS
-  setActiveTab: (v: "board" | "overview") => void; // <-- ADD THIS
+  activeTab: "board" | "overview";
+  setActiveTab: (v: "board" | "overview") => void;
   onAddColumn: () => void;
   onNewTask: () => void;
 }
@@ -85,7 +85,6 @@ export function BoardDetailHeader({
 
   const [starred, setStarred] = useState(true);
 
-  // ── Add Member modal state ──────────────────────────────────
   const [memberQuery, setMemberQuery] = useState("");
   const [memberResults, setMemberResults] = useState<ProfileSearchResult[]>([]);
   const [memberSearching, setMemberSearching] = useState(false);
@@ -93,7 +92,6 @@ export function BoardDetailHeader({
   const [justAdded, setJustAdded] = useState<ProfileSearchResult[]>([]);
   const [addError, setAddError] = useState<string | null>(null);
 
-  // Reset modal state whenever it opens.
   useEffect(() => {
     if (!addMemberOpen) return;
     setMemberQuery("");
@@ -102,17 +100,14 @@ export function BoardDetailHeader({
     setAddError(null);
   }, [addMemberOpen]);
 
-  // Auto-dismiss the add error.
   useEffect(() => {
     if (!addError) return;
     const id = setTimeout(() => setAddError(null), 3500);
     return () => clearTimeout(id);
   }, [addError]);
 
-  // Debounced search. Fires 300ms after the user stops typing.
   useEffect(() => {
     if (!addMemberOpen) return;
-    // Empty input: show an empty prompt area, don't hit the server.
     if (!memberQuery.trim()) {
       setMemberResults([]);
       setMemberSearching(false);
@@ -121,8 +116,6 @@ export function BoardDetailHeader({
     setMemberSearching(true);
     const handle = setTimeout(async () => {
       const result = await searchProfiles(memberQuery, board.id);
-      // Hide anyone we just added from the visible results so the list
-      // updates instantly even before the parent re-fetches.
       const justAddedIds = new Set(justAdded.map((p) => p.id));
       setMemberResults(
         (result.data || []).filter((p) => !justAddedIds.has(p.id)),
@@ -141,19 +134,15 @@ export function BoardDetailHeader({
       setAddError(result.error || "Couldn't add that person. Try again.");
       return;
     }
-    // Move to "just added" so the modal can stay open and add more.
     setJustAdded((prev) => [profile, ...prev]);
     setMemberResults((prev) => prev.filter((p) => p.id !== profile.id));
   }
 
-  // Refresh the parent board view when the modal closes so the new avatars
-  // appear in the header stack and member panel.
   function closeAddMember() {
     setAddMemberOpen(false);
     if (justAdded.length > 0) router.refresh();
   }
 
-  // Close menus when clicking outside
   useEffect(() => {
     function onDoc(e: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
@@ -194,7 +183,6 @@ export function BoardDetailHeader({
     });
   }
 
-  // ─── Progress data ─────────────────────────────────────────
   const { totalCards, doneCards, percent, segments } = useMemo(() => {
     let total = 0;
     let done = 0;
@@ -228,7 +216,9 @@ export function BoardDetailHeader({
 
   return (
     <header className="flex flex-col gap-5 mb-6">
-      <WorkspacePill />
+      <div className="self-start">
+        <WorkspacePill />
+      </div>
 
       <div className="flex items-start gap-4">
         <Link
@@ -291,9 +281,9 @@ export function BoardDetailHeader({
             className="hidden md:inline-flex items-center gap-1.5 h-9 px-3.5 rounded-full border text-[12px] font-semibold transition-colors"
             style={{
               fontFamily: "var(--font-poppins)",
-              backgroundColor: "#F0FDF4",
-              color: "#059669",
-              borderColor: "rgba(92, 225, 165, 0.4)",
+              backgroundColor: "#EFF6FF",
+              color: "#3B82F6",
+              borderColor: "rgba(59, 130, 246, 0.4)",
             }}
           >
             <Sparkles className="size-3.5" />
@@ -308,7 +298,7 @@ export function BoardDetailHeader({
                   href={`/directory/profile/${m.profile_id}`}
                   title={`${m.full_name} · ${m.role}`}
                   className="size-8 rounded-full ring-2 ring-white flex items-center justify-center text-[10px] text-white shrink-0 hover:z-10"
-                  style={{ backgroundColor: "#5CE1A5", fontFamily: "var(--font-poppins)", fontWeight: 600 }}
+                  style={{ backgroundColor: "#3B82F6", fontFamily: "var(--font-poppins)", fontWeight: 600 }}
                 >
                   {initialsOf(m.full_name)}
                 </Link>
@@ -324,12 +314,11 @@ export function BoardDetailHeader({
             </div>
           )}
 
-          {/* 1. The Add Member Button */}
           {board.viewer_can_edit && (
             <button
               type="button"
               onClick={() => setAddMemberOpen(true)}
-              className="size-8 rounded-full border-2 border-dashed border-[#CBD5E1] flex items-center justify-center text-[#94A3B8] hover:text-[#5CE1A5] hover:border-[#5CE1A5] transition-colors"
+              className="size-8 rounded-full border-2 border-dashed border-[#CBD5E1] flex items-center justify-center text-[#94A3B8] hover:text-[#3B82F6] hover:border-[#3B82F6] transition-colors"
               aria-label="Add member"
               title="Add a member"
             >
@@ -337,7 +326,6 @@ export function BoardDetailHeader({
             </button>
           )}
 
-          {/* 2. The Settings Menu Button */}
           {board.viewer_can_edit && (
             <div ref={menuRef} className="relative">
               <button
@@ -374,13 +362,10 @@ export function BoardDetailHeader({
         </div>
       </div>
 
-      {/* Action Bar: Left side tools, Right side primary actions */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
         
-        {/* LEFT SIDE: View tools */}
         <div className="flex items-center gap-3 flex-wrap">
           
-          {/* Board / Overview tabs */}
           <div className="inline-flex items-center bg-[#F1F5F9] rounded-xl p-1">
             <button
               type="button"
@@ -390,7 +375,7 @@ export function BoardDetailHeader({
                 fontFamily: "var(--font-poppins)", fontWeight: 600,
                 backgroundColor: activeTab === "board" ? "white" : "transparent",
                 boxShadow: activeTab === "board" ? "0 1px 2px rgba(15, 23, 42, 0.08)" : undefined,
-                color: activeTab === "board" ? "#5CE1A5" : "#94A3B8",
+                color: activeTab === "board" ? "#3B82F6" : "#94A3B8",
               }}
             >
               <LayoutGrid className="size-4" /> Board
@@ -403,14 +388,13 @@ export function BoardDetailHeader({
                 fontFamily: "var(--font-poppins)", fontWeight: 600,
                 backgroundColor: activeTab === "overview" ? "white" : "transparent",
                 boxShadow: activeTab === "overview" ? "0 1px 2px rgba(15, 23, 42, 0.08)" : undefined,
-                color: activeTab === "overview" ? "#0F172A" : "#94A3B8",
+                color: activeTab === "overview" ? "#3B82F6" : "#94A3B8",
               }}
             >
               <FileText className="size-4" /> Overview
             </button>
           </div>
 
-          {/* FILTER / SORT DROPDOWN */}
           <div ref={filterRef} className="relative">
             <button
               type="button"
@@ -418,15 +402,15 @@ export function BoardDetailHeader({
               className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-xl border text-[13px] font-semibold transition-colors relative"
               style={{
                 fontFamily: "var(--font-poppins)",
-                backgroundColor: hasActiveFilters ? "#F0FDF4" : "white",
-                borderColor: hasActiveFilters ? "#5CE1A5" : "#E5E7EB",
-                color: hasActiveFilters ? "#059669" : "#475569",
+                backgroundColor: hasActiveFilters ? "#EFF6FF" : "white",
+                borderColor: hasActiveFilters ? "#3B82F6" : "#E5E7EB",
+                color: hasActiveFilters ? "#2563EB" : "#475569",
               }}
             >
               <SlidersHorizontal className="size-3.5" />
               {hasActiveFilters ? "Sorted" : "Filter"}
               {hasActiveFilters && (
-                <span className="absolute -top-1 -right-1 size-2.5 bg-[#5CE1A5] rounded-full border border-white" />
+                <span className="absolute -top-1 -right-1 size-2.5 bg-[#3B82F6] rounded-full border border-white" />
               )}
             </button>
 
@@ -505,7 +489,6 @@ export function BoardDetailHeader({
             </AnimatePresence>
           </div>
 
-          {/* View toggle */}
           <div className="inline-flex items-center bg-[#F1F5F9] rounded-xl p-1">
             <button
               type="button"
@@ -526,13 +509,12 @@ export function BoardDetailHeader({
           </div>
         </div>
 
-        {/* RIGHT SIDE: Primary actions */}
         {board.viewer_can_edit && (
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={onAddColumn}
-              className="hidden md:inline-flex items-center gap-1.5 h-10 px-3.5 rounded-xl border border-[#E5E7EB] bg-white text-[13px] font-semibold text-[#475569] hover:bg-[#F4F5F7] transition-colors"
+              className="hidden md:inline-flex items-center gap-1.5 h-10 px-3.5 rounded-xl border border-[#E5E7EB] bg-white text-[13px] font-semibold text-[#475569] hover:text-[#3B82F6] hover:border-[#3B82F6] hover:bg-[#EFF6FF] transition-colors"
               style={{ fontFamily: "var(--font-poppins)" }}
             >
               <Plus className="size-3.5" /> {viewMode === "list" ? "Add Group" : "Add Column"}
@@ -540,7 +522,7 @@ export function BoardDetailHeader({
             <button
               type="button"
               onClick={onNewTask}
-              className="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-[#0F172A] text-white text-[13px] font-semibold hover:bg-[#1E293B] transition-colors"
+              className="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-[#3B82F6] text-white text-[13px] font-semibold hover:bg-[#2563EB] transition-colors"
               style={{ fontFamily: "var(--font-poppins)" }}
             >
               <Plus className="size-4" /> New Task
@@ -556,7 +538,6 @@ export function BoardDetailHeader({
         segments={segments}
       />
       
-      {/* Add Member Modal UI */}
       <AnimatePresence>
         {addMemberOpen && (
           <motion.div
@@ -598,7 +579,7 @@ export function BoardDetailHeader({
                   onChange={(e) => setMemberQuery(e.target.value)}
                   placeholder="Search name or email..."
                   autoFocus
-                  className="w-full h-10 pl-9 pr-3 rounded-xl border border-[#E5E7EB] text-[13px] text-[#2D333A] outline-none focus:border-[#5CE1A5] transition-colors"
+                  className="w-full h-10 pl-9 pr-3 rounded-xl border border-[#E5E7EB] text-[13px] text-[#2D333A] outline-none focus:border-[#3B82F6] transition-colors"
                   style={{ fontFamily: "var(--font-source-sans)" }}
                 />
               </div>
@@ -613,14 +594,12 @@ export function BoardDetailHeader({
                 </div>
               )}
 
-              {/* Just-added confirmation list — lets the user see who they've
-                  added in this session before closing the modal. */}
               {justAdded.length > 0 && (
-                <div className="mb-3 border border-[#E5E7EB] bg-[#F0FDF4] rounded-xl overflow-hidden">
+                <div className="mb-3 border border-[#E5E7EB] bg-[#EFF6FF] rounded-xl overflow-hidden">
                   {justAdded.map((p) => (
                     <div
                       key={p.id}
-                      className="flex items-center gap-3 px-3 py-2.5 border-b border-emerald-100 last:border-b-0"
+                      className="flex items-center gap-3 px-3 py-2.5 border-b border-blue-100 last:border-b-0"
                     >
                       <Avatar
                         id={p.id}
@@ -647,7 +626,7 @@ export function BoardDetailHeader({
                           {p.email}
                         </p>
                       </div>
-                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700">
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-700">
                         <Check className="size-3.5" /> Added
                       </span>
                     </div>
@@ -655,7 +634,6 @@ export function BoardDetailHeader({
                 </div>
               )}
 
-              {/* Results / states. */}
               <div className="border border-[#E5E7EB] bg-[#F8FAFC] rounded-xl overflow-hidden mb-5 max-h-[260px] overflow-y-auto">
                 {memberQuery.trim() === "" ? (
                   <div className="px-3 py-6 text-center">
@@ -738,7 +716,7 @@ export function BoardDetailHeader({
                               <Loader2 className="size-4 animate-spin text-[#9CA3AF]" />
                             ) : (
                               <span
-                                className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#059669]"
+                                className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#3B82F6]"
                                 style={{ fontFamily: "var(--font-poppins)" }}
                               >
                                 <Plus className="size-3.5" /> Add
@@ -771,23 +749,21 @@ export function BoardDetailHeader({
   );
 }
 
-// ─── Filter Option Component ───────────────────────────────
 function FilterOption({ label, icon, active, onClick }: { label: string; icon: React.ReactNode; active: boolean; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
       className="w-full text-left flex items-center justify-between px-2.5 py-1.5 rounded-lg hover:bg-[#F4F5F7] transition-colors group"
     >
-      <div className="flex items-center gap-2 text-[13px]" style={{ fontFamily: "var(--font-source-sans)", color: active ? "#059669" : "#2D333A", fontWeight: active ? 600 : 400 }}>
-        <span className={active ? "text-[#059669]" : "text-[#9CA3AF] group-hover:text-[#6B7280]"}>{icon}</span>
+      <div className="flex items-center gap-2 text-[13px]" style={{ fontFamily: "var(--font-source-sans)", color: active ? "#3B82F6" : "#2D333A", fontWeight: active ? 600 : 400 }}>
+        <span className={active ? "text-[#3B82F6]" : "text-[#9CA3AF] group-hover:text-[#6B7280]"}>{icon}</span>
         {label}
       </div>
-      {active && <Check className="size-3.5 text-[#059669]" />}
+      {active && <Check className="size-3.5 text-[#3B82F6]" />}
     </button>
   );
 }
 
-// ─── Board progress ─────────────────────────────────────────
 function BoardProgress({
   totalCards,
   doneCards,

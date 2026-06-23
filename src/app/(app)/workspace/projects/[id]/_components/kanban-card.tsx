@@ -65,8 +65,8 @@ function renderInline(text: string): React.ReactNode[] {
 
 function MentionPill({ name }: { name: string }) {
   return (
-    <span className="inline-flex items-center gap-1 px-1.5 h-5 rounded-full align-middle mx-1 bg-[#D1FAE5] text-[#059669]" style={{ fontFamily: "var(--font-poppins)", fontWeight: 600, fontSize: 11 }}>
-      <span className="size-3.5 rounded-full bg-[#059669] text-white flex items-center justify-center text-[7px] leading-none" aria-hidden>{initialsOf(name).slice(0, 2)}</span>
+    <span className="inline-flex items-center gap-1 px-1.5 h-5 rounded-full align-middle mx-1 bg-[#EFF6FF] text-[#3B82F6]" style={{ fontFamily: "var(--font-poppins)", fontWeight: 600, fontSize: 11 }}>
+      <span className="size-3.5 rounded-full bg-[#3B82F6] text-white flex items-center justify-center text-[7px] leading-none" aria-hidden>{initialsOf(name).slice(0, 2)}</span>
       @{name}
     </span>
   );
@@ -76,8 +76,14 @@ function HashtagPill({ tag }: { tag: string }) {
   return <span className="inline-flex items-center gap-1 px-1.5 h-5 rounded-full align-middle mx-1 bg-[#EDE9FE] text-[#7C3AED]" style={{ fontFamily: "var(--font-poppins)", fontWeight: 600, fontSize: 11 }}><Folder className="size-2.5" />#{tag}</span>;
 }
 
-// ─── Shared Card Body (Grid View) ────────────────────────────────────
-function GridCardBody({ card, isSelected, onEdit, onToggleComplete }: any) {
+interface GridCardBodyProps {
+  card: BoardCardWithMeta;
+  isSelected?: boolean;
+  onEdit?: (cardId: string) => void;
+  onToggleComplete?: (cardId: string, isCompleted: boolean) => void;
+}
+
+function GridCardBody({ card, isSelected, onEdit, onToggleComplete }: GridCardBodyProps) {
   const priority = priorityFor(card);
   const pStyle = PRIORITY_STYLES[priority];
   const hasFooter = card.comment_count > 0 || card.checklist_total > 0 || !!card.cover_color;
@@ -96,7 +102,7 @@ function GridCardBody({ card, isSelected, onEdit, onToggleComplete }: any) {
           <div className="ml-auto flex items-center gap-1.5">
             <div className="flex items-center -space-x-1">
               {card.assignee && (
-                <Avatar id={card.assignee.id} avatarUrl={card.assignee.avatar_url} fullName={card.assignee.full_name} size={24} ring />
+                <Avatar id={card.assignee.id} avatarUrl={card.assignee.avatar_url} fullName={card.assignee.full_name} size={24} ring={true} />
               )}
             </div>
             {onEdit && <button type="button" onClick={(e) => { e.stopPropagation(); onEdit(card.id); }} className="size-6 rounded-md flex items-center justify-center text-[#9CA3AF] hover:text-[#2D333A] hover:bg-[#F3F4F6] transition-colors"><Pencil className="size-3" /></button>}
@@ -104,11 +110,11 @@ function GridCardBody({ card, isSelected, onEdit, onToggleComplete }: any) {
         </div>
         <div className="flex items-start gap-2">
           {onToggleComplete && (
-            <button type="button" onClick={(e) => { e.stopPropagation(); onToggleComplete(card.id, !card.is_completed); }} className="mt-[3px] shrink-0 text-[#9CA3AF] hover:text-[#5CE1A5] transition-colors">
-              {card.is_completed ? <CheckCircle2 className="size-4 text-[#5CE1A5]" /> : <Circle className="size-4" />}
+            <button type="button" onClick={(e) => { e.stopPropagation(); onToggleComplete(card.id, !card.is_completed); }} className="mt-[3px] shrink-0 text-[#9CA3AF] hover:text-[#3B82F6] transition-colors">
+              {card.is_completed ? <CheckCircle2 className="size-4 text-[#3B82F6]" /> : <Circle className="size-4" />}
             </button>
           )}
-          <p className="text-[15px] leading-snug break-words line-clamp-2" style={{ fontFamily: "var(--font-poppins)", fontWeight: 700, color: isSelected ? "#059669" : "#0F172A", textDecoration: card.is_completed ? "line-through" : "none", opacity: card.is_completed ? 0.6 : 1 }}>{card.title}</p>
+          <p className="text-[15px] leading-snug break-words line-clamp-2" style={{ fontFamily: "var(--font-poppins)", fontWeight: 700, color: isSelected ? "#2563EB" : "#0F172A", textDecoration: card.is_completed ? "line-through" : "none", opacity: card.is_completed ? 0.6 : 1 }}>{card.title}</p>
         </div>
         {card.description && <p className="mt-1.5 text-[13px] text-[#6B7280] leading-relaxed line-clamp-3" style={{ fontFamily: "var(--font-source-sans)" }}>{renderInline(card.description)}</p>}
         {hasFooter && (
@@ -122,7 +128,6 @@ function GridCardBody({ card, isSelected, onEdit, onToggleComplete }: any) {
   );
 }
 
-// ─── DnD Wrapper ─────────────────────────────────────────────
 export function KanbanCard({ card, isOverlay = false, isSelected = false, viewMode = "grid", columnName, columnColor, onEdit, onToggleComplete }: KanbanCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: card.id, data: { type: "card", columnId: card.column_id, card }, disabled: isOverlay,
@@ -138,30 +143,25 @@ export function KanbanCard({ card, isOverlay = false, isSelected = false, viewMo
   if (viewMode === "list") {
     return (
       <div ref={isOverlay ? undefined : setNodeRef} style={style} className={`group flex flex-col lg:flex-row lg:items-center px-4 py-3.5 border-b border-[#F3F4F6] last:border-0 bg-white transition-colors hover:bg-[#F8FAFC] ${isOverlay ? "shadow-xl border-y rounded-xl scale-[1.02] z-50" : ""}`}>
-        {/* Left: Drag + Checkbox */}
         <div className="w-12 flex items-center gap-3 shrink-0">
           <button type="button" {...attributes} {...listeners} className="text-[#CBD5E1] hover:text-[#94A3B8] cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 transition-opacity">
             <GripVertical className="size-4" />
           </button>
-          <button onClick={() => onToggleComplete?.(card.id, !card.is_completed)} className="text-[#CBD5E1] hover:text-[#5CE1A5] transition-colors shrink-0">
-            {card.is_completed ? <div className="size-4 rounded-[4px] bg-[#5CE1A5] flex items-center justify-center"><Check className="size-3 text-white" strokeWidth={3}/></div> : <div className="size-4 rounded-[4px] border border-[#CBD5E1]" />}
+          <button onClick={() => onToggleComplete?.(card.id, !card.is_completed)} className="text-[#CBD5E1] hover:text-[#3B82F6] transition-colors shrink-0">
+            {card.is_completed ? <div className="size-4 rounded-[4px] bg-[#3B82F6] flex items-center justify-center"><Check className="size-3 text-white" strokeWidth={3}/></div> : <div className="size-4 rounded-[4px] border border-[#CBD5E1]" />}
           </button>
         </div>
         
-        {/* Priority */}
         <div className="w-[100px] shrink-0 mt-2 lg:mt-0 ml-12 lg:ml-0">
           <span className="inline-flex items-center px-2 h-5 rounded-full tracking-[0.08em] uppercase" style={{ fontFamily: "var(--font-poppins)", fontWeight: 700, fontSize: 10, backgroundColor: pStyle.bg, color: pStyle.fg }}>{pStyle.label}</span>
         </div>
         
-        {/* Task Info */}
         <div className="flex-1 min-w-0 pr-6 mt-1 lg:mt-0 ml-12 lg:ml-0 cursor-pointer" onClick={() => onEdit?.(card.id)}>
           <p className="text-[14px] leading-tight text-[#0F172A] truncate" style={{ fontFamily: "var(--font-poppins)", fontWeight: 600, textDecoration: card.is_completed ? "line-through" : "none", opacity: card.is_completed ? 0.6 : 1 }}>{card.title}</p>
           {card.description && <p className="text-[13px] text-[#6B7280] truncate mt-0.5" style={{ fontFamily: "var(--font-source-sans)" }}>{renderInline(card.description)}</p>}
         </div>
         
-        {/* Mobile Spacer */}
         <div className="flex items-center gap-4 mt-3 lg:mt-0 ml-12 lg:ml-0">
-          {/* Status Badge */}
           <div className="w-[140px] shrink-0 hidden lg:block">
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[12px] bg-[#F1F5F9] text-[#475569]" style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}>
               <span className="size-1.5 rounded-full" style={{ backgroundColor: columnColor || "#CBD5E1" }}/>
@@ -169,7 +169,6 @@ export function KanbanCard({ card, isOverlay = false, isSelected = false, viewMo
             </span>
           </div>
 
-          {/* Assignees */}
           <div className="w-[120px] shrink-0">
             {card.assignee && (
               <div className="flex items-center gap-2">
@@ -178,7 +177,6 @@ export function KanbanCard({ card, isOverlay = false, isSelected = false, viewMo
             )}
           </div>
 
-          {/* Due Date */}
           <div className="w-[100px] shrink-0">
             {card.due_date ? (
               <span className="inline-flex items-center gap-1.5 text-[12px] text-[#475569]" style={{ fontFamily: "var(--font-source-sans)", fontWeight: 600 }}>
@@ -187,7 +185,6 @@ export function KanbanCard({ card, isOverlay = false, isSelected = false, viewMo
             ) : <span className="text-[#CBD5E1]">-</span>}
           </div>
 
-          {/* Activity Icons */}
           <div className="w-[100px] shrink-0 flex items-center gap-3">
             {card.comment_count > 0 && <span className="flex items-center gap-1 text-[12px] text-[#9CA3AF]"><MessageSquare className="size-3.5" /> {card.comment_count}</span>}
             {card.checklist_total > 0 && <span className="flex items-center gap-1 text-[12px] text-[#9CA3AF]"><Paperclip className="size-3.5" /> 1</span>}
@@ -198,22 +195,26 @@ export function KanbanCard({ card, isOverlay = false, isSelected = false, viewMo
     );
   }
 
-  // Grid View Return
   return (
-    <div ref={isOverlay ? undefined : setNodeRef} {...(isOverlay ? {} : attributes)} {...(isOverlay ? {} : listeners)} style={style} className={`group relative bg-white rounded-xl overflow-hidden ${isSelected ? "border-2 border-[#5CE1A5] bg-[#F0FDF4]" : "border border-[#E5E7EB]"} ${isOverlay ? "shadow-md" : "shadow-sm hover:shadow-md hover:border-[#5CE1A5]/50 cursor-grab active:cursor-grabbing transition-[border-color,box-shadow] duration-200"}`}>
+    <div ref={isOverlay ? undefined : setNodeRef} {...(isOverlay ? {} : attributes)} {...(isOverlay ? {} : listeners)} style={style} className={`group relative bg-white rounded-xl overflow-hidden ${isSelected ? "border-2 border-[#3B82F6] bg-[#EFF6FF]" : "border border-[#E5E7EB]"} ${isOverlay ? "shadow-md" : "shadow-sm hover:shadow-md hover:border-[#3B82F6]/50 cursor-grab active:cursor-grabbing transition-[border-color,box-shadow] duration-200"}`}>
       <GridCardBody card={card} isSelected={isSelected} onEdit={onEdit} onToggleComplete={onToggleComplete} />
     </div>
   );
 }
 
-// ─── Static Wrapper ──────────────────────────────────────────
-export function StaticKanbanCard({ card, viewMode = "grid", columnName, columnColor, onEdit, onToggleComplete }: any) {
+export function StaticKanbanCard({ card, viewMode = "grid", columnName, columnColor, onEdit, onToggleComplete }: {
+  card: BoardCardWithMeta;
+  viewMode?: "grid" | "list";
+  columnName?: string;
+  columnColor?: string;
+  onEdit?: (cardId: string) => void;
+  onToggleComplete?: (cardId: string, isCompleted: boolean) => void;
+}) {
   if (viewMode === "list") {
-    // Exact same UI as the Drag version but without the drag hooks
     return (
       <div className="group flex flex-col lg:flex-row lg:items-center px-4 py-3.5 border-b border-[#F3F4F6] last:border-0 bg-white">
         <div className="w-12 flex items-center gap-3 shrink-0">
-          <div className="size-4" /> {/* Spacer for drag handle */}
+          <div className="size-4" /> 
           <div className="size-4 rounded-[4px] border border-[#CBD5E1]" />
         </div>
         <div className="w-[100px] shrink-0 mt-2 lg:mt-0 ml-12 lg:ml-0">

@@ -5,6 +5,9 @@ Ben adds entries here when he ships UI that needs a backend hook. Lucas moves th
 ---
 
 ## PENDING
+
+in project boards make sure that the row of avatars in a baord in the top right gets its info from the server so it displays the users correct profile picture
+
 1. Drag-and-Drop API Endpoint
 
 What's needed: A server action or API route to update an event's date in Supabase.

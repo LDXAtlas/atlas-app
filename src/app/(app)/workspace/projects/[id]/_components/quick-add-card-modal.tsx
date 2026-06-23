@@ -154,7 +154,7 @@ export function QuickAddCardModal({
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="What needs to be done?"
                 autoFocus
-                className="w-full h-10 px-3 rounded-xl border border-[#E5E7EB] bg-white text-[14px] text-[#2D333A] placeholder-[#9CA3AF] outline-none focus:border-[#5CE1A5] transition-colors"
+                className="w-full h-10 px-3 rounded-xl border border-[#E5E7EB] bg-white text-[14px] text-[#2D333A] placeholder-[#9CA3AF] outline-none focus:border-[#3B82F6] transition-colors"
                 style={{ fontFamily: "var(--font-source-sans)", fontWeight: 600 }}
               />
 
@@ -163,17 +163,16 @@ export function QuickAddCardModal({
                 onChange={(e) => setDescription(e.target.value)}
                 rows={3}
                 placeholder="Add a description (optional)"
-                className="w-full px-3 py-2.5 rounded-xl border border-[#E5E7EB] bg-white text-[13px] text-[#2D333A] placeholder-[#9CA3AF] outline-none focus:border-[#5CE1A5] transition-colors resize-none"
+                className="w-full px-3 py-2.5 rounded-xl border border-[#E5E7EB] bg-white text-[13px] text-[#2D333A] placeholder-[#9CA3AF] outline-none focus:border-[#3B82F6] transition-colors resize-none"
                 style={{ fontFamily: "var(--font-source-sans)" }}
               />
 
-              {/* Quick metadata */}
               <div className="grid grid-cols-2 gap-3">
                 <Field icon={<User className="size-3.5" />} label="Assignee">
                   <select
                     value={assignee}
                     onChange={(e) => setAssignee(e.target.value)}
-                    className="w-full h-9 px-2.5 rounded-lg border border-[#E5E7EB] bg-white text-[13px] text-[#2D333A] outline-none focus:border-[#5CE1A5] transition-colors"
+                    className="w-full h-9 px-2.5 rounded-lg border border-[#E5E7EB] bg-white text-[13px] text-[#2D333A] outline-none focus:border-[#3B82F6] transition-colors"
                     style={{ fontFamily: "var(--font-source-sans)" }}
                   >
                     <option value="">Unassigned</option>
@@ -189,7 +188,7 @@ export function QuickAddCardModal({
                     type="date"
                     value={dueDate}
                     onChange={(e) => setDueDate(e.target.value)}
-                    className="w-full h-9 px-2.5 rounded-lg border border-[#E5E7EB] bg-white text-[13px] text-[#2D333A] outline-none focus:border-[#5CE1A5] transition-colors"
+                    className="w-full h-9 px-2.5 rounded-lg border border-[#E5E7EB] bg-white text-[13px] text-[#2D333A] outline-none focus:border-[#3B82F6] transition-colors"
                     style={{ fontFamily: "var(--font-source-sans)" }}
                   />
                 </Field>
@@ -209,7 +208,7 @@ export function QuickAddCardModal({
                           backgroundColor:
                             opt.value === null ? "#F3F4F6" : opt.bg,
                           boxShadow: selected
-                            ? "0 0 0 2px white, 0 0 0 4px #5CE1A5"
+                            ? "0 0 0 2px white, 0 0 0 4px #3B82F6"
                             : undefined,
                           border:
                             opt.value === null
@@ -239,7 +238,7 @@ export function QuickAddCardModal({
                 type="button"
                 onClick={handleSubmit}
                 disabled={pending}
-                className="inline-flex items-center gap-1.5 h-9 px-4 rounded-xl bg-[#5CE1A5] text-[#060C09] text-[13px] font-semibold hover:shadow-md transition-all disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 h-9 px-4 rounded-xl bg-[#3B82F6] text-white text-[13px] font-semibold hover:bg-[#2563EB] hover:shadow-md transition-all disabled:opacity-50"
                 style={{ fontFamily: "var(--font-poppins)" }}
               >
                 {pending && <Loader2 className="size-3.5 animate-spin" />}

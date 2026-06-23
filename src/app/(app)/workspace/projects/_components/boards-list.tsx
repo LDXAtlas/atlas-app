@@ -108,7 +108,7 @@ export function BoardsListView({
   const canCreate = can.createDepartment(viewerRole);
 
   const visible = useMemo(() => {
-    let list = localBoards; // Changed to use localBoards
+    let list = localBoards;
     if (filter === "active") list = list.filter((b) => !b.is_archived);
     else if (filter === "archived") list = list.filter((b) => b.is_archived);
     else if (filter === "mine") list = list.filter((b) => b.is_starred);
@@ -128,19 +128,17 @@ export function BoardsListView({
     }
 
     return list;
-  }, [localBoards, filter, departmentId, search]); // Updated dependencies
+  }, [localBoards, filter, departmentId, search]);
 
   const starred = visible.filter((b) => b.is_starred);
   const others = visible.filter((b) => !b.is_starred);
 
-  const lastActivity = localBoards.reduce<string | null>((acc, b) => { // Changed to localBoards
+  const lastActivity = localBoards.reduce<string | null>((acc, b) => {
     if (!acc) return b.updated_at;
     return new Date(b.updated_at).getTime() > new Date(acc).getTime()
       ? b.updated_at
       : acc;
   }, null);
-
-  // ... (keep the return statement and header JSX the same until the Sections)
 
   return (
     <div>
@@ -177,7 +175,7 @@ export function BoardsListView({
           {canCreate && (
             <button
               onClick={() => setShowCreate(true)}
-              className="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-[#0F172A] text-white text-[13px] font-semibold hover:bg-[#1E293B] transition-colors shrink-0"
+              className="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-[#3B82F6] text-white text-[13px] font-semibold hover:bg-[#2563EB] transition-colors shrink-0"
               style={{ fontFamily: "var(--font-poppins)" }}
             >
               <Plus className="size-4" />
@@ -568,7 +566,7 @@ function EmptyBoardsState({
       {canCreate && (
         <button
           onClick={onCreate}
-          className="inline-flex items-center gap-2 h-11 px-5 rounded-xl bg-[#0F172A] text-white text-[14px] font-semibold hover:bg-[#1E293B] transition-colors"
+          className="inline-flex items-center gap-2 h-11 px-5 rounded-xl bg-[#3B82F6] text-white text-[14px] font-semibold hover:bg-[#2563EB] transition-colors"
           style={{ fontFamily: "var(--font-poppins)" }}
         >
           <Plus className="size-4" />

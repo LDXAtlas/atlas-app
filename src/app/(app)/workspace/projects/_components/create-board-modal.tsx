@@ -97,7 +97,7 @@ export function CreateBoardModal({
   const router = useRouter();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [color, setColor] = useState("#5CE1A5");
+  const [color, setColor] = useState("#3B82F6"); // Updated default to blue
   const [icon, setIcon] = useState("Folder");
   const [iconSearch, setIconSearch] = useState("");
   const [departmentId, setDepartmentId] = useState<string>("");
@@ -112,7 +112,7 @@ export function CreateBoardModal({
     if (!open) return;
     setName("");
     setDescription("");
-    setColor("#5CE1A5");
+    setColor("#3B82F6"); // Updated reset to blue
     setIcon("Folder");
     setIconSearch("");
     setDepartmentId("");
@@ -243,7 +243,7 @@ export function CreateBoardModal({
                   onChange={(e) => setName(e.target.value)}
                   placeholder="What's this project called?"
                   autoFocus
-                  className="w-full h-10 px-3.5 rounded-xl border border-[#E5E7EB] bg-white text-[14px] text-[#2D333A] placeholder-[#9CA3AF] outline-none focus:border-[#5CE1A5] transition-colors"
+                  className="w-full h-10 px-3.5 rounded-xl border border-[#E5E7EB] bg-white text-[14px] text-[#2D333A] placeholder-[#9CA3AF] outline-none focus:border-[#3B82F6] transition-colors"
                   style={{ fontFamily: "var(--font-source-sans)" }}
                 />
               </Field>
@@ -255,7 +255,7 @@ export function CreateBoardModal({
                   onChange={(e) => setDescription(e.target.value)}
                   rows={2}
                   placeholder="What is this board for?"
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-[#E5E7EB] bg-white text-[14px] text-[#2D333A] placeholder-[#9CA3AF] outline-none focus:border-[#5CE1A5] transition-colors resize-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-[#E5E7EB] bg-white text-[14px] text-[#2D333A] placeholder-[#9CA3AF] outline-none focus:border-[#3B82F6] transition-colors resize-none"
                   style={{ fontFamily: "var(--font-source-sans)" }}
                 />
               </Field>
@@ -294,7 +294,7 @@ export function CreateBoardModal({
                       value={iconSearch}
                       onChange={(e) => setIconSearch(e.target.value)}
                       placeholder="Search icons..."
-                      className="w-full h-7 pl-7 pr-2 rounded-lg border border-[#E5E7EB] bg-[#F4F5F7] text-[12px] text-[#2D333A] placeholder-[#9CA3AF] outline-none focus:border-[#5CE1A5] transition-colors"
+                      className="w-full h-7 pl-7 pr-2 rounded-lg border border-[#E5E7EB] bg-[#F4F5F7] text-[12px] text-[#2D333A] placeholder-[#9CA3AF] outline-none focus:border-[#3B82F6] transition-colors"
                       style={{ fontFamily: "var(--font-source-sans)" }}
                     />
                   </div>
@@ -310,9 +310,9 @@ export function CreateBoardModal({
                           className="size-7 rounded-lg flex items-center justify-center transition-colors hover:bg-[#F4F5F7]"
                           style={{
                             backgroundColor: isSelected
-                              ? "rgba(92, 225, 165, 0.15)"
+                              ? "rgba(59, 130, 246, 0.15)"
                               : undefined,
-                            color: isSelected ? "#059669" : "#6B7280",
+                            color: isSelected ? "#2563EB" : "#6B7280",
                           }}
                           title={iconName}
                           aria-label={iconName}
@@ -339,7 +339,7 @@ export function CreateBoardModal({
                   <select
                     value={departmentId}
                     onChange={(e) => setDepartmentId(e.target.value)}
-                    className="w-full h-10 px-3 rounded-xl border border-[#E5E7EB] bg-white text-[13px] text-[#2D333A] outline-none focus:border-[#5CE1A5] transition-colors"
+                    className="w-full h-10 px-3 rounded-xl border border-[#E5E7EB] bg-white text-[13px] text-[#2D333A] outline-none focus:border-[#3B82F6] transition-colors"
                     style={{ fontFamily: "var(--font-source-sans)" }}
                   >
                     <option value="">No department</option>
@@ -356,7 +356,7 @@ export function CreateBoardModal({
                     onChange={(e) =>
                       setVisibility(e.target.value as BoardVisibility)
                     }
-                    className="w-full h-10 px-3 rounded-xl border border-[#E5E7EB] bg-white text-[13px] text-[#2D333A] outline-none focus:border-[#5CE1A5] transition-colors"
+                    className="w-full h-10 px-3 rounded-xl border border-[#E5E7EB] bg-white text-[13px] text-[#2D333A] outline-none focus:border-[#3B82F6] transition-colors"
                     style={{ fontFamily: "var(--font-source-sans)" }}
                   >
                     {VISIBILITY_OPTIONS.map((o) => (
@@ -386,17 +386,17 @@ export function CreateBoardModal({
                         onClick={() => setTemplate(t.id)}
                         className="text-left flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-colors"
                         style={{
-                          borderColor: selected ? "#5CE1A5" : "#E5E7EB",
+                          borderColor: selected ? "#3B82F6" : "#E5E7EB",
                           backgroundColor: selected
-                            ? "rgba(92, 225, 165, 0.06)"
+                            ? "rgba(59, 130, 246, 0.06)"
                             : "white",
                         }}
                       >
                         <div
                           className="size-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors"
                           style={{
-                            borderColor: selected ? "#5CE1A5" : "#D1D5DB",
-                            backgroundColor: selected ? "#5CE1A5" : "transparent",
+                            borderColor: selected ? "#3B82F6" : "#D1D5DB",
+                            backgroundColor: selected ? "#3B82F6" : "transparent",
                           }}
                         >
                           {selected && (
@@ -439,7 +439,7 @@ export function CreateBoardModal({
                 type="button"
                 onClick={handleSubmit}
                 disabled={isPending}
-                className="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-[#5CE1A5] text-[#060C09] text-[13px] font-semibold hover:shadow-md transition-all disabled:opacity-50"
+                className="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-[#3B82F6] text-white text-[13px] font-semibold hover:bg-[#2563EB] hover:shadow-md transition-all disabled:opacity-50"
                 style={{ fontFamily: "var(--font-poppins)" }}
               >
                 {isPending && <Loader2 className="size-3.5 animate-spin" />}

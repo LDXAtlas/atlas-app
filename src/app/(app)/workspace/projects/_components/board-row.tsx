@@ -56,20 +56,16 @@ function formatDate(iso: string): string {
   });
 }
 
-// ─── Board card (new design) ────────────────────────────────
 export function BoardCard({ board, onToggleStar }: BoardCardProps) {
   const router = useRouter();
   const Icon = getIconByName(board.icon);
   const href = `/workspace/projects/${board.id}`;
 
-  
   const starred = board.is_starred;
-
   const total = board.card_count;
   const done = board.completed_count;
   const pct = total > 0 ? Math.round((done / total) * 100) : 0;
 
-  // Visibility hint icon — only show for non-organization boards.
   const visibilityHint = visibilityFor(board);
 
   return (
@@ -83,9 +79,8 @@ export function BoardCard({ board, onToggleStar }: BoardCardProps) {
           router.push(href);
         }
       }}
-      className="group bg-white rounded-2xl border border-[#E5E7EB] p-6 hover:border-[#5CE1A5]/60 hover:shadow-[0_4px_18px_rgba(15,23,42,0.06)] transition-[border-color,box-shadow] duration-200 cursor-pointer"
+      className="group bg-white rounded-2xl border border-[#E5E7EB] p-6 hover:border-[#3B82F6]/60 hover:shadow-[0_4px_18px_rgba(15,23,42,0.06)] transition-[border-color,box-shadow] duration-200 cursor-pointer"
     >
-      {/* Top row: icon + title + star */}
       <div className="flex items-start gap-4 mb-3">
         <div
           className="size-14 rounded-2xl flex items-center justify-center text-white shrink-0 shadow-sm"
@@ -122,7 +117,6 @@ export function BoardCard({ board, onToggleStar }: BoardCardProps) {
             </button>
           </div>
 
-          {/* Tag pills */}
           <div className="flex flex-wrap items-center gap-1.5 mt-2">
             {board.department_name && board.department_color && (
               <span
@@ -151,7 +145,6 @@ export function BoardCard({ board, onToggleStar }: BoardCardProps) {
         </div>
       </div>
 
-      {/* Description */}
       {board.description && (
         <p
           className="text-[14px] text-[#475569] leading-relaxed mt-1 line-clamp-2"
@@ -161,7 +154,6 @@ export function BoardCard({ board, onToggleStar }: BoardCardProps) {
         </p>
       )}
 
-      {/* Metadata pills */}
       <div className="flex items-center gap-2 mt-3 flex-wrap">
         {board.member_count > 0 && (
           <Pill
@@ -184,7 +176,6 @@ export function BoardCard({ board, onToggleStar }: BoardCardProps) {
         )}
       </div>
 
-      {/* Progress section */}
       <div className="mt-4">
         <div className="flex items-center justify-between mb-1.5">
           <span
@@ -215,7 +206,6 @@ export function BoardCard({ board, onToggleStar }: BoardCardProps) {
         </div>
       </div>
 
-      {/* Footer: avatars + relative time */}
       <div className="flex items-center justify-between mt-4 pt-3 border-t border-[#F1F5F9]">
         <AvatarStack
           avatars={board.member_avatars}
@@ -233,10 +223,8 @@ export function BoardCard({ board, onToggleStar }: BoardCardProps) {
   );
 }
 
-// Backwards-compat alias — older imports referenced `BoardRow`.
 export const BoardRow = BoardCard;
 
-// ─── Helpers ────────────────────────────────────────────────
 function visibilityFor(board: BoardSummary): {
   Icon: typeof Lock;
   label: string;
@@ -298,7 +286,7 @@ function AvatarStack({
           title={p.full_name}
           className="size-8 rounded-full ring-2 ring-white flex items-center justify-center text-[11px] text-white shrink-0 hover:z-10"
           style={{
-            backgroundColor: "#5CE1A5",
+            backgroundColor: "#3B82F6",
             fontFamily: "var(--font-poppins)",
             fontWeight: 600,
           }}

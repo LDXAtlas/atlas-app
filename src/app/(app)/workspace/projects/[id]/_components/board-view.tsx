@@ -57,7 +57,6 @@ type ActiveDrag =
 
 export type SortOption = "manual" | "priority" | "due_nearest" | "due_furthest";
 
-// Priority score helper (0 is highest, 4 is lowest)
 function getPriorityScore(card: BoardCardWithMeta): number {
   if (card.is_completed) return 4;
   if (!card.due_date) return 3;
@@ -97,7 +96,6 @@ export function BoardView({
   const [error, setError] = useState<string | null>(null);
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // --- NEW: Filter & Sort State ---
   const [activeSort, setActiveSort] = useState<SortOption>("manual");
   const [activeAssigneeTop, setActiveAssigneeTop] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
@@ -124,7 +122,6 @@ export function BoardView({
   function isColumnDragId(id: string) { return id.startsWith("column-"); }
   function columnIdFromDragId(id: string) { return id.startsWith("column-") ? id.slice("column-".length) : id; }
 
-  // ─── Drag handlers (unchanged) ────────────────────────────────────────
   function handleDragStart(event: DragStartEvent) {
     const dragId = String(event.active.id);
     if (isColumnDragId(dragId)) {
@@ -243,7 +240,6 @@ export function BoardView({
     }
   }
 
-  // ─── Column & Card actions (unchanged) ───────────────────────────────────────
   async function handleAddColumn(name: string) {
     setShowAddColumn(false);
     const result = await createColumn(board.id, { name });
@@ -282,9 +278,6 @@ export function BoardView({
     setColumns((prev) => prev.map((c) => c.id === columnId ? { ...c, cards: [...c.cards, card] } : c));
   }
 
-  // Patch handler used by the new CardDetailPanel — applies a partial
-  // shape (mirrors what BoardCardWithMeta exposes to the kanban) and
-  // handles cross-column moves by splicing rather than swapping in place.
   function handleCardPatch(patch: {
     id: string;
     title?: string;
@@ -301,7 +294,6 @@ export function BoardView({
     checklist_total?: number;
   }) {
     setColumns((prev) => {
-      // Locate the current column for this card so we can detect moves.
       let fromColIdx = -1;
       let cardIdx = -1;
       prev.some((col, ci) => {
@@ -347,7 +339,6 @@ export function BoardView({
         checklist_total: patch.checklist_total ?? current.checklist_total,
       };
 
-      // Same-column update: splice in place.
       if (!patch.column_id || patch.column_id === current.column_id) {
         return prev.map((col, ci) =>
           ci === fromColIdx
@@ -359,7 +350,6 @@ export function BoardView({
         );
       }
 
-      // Cross-column move: pop from old, prepend to new.
       return prev.map((col, ci) => {
         if (ci === fromColIdx) {
           return {
@@ -384,9 +374,6 @@ export function BoardView({
     );
   }
 
-  // Insert the duplicate immediately after its source in the same
-  // column. The server already shifted subsequent cards' positions on
-  // the DB side; here we just splice for the optimistic render.
   function handleCardDuplicated(
     sourceCardId: string,
     newCard: BoardCardWithMeta,
@@ -396,8 +383,6 @@ export function BoardView({
         if (col.id !== newCard.column_id) return col;
         const sourceIdx = col.cards.findIndex((c) => c.id === sourceCardId);
         if (sourceIdx < 0) {
-          // Source isn't in this column anymore (could be stale state) —
-          // fall back to appending at the end.
           return { ...col, cards: [...col.cards, newCard] };
         }
         const insertAt = sourceIdx + 1;
@@ -419,13 +404,11 @@ export function BoardView({
     if (!result.success) showError(result.error);
   }
 
-  // --- NEW: Visual sorting logic ---
   const displayColumns = useMemo(() => {
     if (activeSort === "manual" && !activeAssigneeTop) return columns;
 
     return columns.map((col) => {
       const sortedCards = [...col.cards].sort((a, b) => {
-        // 1. Assignee override (bring chosen to top)
         if (activeAssigneeTop) {
           const aMatch = a.assigned_to === activeAssigneeTop;
           const bMatch = b.assigned_to === activeAssigneeTop;
@@ -433,21 +416,20 @@ export function BoardView({
           if (!aMatch && bMatch) return 1;
         }
 
-        // 2. Active Sort
         if (activeSort === "priority") {
           return getPriorityScore(a) - getPriorityScore(b);
         } else if (activeSort === "due_nearest") {
           if (!a.due_date && !b.due_date) return 0;
-          if (!a.due_date) return 1; // No due date always pushed to bottom
+          if (!a.due_date) return 1;
           if (!b.due_date) return -1;
           return new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
         } else if (activeSort === "due_furthest") {
           if (!a.due_date && !b.due_date) return 0;
-          if (!a.due_date) return 1; // No due date always pushed to bottom
+          if (!a.due_date) return 1;
           if (!b.due_date) return -1;
           return new Date(b.due_date).getTime() - new Date(a.due_date).getTime();
         }
-        return 0; // Fallback to manual order
+        return 0;
       });
       return { ...col, cards: sortedCards };
     });
@@ -458,7 +440,7 @@ export function BoardView({
   return (
     <div className="flex flex-col h-full">
       <BoardDetailHeader
-        board={{ ...board, columns: displayColumns }} // Pass the sorted columns
+        board={{ ...board, columns: displayColumns }}
         activeSort={activeSort}
         setActiveSort={setActiveSort}
         activeAssigneeTop={activeAssigneeTop}
@@ -523,12 +505,14 @@ export function BoardView({
               </div>
             ))}
             {board.viewer_can_edit && (
-              <div
-                className={`shrink-0 h-12 self-start mt-1 inline-flex items-center justify-center gap-1.5 rounded-xl border border-dashed border-[#CBD5E1] text-[13px] text-[#64748B] ${viewMode === "list" ? "w-full" : "w-[320px]"}`}
+              <button
+                type="button"
+                onClick={() => setShowAddColumn(true)}
+                className={`shrink-0 h-12 self-start mt-1 inline-flex items-center justify-center gap-1.5 rounded-xl border border-dashed border-[#CBD5E1] text-[13px] text-[#64748B] hover:border-[#3B82F6] hover:text-[#3B82F6] hover:bg-white transition-colors cursor-pointer ${viewMode === "list" ? "w-full" : "w-[320px]"}`}
                 style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}
               >
                 {viewMode === "list" ? "+ Add group" : "+ Add column"}
-              </div>
+              </button>
             )}
           </div>
         ) : (
@@ -559,7 +543,7 @@ export function BoardView({
                     <motion.div
                       key={col.id}
                       layout
-                      className={viewMode === "list" ? "w-full" : "shrink-0"} // <-- THIS FIXES PROBLEM 3!
+                      className={viewMode === "list" ? "w-full" : "shrink-0"}
                       initial={{ opacity: 0, x: 16 }}
                       animate={{ opacity: 1, x: 0 }}
                       exit={{ opacity: 0, scale: 0.95 }}
@@ -665,7 +649,7 @@ function EmptyBoardState({ canEdit, onAdd }: { canEdit: boolean; onAdd: () => vo
         <button
           type="button"
           onClick={onAdd}
-          className="inline-flex items-center gap-1.5 h-10 px-4 rounded-xl bg-[#5CE1A5] text-[#060C09] text-[13px] font-semibold hover:shadow-md transition-all"
+          className="inline-flex items-center gap-1.5 h-10 px-4 rounded-xl bg-[#3B82F6] text-white text-[13px] font-semibold hover:bg-[#2563EB] hover:shadow-md transition-all"
           style={{ fontFamily: "var(--font-poppins)" }}
         >
           Add Column
@@ -674,9 +658,8 @@ function EmptyBoardState({ canEdit, onAdd }: { canEdit: boolean; onAdd: () => vo
     </div>
   );
 }
-// ─── Overview Tab Component ─────────────────────────────
+
 function BoardOverview({ board }: { board: BoardDetail }) {
-  // Local UI state for inline editing
   const [isEditing, setIsEditing] = useState(false);
   const [description, setDescription] = useState(board.description || "");
   const [draft, setDraft] = useState(description);
@@ -686,8 +669,6 @@ function BoardOverview({ board }: { board: BoardDetail }) {
     text: string;
   } | null>(null);
 
-  // Auto-dismiss the toast 3s after it appears — matches the
-  // setActionMessage pattern in settings/organization.
   useEffect(() => {
     if (!toast) return;
     const id = setTimeout(() => setToast(null), 3000);
@@ -698,14 +679,12 @@ function BoardOverview({ board }: { board: BoardDetail }) {
     if (saving) return;
     const previous = description;
     const next = draft;
-    // Optimistic: flip the UI immediately so it feels instant.
     setDescription(next);
     setIsEditing(false);
     setSaving(true);
     const result = await updateBoard(board.id, { description: next });
     setSaving(false);
     if (!result.success) {
-      // Revert and surface the error.
       setDescription(previous);
       setDraft(previous);
       setIsEditing(true);
@@ -730,7 +709,6 @@ function BoardOverview({ board }: { board: BoardDetail }) {
       transition={{ duration: 0.3 }}
       className="flex flex-col lg:flex-row gap-8 w-full max-w-6xl pb-12"
     >
-      {/* Left Column: Project Brief */}
       <div className="w-full lg:w-3/4 min-w-0 space-y-6">
         <AnimatePresence>
           {toast && (
@@ -760,7 +738,6 @@ function BoardOverview({ board }: { board: BoardDetail }) {
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-[18px] text-[#0F172A]" style={{ fontFamily: "var(--font-poppins)", fontWeight: 700 }}>Project Brief</h2>
             
-            {/* The Edit Button */}
             {board.viewer_can_edit && !isEditing && (
               <button
                 onClick={() => setIsEditing(true)}
@@ -772,7 +749,6 @@ function BoardOverview({ board }: { board: BoardDetail }) {
             )}
           </div>
 
-          {/* Conditional Rendering: Edit Mode vs View Mode */}
           {isEditing ? (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-3">
               <textarea
@@ -781,7 +757,7 @@ function BoardOverview({ board }: { board: BoardDetail }) {
                 onChange={(e) => setDraft(e.target.value)}
                 placeholder="What is the vision and goals for this project?"
                 rows={5}
-                className="w-full p-3.5 rounded-xl border border-[#5CE1A5] bg-white text-[14px] text-[#2D333A] placeholder-[#9CA3AF] outline-none shadow-[0_0_0_4px_rgba(92,225,165,0.1)] transition-all resize-y"
+                className="w-full p-3.5 rounded-xl border border-[#3B82F6] bg-white text-[14px] text-[#2D333A] placeholder-[#9CA3AF] outline-none shadow-[0_0_0_4px_rgba(59,130,246,0.1)] transition-all resize-y"
                 style={{ fontFamily: "var(--font-source-sans)" }}
               />
               <div className="flex items-center justify-end gap-2">
@@ -795,7 +771,7 @@ function BoardOverview({ board }: { board: BoardDetail }) {
                 <button
                   onClick={handleSave}
                   disabled={saving}
-                  className="inline-flex items-center gap-1.5 h-8 px-4 rounded-lg bg-[#5CE1A5] text-[#060C09] text-[12px] font-semibold hover:shadow-md transition-all disabled:opacity-60"
+                  className="inline-flex items-center gap-1.5 h-8 px-4 rounded-lg bg-[#3B82F6] text-white text-[12px] font-semibold hover:bg-[#2563EB] hover:shadow-md transition-all disabled:opacity-60"
                   style={{ fontFamily: "var(--font-poppins)" }}
                 >
                   <Check className="size-3.5" /> {saving ? "Saving..." : "Save"}
@@ -809,10 +785,8 @@ function BoardOverview({ board }: { board: BoardDetail }) {
               ) : (
                 <p className="text-[#9CA3AF] italic">No description provided for this project yet.</p>
               )}
-              
-              {/* Keeping the placeholder formatting just so it still looks rich */}
               <h3 className="text-[#2D333A] font-semibold mt-6 mb-2 text-[15px]">Project Goals</h3>
-              <ul className="list-disc pl-5 space-y-1.5 marker:text-[#5CE1A5]">
+              <ul className="list-disc pl-5 space-y-1.5 marker:text-[#3B82F6]">
                 <li>Coordinate all volunteer teams efficiently.</li>
                 <li>Deliver final graphics 2 weeks before the main event.</li>
                 <li>Ensure the service flow is reviewed and approved by stakeholders.</li>
@@ -829,7 +803,6 @@ function BoardOverview({ board }: { board: BoardDetail }) {
         </section>
       </div>
 
-      {/* Right Sidebar: Meta Data */}
       <div className="w-full lg:w-1/4 shrink-0 space-y-6">
         <section className="bg-white rounded-2xl border border-[#E5E7EB] p-6 shadow-sm">
           <h3 className="text-[11px] uppercase tracking-[0.1em] text-[#9CA3AF] mb-5" style={{ fontFamily: "var(--font-poppins)", fontWeight: 700 }}>Project Details</h3>
@@ -839,8 +812,8 @@ function BoardOverview({ board }: { board: BoardDetail }) {
               <p className="text-[11px] uppercase tracking-[0.06em] text-[#9CA3AF] mb-2" style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}>Team Members</p>
               <div className="flex items-center gap-2 flex-wrap">
                  {board.members.length > 0 ? board.members.map(m => (
-                   <div key={m.profile_id} className="flex items-center gap-2 bg-[#F8FAFC] border border-[#E5E7EB] rounded-full px-2 py-1 shadow-sm transition-colors hover:border-[#5CE1A5] cursor-pointer">
-                      <span className="size-5 rounded-full text-white flex items-center justify-center text-[9px]" style={{ fontFamily: "var(--font-poppins)", fontWeight: 600, backgroundColor: "#5CE1A5" }}>
+                   <div key={m.profile_id} className="flex items-center gap-2 bg-[#F8FAFC] border border-[#E5E7EB] rounded-full px-2 py-1 shadow-sm transition-colors hover:border-[#3B82F6] cursor-pointer">
+                      <span className="size-5 rounded-full text-white flex items-center justify-center text-[9px]" style={{ fontFamily: "var(--font-poppins)", fontWeight: 600, backgroundColor: "#3B82F6" }}>
                         {m.full_name.slice(0,2).toUpperCase()}
                       </span>
                       <span className="text-[12px] text-[#475569] pr-1" style={{ fontFamily: "var(--font-source-sans)", fontWeight: 600 }}>{m.full_name.split(' ')[0]}</span>
@@ -852,18 +825,18 @@ function BoardOverview({ board }: { board: BoardDetail }) {
             <div className="border-t border-[#F1F5F9] pt-5">
                <p className="text-[11px] uppercase tracking-[0.06em] text-[#9CA3AF] mb-2" style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}>Key Dates</p>
                <div className="flex items-center gap-2 text-[13px] text-[#2D333A] bg-[#F8FAFC] p-2.5 rounded-lg border border-[#E5E7EB]" style={{ fontFamily: "var(--font-source-sans)", fontWeight: 600 }}>
-                 <Calendar className="size-4 text-[#5CE1A5]" /> Target Launch: TBD
+                 <Calendar className="size-4 text-[#3B82F6]" /> Target Launch: TBD
                </div>
             </div>
 
             <div className="border-t border-[#F1F5F9] pt-5">
                <p className="text-[11px] uppercase tracking-[0.06em] text-[#9CA3AF] mb-2" style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}>Quick Links</p>
                <div className="flex flex-col gap-2">
-                  <button className="flex items-center gap-2 text-[13px] text-[#475569] hover:text-[#5CE1A5] transition-colors p-2 rounded-lg hover:bg-[#F0FDF4] border border-transparent hover:border-[#5CE1A5]/30 group" style={{ fontFamily: "var(--font-source-sans)", fontWeight: 600 }}>
-                    <ExternalLink className="size-3.5 text-[#9CA3AF] group-hover:text-[#5CE1A5]" /> Google Drive Assets
+                  <button className="flex items-center gap-2 text-[13px] text-[#475569] hover:text-[#3B82F6] transition-colors p-2 rounded-lg hover:bg-[#EFF6FF] border border-transparent hover:border-[#3B82F6]/30 group" style={{ fontFamily: "var(--font-source-sans)", fontWeight: 600 }}>
+                    <ExternalLink className="size-3.5 text-[#9CA3AF] group-hover:text-[#3B82F6]" /> Google Drive Assets
                   </button>
-                  <button className="flex items-center gap-2 text-[13px] text-[#475569] hover:text-[#5CE1A5] transition-colors p-2 rounded-lg hover:bg-[#F0FDF4] border border-transparent hover:border-[#5CE1A5]/30 group" style={{ fontFamily: "var(--font-source-sans)", fontWeight: 600 }}>
-                    <ExternalLink className="size-3.5 text-[#9CA3AF] group-hover:text-[#5CE1A5]" /> Planning Center Event
+                  <button className="flex items-center gap-2 text-[13px] text-[#475569] hover:text-[#3B82F6] transition-colors p-2 rounded-lg hover:bg-[#EFF6FF] border border-transparent hover:border-[#3B82F6]/30 group" style={{ fontFamily: "var(--font-source-sans)", fontWeight: 600 }}>
+                    <ExternalLink className="size-3.5 text-[#9CA3AF] group-hover:text-[#3B82F6]" /> Planning Center Event
                   </button>
                </div>
             </div>

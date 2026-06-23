@@ -22,12 +22,11 @@ export function AddColumnInput({
   const [name, setName] = useState("");
   const [pending, startTransition] = useTransition();
   const inputRef = useRef<HTMLInputElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null); // Added a ref for the container!
+  const containerRef = useRef<HTMLDivElement>(null); 
 
   useEffect(() => {
     if (active) {
       setName("");
-      // Focus the input, and smoothly scroll the page down to it so it's never hidden!
       window.setTimeout(() => {
         inputRef.current?.focus();
         containerRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -56,7 +55,7 @@ export function AddColumnInput({
       <button
         type="button"
         onClick={onActivate}
-        className={`shrink-0 h-12 self-start mt-1 mb-8 inline-flex items-center justify-center gap-1.5 rounded-xl border border-dashed border-[#D1D5DB] text-[13px] text-[#6B7280] hover:border-[#5CE1A5] hover:text-[#5CE1A5] hover:bg-white transition-colors ${widthClass}`}
+        className={`shrink-0 h-12 self-start mt-1 mb-8 inline-flex items-center justify-center gap-1.5 rounded-xl border border-dashed border-[#D1D5DB] text-[13px] text-[#6B7280] hover:border-[#3B82F6] hover:text-[#3B82F6] hover:bg-white transition-colors ${widthClass}`}
         style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}
       >
         <Plus className="size-4" />
@@ -68,12 +67,11 @@ export function AddColumnInput({
   return (
     <motion.div
       ref={containerRef}
-      // Added a vertical drop animation for list mode
       initial={{ opacity: 0, x: viewMode === "list" ? 0 : 20, y: viewMode === "list" ? -15 : 0 }}
       animate={{ opacity: 1, x: 0, y: 0 }}
       exit={{ opacity: 0, x: viewMode === "list" ? 0 : 20, y: viewMode === "list" ? -15 : 0 }}
       transition={{ duration: 0.25, ease: [0.23, 1, 0.32, 1] }}
-      className={`shrink-0 rounded-xl bg-white border border-[#5CE1A5] p-3 flex flex-col gap-2 self-start mt-1 mb-8 ${widthClass}`}
+      className={`shrink-0 rounded-xl bg-white border border-[#3B82F6] p-3 flex flex-col gap-2 self-start mt-1 mb-8 ${widthClass}`}
     >
       <input
         ref={inputRef}
@@ -88,7 +86,7 @@ export function AddColumnInput({
           }
         }}
         placeholder={placeholder}
-        className="h-9 px-2.5 rounded-lg border border-[#E5E7EB] bg-white text-[13px] text-[#2D333A] placeholder-[#9CA3AF] outline-none focus:border-[#5CE1A5] transition-colors"
+        className="h-9 px-2.5 rounded-lg border border-[#E5E7EB] bg-white text-[13px] text-[#2D333A] placeholder-[#9CA3AF] outline-none focus:border-[#3B82F6] transition-colors"
         style={{ fontFamily: "var(--font-source-sans)" }}
       />
       <div className="flex items-center gap-2">
@@ -96,7 +94,7 @@ export function AddColumnInput({
           type="button"
           onClick={commit}
           disabled={pending}
-          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-[#5CE1A5] text-[#060C09] text-[12px] font-semibold hover:shadow-md transition-all disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-[#3B82F6] text-white text-[12px] font-semibold hover:bg-[#2563EB] hover:shadow-md transition-all disabled:opacity-50"
           style={{ fontFamily: "var(--font-poppins)" }}
         >
           {pending && <Loader2 className="size-3 animate-spin" />}
