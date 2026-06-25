@@ -161,7 +161,7 @@ export function AgendaTab({
             }}
             placeholder="Add agenda item…"
             disabled={pending}
-            className="flex-1 h-9 px-3 rounded-lg border border-[#E5E7EB] text-[13px] outline-none focus:border-[#5CE1A5]"
+            className="flex-1 h-9 px-3 rounded-lg border border-[#E5E7EB] text-[13px] outline-none focus:border-[#3B82F6]"
             style={{ fontFamily: "var(--font-source-sans)" }}
           />
           <button
@@ -247,8 +247,8 @@ function Row({
         disabled={!canEdit}
         className={`size-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${
           item.is_completed
-            ? "bg-[#5CE1A5] border-[#5CE1A5]"
-            : "border-[#CBD5E1] hover:border-[#5CE1A5]"
+            ? "bg-[#3B82F6] border-[#3B82F6]"
+            : "border-[#CBD5E1] hover:border-[#3B82F6]"
         }`}
       >
         {item.is_completed && <Check className="size-3 text-white" />}
@@ -270,7 +270,7 @@ function Row({
               setEditing(false);
             }
           }}
-          className="flex-1 h-7 px-2 rounded border border-[#5CE1A5] text-[13px] outline-none"
+          className="flex-1 h-7 px-2 rounded border border-[#3B82F6] text-[13px] outline-none"
           style={{ fontFamily: "var(--font-source-sans)" }}
         />
       ) : (
@@ -307,7 +307,7 @@ function Row({
         type="button"
         onClick={() => setNotesOpen((v) => !v)}
         className={`size-6 rounded-md flex items-center justify-center text-[#9CA3AF] hover:text-[#2D333A] hover:bg-[#F4F5F7] transition-colors ${
-          item.notes ? "text-[#5CE1A5]" : ""
+          item.notes ? "text-[#3B82F6]" : ""
         }`}
         aria-label={notesOpen ? "Hide notes" : "Show notes"}
         title="Per-item notes"
@@ -409,7 +409,7 @@ function ItemNotes({
               ? "Notes for this topic — discussion, links, anything specific to this item."
               : "No notes for this topic yet."
         }
-        className="w-full px-3 py-2 rounded-lg border border-[#E5E7EB] bg-white text-[13px] text-[#2D333A] placeholder-[#9CA3AF] outline-none focus:border-[#5CE1A5] resize-vertical disabled:bg-[#F8FAFC] disabled:cursor-not-allowed"
+        className="w-full px-3 py-2 rounded-lg border border-[#E5E7EB] bg-white text-[13px] text-[#2D333A] placeholder-[#9CA3AF] outline-none focus:border-[#3B82F6] resize-vertical disabled:bg-[#F8FAFC] disabled:cursor-not-allowed"
         style={{
           fontFamily: "var(--font-source-sans)",
           minHeight: "72px",

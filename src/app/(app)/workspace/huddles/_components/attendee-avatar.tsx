@@ -37,7 +37,7 @@ export function AttendeeAvatar({
       style={{
         width: size,
         height: size,
-        backgroundColor: profile?.avatar_color || "#5CE1A5",
+        backgroundColor: profile?.avatar_color || "#3B82F6",
         fontFamily: "var(--font-poppins)",
         fontWeight: 700,
         fontSize: Math.round(size * 0.36),

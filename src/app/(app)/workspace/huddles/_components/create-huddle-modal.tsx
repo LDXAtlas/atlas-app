@@ -206,7 +206,7 @@ export function CreateHuddleModal({
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Staff meeting"
-              className="w-full h-10 px-3 rounded-xl border border-[#E5E7EB] text-[14px] outline-none focus:border-[#5CE1A5]"
+              className="w-full h-10 px-3 rounded-xl border border-[#E5E7EB] text-[14px] outline-none focus:border-[#3B82F6]"
               style={{ fontFamily: "var(--font-source-sans)" }}
             />
           </Field>
@@ -217,7 +217,7 @@ export function CreateHuddleModal({
               onChange={(e) => setDescription(e.target.value)}
               rows={2}
               placeholder="Quick context for attendees"
-              className="w-full px-3 py-2 rounded-xl border border-[#E5E7EB] text-[13px] outline-none focus:border-[#5CE1A5] resize-none"
+              className="w-full px-3 py-2 rounded-xl border border-[#E5E7EB] text-[13px] outline-none focus:border-[#3B82F6] resize-none"
               style={{ fontFamily: "var(--font-source-sans)" }}
             />
           </Field>
@@ -228,7 +228,7 @@ export function CreateHuddleModal({
                 type="datetime-local"
                 value={scheduledStart}
                 onChange={(e) => setScheduledStart(e.target.value)}
-                className="w-full h-10 px-3 rounded-xl border border-[#E5E7EB] text-[13px] outline-none focus:border-[#5CE1A5]"
+                className="w-full h-10 px-3 rounded-xl border border-[#E5E7EB] text-[13px] outline-none focus:border-[#3B82F6]"
                 style={{ fontFamily: "var(--font-source-sans)" }}
               />
             </Field>
@@ -237,7 +237,7 @@ export function CreateHuddleModal({
                 type="datetime-local"
                 value={scheduledEnd}
                 onChange={(e) => setScheduledEnd(e.target.value)}
-                className="w-full h-10 px-3 rounded-xl border border-[#E5E7EB] text-[13px] outline-none focus:border-[#5CE1A5]"
+                className="w-full h-10 px-3 rounded-xl border border-[#E5E7EB] text-[13px] outline-none focus:border-[#3B82F6]"
                 style={{ fontFamily: "var(--font-source-sans)" }}
               />
             </Field>
@@ -259,7 +259,7 @@ export function CreateHuddleModal({
                     onClick={() => setMeetingSource(value as HuddleMeetingSource)}
                     className={`h-9 px-3 rounded-xl text-[13px] transition-colors ${
                       active
-                        ? "bg-[#5CE1A5]/15 text-[#059669] border border-[#5CE1A5]/40"
+                        ? "bg-[#3B82F6]/15 text-[#3B82F6] border border-[#3B82F6]/40"
                         : "bg-[#F4F5F7] text-[#6B7280] border border-transparent hover:bg-[#E5E7EB]"
                     }`}
                     style={{
@@ -280,7 +280,7 @@ export function CreateHuddleModal({
                 value={externalUrl}
                 onChange={(e) => setExternalUrl(e.target.value)}
                 placeholder="https://zoom.us/j/…"
-                className="w-full h-10 px-3 rounded-xl border border-[#E5E7EB] text-[13px] outline-none focus:border-[#5CE1A5]"
+                className="w-full h-10 px-3 rounded-xl border border-[#E5E7EB] text-[13px] outline-none focus:border-[#3B82F6]"
                 style={{ fontFamily: "var(--font-source-sans)" }}
               />
             </Field>
@@ -292,7 +292,7 @@ export function CreateHuddleModal({
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
                 placeholder="Main office, conference room A"
-                className="w-full h-10 px-3 rounded-xl border border-[#E5E7EB] text-[13px] outline-none focus:border-[#5CE1A5]"
+                className="w-full h-10 px-3 rounded-xl border border-[#E5E7EB] text-[13px] outline-none focus:border-[#3B82F6]"
                 style={{ fontFamily: "var(--font-source-sans)" }}
               />
             </Field>
@@ -303,7 +303,7 @@ export function CreateHuddleModal({
               <select
                 value={departmentId}
                 onChange={(e) => setDepartmentId(e.target.value)}
-                className="w-full h-10 px-3 rounded-xl border border-[#E5E7EB] text-[13px] outline-none focus:border-[#5CE1A5] bg-white"
+                className="w-full h-10 px-3 rounded-xl border border-[#E5E7EB] text-[13px] outline-none focus:border-[#3B82F6] bg-white"
                 style={{ fontFamily: "var(--font-source-sans)" }}
               >
                 <option value="">None</option>
@@ -318,7 +318,7 @@ export function CreateHuddleModal({
               <select
                 value={visibility}
                 onChange={(e) => setVisibility(e.target.value as HuddleVisibility)}
-                className="w-full h-10 px-3 rounded-xl border border-[#E5E7EB] text-[13px] outline-none focus:border-[#5CE1A5] bg-white"
+                className="w-full h-10 px-3 rounded-xl border border-[#E5E7EB] text-[13px] outline-none focus:border-[#3B82F6] bg-white"
                 style={{ fontFamily: "var(--font-source-sans)" }}
               >
                 <option value="invitees_only">Invitees only</option>
@@ -331,7 +331,7 @@ export function CreateHuddleModal({
 
           <Field label="Attendees">
             <div className="space-y-2">
-              <div className="flex items-center gap-2 h-10 px-3 rounded-xl border border-[#E5E7EB] focus-within:border-[#5CE1A5]">
+              <div className="flex items-center gap-2 h-10 px-3 rounded-xl border border-[#E5E7EB] focus-within:border-[#3B82F6]">
                 <Search className="size-3.5 text-[#9CA3AF]" />
                 <input
                   value={attendeeQuery}
@@ -377,7 +377,7 @@ export function CreateHuddleModal({
                   {attendees.map((a) => (
                     <span
                       key={a.id}
-                      className="inline-flex items-center gap-1 h-6 px-2 rounded-md bg-[#5CE1A5]/12 text-[#059669] text-[11.5px]"
+                      className="inline-flex items-center gap-1 h-6 px-2 rounded-md bg-[#3B82F6]/12 text-[#059669] text-[11.5px]"
                       style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}
                     >
                       {a.full_name}
@@ -408,7 +408,7 @@ export function CreateHuddleModal({
                     }
                   }}
                   placeholder="Add agenda item"
-                  className="flex-1 h-9 px-3 rounded-xl border border-[#E5E7EB] text-[13px] outline-none focus:border-[#5CE1A5]"
+                  className="flex-1 h-9 px-3 rounded-xl border border-[#E5E7EB] text-[13px] outline-none focus:border-[#3B82F6]"
                   style={{ fontFamily: "var(--font-source-sans)" }}
                 />
                 <button
@@ -441,7 +441,7 @@ export function CreateHuddleModal({
                         type="number"
                         min="0"
                         placeholder="min"
-                        className="w-16 h-7 px-2 rounded-md border border-[#E5E7EB] text-[12px] outline-none focus:border-[#5CE1A5]"
+                        className="w-16 h-7 px-2 rounded-md border border-[#E5E7EB] text-[12px] outline-none focus:border-[#3B82F6]"
                         style={{ fontFamily: "var(--font-source-sans)" }}
                       />
                       <button
@@ -472,7 +472,7 @@ export function CreateHuddleModal({
             type="button"
             onClick={handleSubmit}
             disabled={pending || !title.trim()}
-            className="h-9 px-4 rounded-xl bg-[#5CE1A5] text-white text-[13px] font-semibold hover:bg-[#4DD395] disabled:opacity-50"
+            className="h-9 px-4 rounded-xl bg-[#3B82F6] text-white text-[13px] font-semibold hover:bg-[#4DD395] disabled:opacity-50"
             style={{ fontFamily: "var(--font-poppins)" }}
           >
             {pending ? "Creating…" : "Create Huddle"}

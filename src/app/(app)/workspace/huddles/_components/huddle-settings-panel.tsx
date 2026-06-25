@@ -154,7 +154,7 @@ export function HuddleSettingsPanel({
                     key={opt.value}
                     className={`flex items-start gap-2 px-3 py-2 rounded-xl border cursor-pointer transition-colors ${
                       selected
-                        ? "border-[#5CE1A5] bg-[#5CE1A5]/5"
+                        ? "border-[#3B82F6] bg-[#3B82F6]/5"
                         : "border-[#E5E7EB] hover:bg-[#F4F5F7]"
                     }`}
                   >
@@ -163,7 +163,7 @@ export function HuddleSettingsPanel({
                       name="huddle-visibility"
                       checked={selected}
                       onChange={() => setVisibility(opt.value)}
-                      className="mt-1 text-[#5CE1A5] focus:ring-[#5CE1A5]"
+                      className="mt-1 text-[#3B82F6] focus:ring-[#3B82F6]"
                     />
                     <div>
                       <p
@@ -193,7 +193,7 @@ export function HuddleSettingsPanel({
               <select
                 value={departmentId}
                 onChange={(e) => setDepartmentId(e.target.value)}
-                className="w-full h-10 px-3 rounded-xl border border-[#E5E7EB] text-[13px] outline-none focus:border-[#5CE1A5] bg-white"
+                className="w-full h-10 px-3 rounded-xl border border-[#E5E7EB] text-[13px] outline-none focus:border-[#3B82F6] bg-white"
                 style={{ fontFamily: "var(--font-source-sans)" }}
               >
                 <option value="">Select a department…</option>
@@ -214,7 +214,7 @@ export function HuddleSettingsPanel({
               value={retentionDays}
               onChange={(e) => setRetentionDays(e.target.value)}
               placeholder="30"
-              className="w-full h-10 px-3 rounded-xl border border-[#E5E7EB] text-[13px] outline-none focus:border-[#5CE1A5]"
+              className="w-full h-10 px-3 rounded-xl border border-[#E5E7EB] text-[13px] outline-none focus:border-[#3B82F6]"
               style={{ fontFamily: "var(--font-source-sans)" }}
             />
             <p
@@ -299,7 +299,7 @@ export function HuddleSettingsPanel({
             type="button"
             onClick={handleSave}
             disabled={pending}
-            className="h-9 px-4 rounded-xl bg-[#5CE1A5] text-white text-[13px] font-semibold hover:bg-[#4DD395] disabled:opacity-50"
+            className="h-9 px-4 rounded-xl bg-[#3B82F6]/80 text-white text-[13px] font-semibold hover:bg-[#3B82F6] disabled:opacity-50"
             style={{ fontFamily: "var(--font-poppins)" }}
           >
             {pending ? "Saving…" : "Save settings"}

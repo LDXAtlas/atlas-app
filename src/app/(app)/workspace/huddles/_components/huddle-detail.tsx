@@ -150,7 +150,7 @@ function TabButton({
       onClick={onClick}
       className={`h-9 px-3 rounded-lg text-[13px] inline-flex items-center gap-1.5 transition-colors ${
         active
-          ? "bg-[#5CE1A5]/15 text-[#059669]"
+          ? "bg-[#3B82F6]/15 text-[#3B82F6]"
           : "text-[#6B7280] hover:bg-[#F4F5F7] hover:text-[#2D333A]"
       }`}
       style={{

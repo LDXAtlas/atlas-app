@@ -125,7 +125,7 @@ export function NotesTab({
               ? "Capture discussion, takeaways, and links here. Anyone on the huddle can edit."
               : "No notes recorded yet."
           }
-          className="w-full px-3 py-2.5 rounded-xl border border-[#E5E7EB] bg-white text-[14px] text-[#2D333A] placeholder-[#9CA3AF] outline-none focus:border-[#5CE1A5] resize-vertical"
+          className="w-full px-3 py-2.5 rounded-xl border border-[#E5E7EB] bg-white text-[14px] text-[#2D333A] placeholder-[#9CA3AF] outline-none focus:border-[#3B82F6] resize-vertical"
           style={{ fontFamily: "var(--font-source-sans)", minHeight: "260px" }}
         />
       </div>
@@ -189,7 +189,7 @@ function QuickAddCard({
         onChange={(e) => onChange(e.target.value)}
         rows={2}
         placeholder={placeholder}
-        className="w-full px-3 py-2 rounded-xl border border-[#E5E7EB] text-[13px] outline-none focus:border-[#5CE1A5] resize-none"
+        className="w-full px-3 py-2 rounded-xl border border-[#E5E7EB] text-[13px] outline-none focus:border-[#3B82F6] resize-none"
         style={{ fontFamily: "var(--font-source-sans)" }}
       />
       <div className="flex justify-end mt-2">
@@ -197,7 +197,7 @@ function QuickAddCard({
           type="button"
           onClick={onSubmit}
           disabled={!value.trim() || pending}
-          className="h-8 px-3 rounded-lg bg-[#5CE1A5] text-white text-[12px] font-semibold hover:bg-[#4DD395] disabled:opacity-50"
+          className="h-8 px-3 rounded-lg bg-[#3B82F6] text-white text-[12px] font-semibold hover:bg-[#3B82F6]/80 disabled:opacity-50"
           style={{ fontFamily: "var(--font-poppins)" }}
         >
           Save
