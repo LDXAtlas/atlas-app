@@ -35,7 +35,6 @@ export function AttendeeList({
     setAdding(true);
     setQuery("");
     setResults([]);
-    // Pre-populate with top profiles so users see something immediately.
     searchProfiles("").then((res) => {
       setResults(
         (res.data || []).slice(0, 10).map((p) => ({
@@ -118,7 +117,7 @@ export function AttendeeList({
 
       {adding && (
         <div className="mb-3 p-3 bg-[#F8FAFC] border border-[#E5E7EB] rounded-xl space-y-2">
-          <div className="flex items-center gap-2 h-9 px-3 rounded-lg bg-white border border-[#E5E7EB] focus-within:border-[#5CE1A5]">
+          <div className="flex items-center gap-2 h-9 px-3 rounded-lg bg-white border border-[#E5E7EB] focus-within:border-[#3B82F6]">
             <Search className="size-3.5 text-[#9CA3AF]" />
             <input
               autoFocus
@@ -210,7 +209,6 @@ export function AttendeeList({
     );
     updateAttendeeRole(attendee.id, role).then((res) => {
       if (!res.success) {
-        // Revert on failure.
         onChange(
           attendees.map((a) =>
             a.id === attendee.id ? { ...a, role: attendee.role } : a,
@@ -292,11 +290,10 @@ function AttendeeRow({
       </div>
       {canManage && (
         <>
-          {/* Role dropdown — organizer can shuffle anyone but themselves. */}
           <select
             value={a.role}
             onChange={(e) => onRoleChange(e.target.value as AttendeeRole)}
-            className="h-7 px-2 rounded-md border border-[#E5E7EB] bg-white text-[11.5px] text-[#2D333A] outline-none focus:border-[#5CE1A5]"
+            className="h-7 px-2 rounded-md border border-[#E5E7EB] bg-white text-[11.5px] text-[#2D333A] outline-none focus:border-[#3B82F6]"
             style={{ fontFamily: "var(--font-source-sans)" }}
             aria-label="Attendee role"
           >
@@ -313,7 +310,7 @@ function AttendeeRow({
               type="checkbox"
               checked={a.attended}
               onChange={onToggleAttendance}
-              className="size-3.5 rounded text-[#5CE1A5] border-[#E5E7EB]"
+              className="size-3.5 rounded text-[#3B82F6] border-[#E5E7EB]"
             />
             Present
           </label>

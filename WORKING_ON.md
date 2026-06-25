@@ -1,3 +1,6 @@
+workspace hex code: #3B82F6
+Serve hex code: #10B981
+Care hex code: #EC4899
 # Currently Working On
 
 Used to coordinate development between Lucas (backend) and Ben (frontend) so we don't step on each other's work.

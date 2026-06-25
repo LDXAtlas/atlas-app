@@ -159,7 +159,7 @@ function ActionItemsSection({
             >
               <CheckCircle2
                 className={`size-4 mt-0.5 shrink-0 ${
-                  item.task_id ? "text-[#5CE1A5]" : "text-[#CBD5E1]"
+                  item.task_id ? "text-[#3B82F6]" : "text-[#CBD5E1]"
                 }`}
               />
               <div className="flex-1 min-w-0">
@@ -181,7 +181,7 @@ function ActionItemsSection({
                   )}
                   {item.task_id && item.task_status && (
                     <span
-                      className="inline-flex h-4 px-1.5 rounded text-[10px] uppercase tracking-wider bg-[#5CE1A5]/15 text-[#059669]"
+                      className="inline-flex h-4 px-1.5 rounded text-[10px] uppercase tracking-wider bg-[#3B82F6]/15 text-[#1D4ED8]"
                       style={{ fontFamily: "var(--font-poppins)", fontWeight: 700 }}
                     >
                       task · {item.task_status}
@@ -204,7 +204,7 @@ function ActionItemsSection({
                     type="button"
                     onClick={() => promote(item)}
                     disabled={pending}
-                    className="h-7 px-2.5 rounded-md bg-[#5CE1A5] text-white text-[11.5px] font-semibold hover:bg-[#4DD395] disabled:opacity-50 inline-flex items-center gap-1"
+                    className="h-7 px-2.5 rounded-md bg-[#3B82F6] text-white text-[11.5px] font-semibold hover:bg-[#2563EB] disabled:opacity-50 inline-flex items-center gap-1"
                     style={{ fontFamily: "var(--font-poppins)" }}
                   >
                     Promote to task
@@ -239,7 +239,7 @@ function ActionItemsSection({
             }}
             placeholder="Add action item…"
             disabled={pending}
-            className="flex-1 h-9 px-3 rounded-lg border border-[#E5E7EB] text-[13px] outline-none focus:border-[#5CE1A5]"
+            className="flex-1 h-9 px-3 rounded-lg border border-[#E5E7EB] text-[13px] outline-none focus:border-[#3B82F6]"
             style={{ fontFamily: "var(--font-source-sans)" }}
           />
           <button
@@ -367,7 +367,7 @@ function DecisionsSection({
             }}
             placeholder="Log a decision…"
             disabled={pending}
-            className="flex-1 h-9 px-3 rounded-lg border border-[#E5E7EB] text-[13px] outline-none focus:border-[#5CE1A5]"
+            className="flex-1 h-9 px-3 rounded-lg border border-[#E5E7EB] text-[13px] outline-none focus:border-[#3B82F6]"
             style={{ fontFamily: "var(--font-source-sans)" }}
           />
           <button
