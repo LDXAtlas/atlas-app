@@ -1043,9 +1043,9 @@ function TaskGridGroup({
         {/* Add Task Card (Opens Modal) */}
         <button
           onClick={onAddNewTask}
-          className="flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[#E5E7EB] hover:border-[#5CE1A5]/40 py-10 text-[#9CA3AF] hover:text-[#5CE1A5] transition-all group/add cursor-pointer min-h-[120px]"
+          className="flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[#E5E7EB] hover:border-[#3B82F6]/40 py-10 text-[#9CA3AF] hover:text-[#3B82F6] transition-all group/add cursor-pointer min-h-[120px]"
         >
-          <div className="size-9 rounded-xl border-2 border-dashed border-[#E5E7EB] group-hover/add:border-[#5CE1A5]/40 flex items-center justify-center transition-colors">
+          <div className="size-9 rounded-xl border-2 border-dashed border-[#E5E7EB] group-hover/add:border-[#3B82F6]/40 flex items-center justify-center transition-colors">
             <Plus className="size-4" />
           </div>
           <span

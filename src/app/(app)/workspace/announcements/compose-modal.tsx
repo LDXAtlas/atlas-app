@@ -344,7 +344,7 @@ export function ComposeModal({
                         setAudience(e.target.value as "everyone" | "department");
                         if (e.target.value === "everyone") setSelectedDeptId("");
                       }}
-                      className="w-full appearance-none bg-[#F4F5F7] border border-transparent rounded-xl px-4 py-3 text-[14px] text-[#2D333A] focus:ring-2 focus:ring-[#5CE1A5]/10 focus:border-[#5CE1A5]/40 outline-none transition-all pr-10"
+                      className="w-full appearance-none bg-[#F4F5F7] border border-transparent rounded-xl px-4 py-3 text-[14px] text-[#2D333A] focus:ring-2 focus:ring-[#3B82F6]/10 focus:border-[#3B82F6]/40 outline-none transition-all pr-10"
                       style={{ fontFamily: "var(--font-source-sans)", fontWeight: 500 }}
                     >
                       <option value="everyone">Everyone</option>
@@ -361,7 +361,7 @@ export function ComposeModal({
                           <select
                             value={selectedDeptId}
                             onChange={(e) => setSelectedDeptId(e.target.value)}
-                            className="w-full appearance-none bg-[#F4F5F7] border border-transparent rounded-xl px-4 py-3 text-[14px] text-[#2D333A] focus:ring-2 focus:ring-[#5CE1A5]/10 focus:border-[#5CE1A5]/40 outline-none transition-all pr-10"
+                            className="w-full appearance-none bg-[#F4F5F7] border border-transparent rounded-xl px-4 py-3 text-[14px] text-[#2D333A] focus:ring-2 focus:ring-[#3B82F6]/10 focus:border-[#3B82F6]/40 outline-none transition-all pr-10"
                             style={{ fontFamily: "var(--font-source-sans)", fontWeight: 500 }}
                           >
                             <option value="">Select a department...</option>
@@ -421,12 +421,12 @@ export function ComposeModal({
                         {/* Upload status overlay */}
                         {coverUploading && (
                           <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                            <Loader2 className="size-8 text-[#5CE1A5] animate-spin" />
+                            <Loader2 className="size-8 text-[#3B82F6] animate-spin" />
                           </div>
                         )}
                         {coverUploaded && !coverUploading && (
                           <div className="absolute top-2 right-2">
-                            <div className="size-6 rounded-full bg-[#5CE1A5] flex items-center justify-center">
+                            <div className="size-6 rounded-full bg-[#3B82F6] flex items-center justify-center">
                               <Check className="size-3.5 text-white" />
                             </div>
                           </div>
@@ -515,7 +515,7 @@ export function ComposeModal({
                     placeholder="Give your update a clear, bold title..."
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
-                    className="w-full bg-[#F4F5F7] border border-transparent rounded-xl px-4 py-3 text-[15px] placeholder:text-[#9CA3AF] focus:ring-2 focus:ring-[#5CE1A5]/10 focus:border-[#5CE1A5]/40 outline-none transition-all"
+                    className="w-full bg-[#F4F5F7] border border-transparent rounded-xl px-4 py-3 text-[15px] placeholder:text-[#9CA3AF] focus:ring-2 focus:ring-[#3B82F6]/10 focus:border-[#3B82F6]/40 outline-none transition-all"
                     style={{ fontWeight: 600 }}
                   />
                 </div>
@@ -530,7 +530,7 @@ export function ComposeModal({
                     value={content}
                     onChange={(e) => setContent(e.target.value)}
                     rows={5}
-                    className="w-full bg-[#F4F5F7] border border-transparent rounded-xl px-4 py-3 text-[15px] placeholder:text-[#9CA3AF] focus:ring-2 focus:ring-[#5CE1A5]/10 focus:border-[#5CE1A5]/40 outline-none transition-all resize-none"
+                    className="w-full bg-[#F4F5F7] border border-transparent rounded-xl px-4 py-3 text-[15px] placeholder:text-[#9CA3AF] focus:ring-2 focus:ring-[#3B82F6]/10 focus:border-[#3B82F6]/40 outline-none transition-all resize-none"
                     style={{ fontFamily: "var(--font-source-sans)", fontWeight: 400 }}
                   />
                 </div>
@@ -554,7 +554,7 @@ export function ComposeModal({
                   <button
                     onClick={handlePost}
                     disabled={isPending}
-                    className="flex-1 px-5 py-3 bg-[#5CE1A5] text-white rounded-xl text-[14px] shadow-lg shadow-[#5CE1A5]/20 hover:bg-[#4CD99A] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex-1 px-5 py-3 bg-[#3B82F6] text-white rounded-xl text-[14px] shadow-lg shadow-[#3B82F6]/20 hover:bg-[#3B82F6]/90 active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     style={{ fontWeight: 600 }}
                   >
                     <Send className="size-4" />
