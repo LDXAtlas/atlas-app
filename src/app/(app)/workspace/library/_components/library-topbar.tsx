@@ -64,9 +64,9 @@ export function LibraryTopbar({
   onCreateFolder,
   storage,
 }: LibraryTopbarProps) {
-  
   return (
-<header className="px-8 pt-8 pb-4 bg-transparent w-full z-10 shrink-0">      
+    <header className="px-8 pt-8 pb-4 bg-transparent w-full z-10 shrink-0">
+      
       {/* Top Row: Title, Global Actions, and Storage */}
       <div className="flex items-start justify-between mb-8 gap-4 flex-wrap">
         <div>
@@ -74,7 +74,7 @@ export function LibraryTopbar({
             Library
           </h1>
           <p className="text-[13px] text-[#6B7280]" style={{ fontFamily: "var(--font-source-sans)" }}>
-            Your church's knowledge hub — files, training, templates, and reports.
+            Your church's knowledge hub – files, training, templates, and reports.
           </p>
         </div>
 
@@ -93,13 +93,13 @@ export function LibraryTopbar({
               <div className="flex flex-col justify-center min-w-[140px]">
                 <div className="flex justify-between items-center mb-1.5">
                   <span className="text-[10px] uppercase font-semibold text-[#9CA3AF] tracking-wider">Storage</span>
-                  <span className="text-[10px] font-semibold text-[#5CE1A5]">
+                  <span className="text-[10px] font-semibold text-[#3B82F6]">
                     {storage.formatted.used} / {storage.formatted.limit}
                   </span>
                 </div>
                 <div className="h-1.5 w-full bg-[#F4F5F7] rounded-full overflow-hidden">
                   <div 
-                    className="h-full bg-[#5CE1A5] rounded-full transition-all duration-500" 
+                    className="h-full bg-[#3B82F6] rounded-full transition-all duration-500" 
                     style={{ width: `${Math.min(storage.percentage_used, 100)}%` }} 
                   />
                 </div>
@@ -111,7 +111,7 @@ export function LibraryTopbar({
 
       {/* Secondary Row: Navigation Chips & Search */}
       <div className="flex items-center justify-between gap-4 bg-white px-2 py-2 rounded-2xl border border-[#E5E7EB] shadow-[0_2px_8px_rgba(0,0,0,0.02)]">
-        
+         
         <nav className="flex items-center gap-1 overflow-x-auto no-scrollbar">
           {QUICK_FILTERS.map((q) => {
             const active = folderId === undefined && filter === q.value;
@@ -120,7 +120,7 @@ export function LibraryTopbar({
                 key={q.value}
                 onClick={() => onSelectFilter(q.value)}
                 className={`flex items-center gap-2 h-9 px-4 rounded-xl text-[13px] font-semibold transition-colors whitespace-nowrap ${
-                  active ? "bg-[#5CE1A5]/10 text-[#059669]" : "text-[#6B7280] hover:bg-[#F4F5F7] hover:text-[#2D333A]"
+                  active ? "bg-[#3B82F6]/10 text-[#1D4ED8]" : "text-[#6B7280] hover:bg-[#F4F5F7] hover:text-[#2D333A]"
                 }`}
                 style={{ fontFamily: "var(--font-poppins)" }}
               >
@@ -137,7 +137,7 @@ export function LibraryTopbar({
         </nav>
 
         <div className="flex items-center gap-2 shrink-0">
-          <div className="w-[240px] h-9 px-3 rounded-xl bg-[#F4F5F7] flex items-center gap-2 border border-transparent focus-within:border-[#5CE1A5] focus-within:bg-white transition-colors">
+          <div className="w-[240px] h-9 px-3 rounded-xl bg-[#F4F5F7] flex items-center gap-2 border border-transparent focus-within:border-[#3B82F6] focus-within:bg-white transition-colors">
             <Search className="size-3.5 text-[#9CA3AF]" />
             <input
               value={search}
@@ -174,7 +174,7 @@ function ActionButton({ icon, label, onClick, primary }: { icon: React.ReactNode
       onClick={onClick}
       className={`h-10 px-4 rounded-full text-[13px] font-semibold inline-flex items-center gap-2 transition-all shadow-sm ${
         primary 
-          ? "bg-[#5CE1A5] text-white hover:bg-[#4DD395] border border-transparent" 
+          ? "bg-[#3B82F6] text-white hover:bg-[#2563EB] border border-transparent" 
           : "bg-white text-[#6B7280] hover:text-[#2D333A] border border-[#E5E7EB] hover:border-[#D1D5DB] hover:bg-[#FAFBFC]"
       }`}
       style={{ fontFamily: "var(--font-poppins)" }}
@@ -196,7 +196,7 @@ function FolderDropdown({ folders, currentFolderId, onSelect }: { folders: Libra
       <button 
         onClick={() => setOpen(!open)}
         className={`flex items-center gap-2 h-9 px-4 rounded-xl text-[13px] font-semibold transition-colors ${
-          currentFolderId !== undefined ? "bg-[#5CE1A5]/10 text-[#059669]" : "text-[#6B7280] hover:bg-[#F4F5F7] hover:text-[#2D333A]"
+          currentFolderId !== undefined ? "bg-[#3B82F6]/10 text-[#1D4ED8]" : "text-[#6B7280] hover:bg-[#F4F5F7] hover:text-[#2D333A]"
         }`}
         style={{ fontFamily: "var(--font-poppins)" }}
       >
@@ -215,7 +215,7 @@ function FolderDropdown({ folders, currentFolderId, onSelect }: { folders: Libra
             >
               <button 
                 onClick={() => { onSelect(null); setOpen(false); }}
-                className={`w-full text-left px-4 py-2.5 text-[13px] hover:bg-[#F4F5F7] ${currentFolderId === null ? "text-[#059669] font-semibold bg-[#5CE1A5]/5" : "text-[#2D333A]"}`}
+                className={`w-full text-left px-4 py-2.5 text-[13px] hover:bg-[#F4F5F7] ${currentFolderId === null ? "text-[#1D4ED8] font-semibold bg-[#3B82F6]/5" : "text-[#2D333A]"}`}
                 style={{ fontFamily: "var(--font-poppins)" }}
               >
                 Library Root
@@ -224,7 +224,7 @@ function FolderDropdown({ folders, currentFolderId, onSelect }: { folders: Libra
                 <button 
                   key={f.id}
                   onClick={() => { onSelect(f.id); setOpen(false); }}
-                  className={`w-full text-left px-4 py-2.5 text-[13px] hover:bg-[#F4F5F7] flex items-center justify-between ${currentFolderId === f.id ? "text-[#059669] font-semibold bg-[#5CE1A5]/5" : "text-[#2D333A]"}`}
+                  className={`w-full text-left px-4 py-2.5 text-[13px] hover:bg-[#F4F5F7] flex items-center justify-between ${currentFolderId === f.id ? "text-[#1D4ED8] font-semibold bg-[#3B82F6]/5" : "text-[#2D333A]"}`}
                   style={{ fontFamily: "var(--font-poppins)" }}
                 >
                   <span className="truncate">{f.name}</span>

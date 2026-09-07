@@ -24,7 +24,7 @@ import {
 } from "@/app/actions/announcements";
 import { AttachmentsSection } from "@/components/attachments-section";
 
-// ─── Types ──────────────────────────────────────────────
+// Types
 export type Announcement = {
   id: string;
   title: string;
@@ -47,7 +47,7 @@ export type Announcement = {
 
 type FilterTab = "all" | "general" | "staff" | "ministry";
 
-// ─── Category config ────────────────────────────────────
+// Category config
 const CATEGORY_CONFIG: Record<
   string,
   { icon: typeof Globe; color: string; label: string }
@@ -68,7 +68,7 @@ const FILTER_TABS: {
   { id: "ministry", label: "Ministry", icon: Users },
 ];
 
-// ─── Helper: relative time ──────────────────────────────
+// Helper: relative time
 function relativeTime(dateString: string): string {
   const now = new Date();
   const date = new Date(dateString);
@@ -86,7 +86,7 @@ function relativeTime(dateString: string): string {
   });
 }
 
-// ─── Initials avatar ────────────────────────────────────
+// Initials avatar
 function InitialsAvatar({ name, color, size = "size-10" }: { name: string; color: string, size?: string }) {
   const initials = name
     .split(" ")
@@ -94,6 +94,7 @@ function InitialsAvatar({ name, color, size = "size-10" }: { name: string; color
     .join("")
     .slice(0, 2)
     .toUpperCase();
+
   return (
     <div
       className={`${size} rounded-full flex items-center justify-center text-white text-[13px] shrink-0 shadow-sm`}
@@ -104,7 +105,7 @@ function InitialsAvatar({ name, color, size = "size-10" }: { name: string; color
   );
 }
 
-// ─── Category badge ─────────────────────────────────────
+// Category badge
 function CategoryBadge({ category }: { category: string }) {
   const config = CATEGORY_CONFIG[category] || CATEGORY_CONFIG.general;
   return (
@@ -121,7 +122,7 @@ function CategoryBadge({ category }: { category: string }) {
   );
 }
 
-// ─── Main View ──────────────────────────────────────────
+// Main View
 export function AnnouncementsView({
   announcements,
   departments = [],
@@ -175,11 +176,11 @@ export function AnnouncementsView({
   }, [announcements, handleMarkAsRead]);
 
   return (
-    <div className="min-h-full bg-[#FAFAFA] text-[#2D333A] font-source-sans">
-      <div className="max-w-[1300px] mx-auto px-4 sm:px-6 py-8 flex flex-col lg:flex-row gap-8 items-start">
+    <div className="bg-white text-[#2D333A] font-source-sans lg:h-[calc(100vh-5rem)]">
+      <div className="max-w-[1300px] mx-auto px-4 sm:px-6 py-6 flex flex-col lg:flex-row gap-8 items-start h-full">
         
         {/* Left Column: Navigation Sidebar */}
-        <aside className="w-full lg:w-[240px] shrink-0 lg:sticky lg:top-8 flex flex-col gap-6">
+        <aside className="w-full lg:w-[240px] shrink-0 flex flex-col gap-6 lg:h-full lg:overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] pb-8">
           <div>
             <h1 className="text-[24px] font-bold text-[#2D333A] font-poppins leading-tight">
               Announcements
@@ -192,7 +193,7 @@ export function AnnouncementsView({
           {["admin", "staff"].includes(currentUserRole) && (
             <button
               onClick={() => { setEditingAnnouncement(null); setShowCompose(true); }}
-              className="flex items-center justify-center gap-2 w-full py-3 bg-[#3B82F6] text-white rounded-xl font-semibold text-[14px] shadow-sm hover:bg-blue-600 transition-colors"
+              className="flex items-center justify-center gap-2 w-full py-3 bg-[#3B82F6] text-white rounded-xl font-semibold text-[14px] shadow-sm hover:bg-blue-600 transition-colors shrink-0"
             >
               <Plus className="size-4" />
               Post Update
@@ -219,29 +220,9 @@ export function AnnouncementsView({
           </nav>
         </aside>
 
-        {/* Center Column: The Feed */}
-        <main className="flex-1 max-w-[700px] w-full flex flex-col gap-6">
+        {/* Center Column: The Feed (Independent Scrolling Layer) */}
+        <main className="flex-1 max-w-[700px] w-full flex flex-col gap-6 lg:h-full lg:overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] pb-24">
           
-          {/* Quick Compose Input */}
-          {["admin", "staff"].includes(currentUserRole) && (
-            <div 
-              onClick={() => setShowCompose(true)}
-              className="bg-white rounded-2xl border border-[#E5E7EB] p-4 shadow-sm flex items-center gap-3 cursor-text hover:border-[#9CA3AF] transition-colors"
-            >
-              <div className="size-10 rounded-full bg-[#F4F5F7] flex items-center justify-center shrink-0">
-                <Plus className="size-5 text-[#9CA3AF]" />
-              </div>
-              <div className="flex-1 text-[15px] text-[#9CA3AF]">
-                Create a church announcement...
-              </div>
-              <div className="flex gap-2">
-                <button className="p-2 bg-[#F4F5F7] rounded-lg text-[#6B7280] hover:bg-[#E5E7EB] transition-colors">
-                  <ImageIcon className="size-4" />
-                </button>
-              </div>
-            </div>
-          )}
-
           {/* Mobile-Only Pinned Section (Hidden on Desktop) */}
           {pinned.length > 0 && (
             <div className="xl:hidden space-y-4">
@@ -303,7 +284,7 @@ export function AnnouncementsView({
         </main>
 
         {/* Right Column: Pinned Sidebar (Desktop Only) */}
-        <aside className="hidden xl:flex w-[280px] shrink-0 sticky top-8 flex-col gap-4">
+        <aside className="hidden xl:flex w-[280px] shrink-0 flex-col gap-4 lg:h-full lg:overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] pb-8">
           <div className="flex items-center gap-2 pb-2 border-b border-[#E5E7EB]">
             <Pin className="size-4 text-amber-500" />
             <h2 className="text-[13px] font-bold uppercase tracking-widest text-[#2D333A]">Important</h2>
@@ -314,13 +295,12 @@ export function AnnouncementsView({
               <p className="text-[13px] text-[#9CA3AF] italic">No pinned announcements.</p>
             ) : (
               pinned.map((ann) => {
-                // Check if the current user has permission to unpin
                 const canManagePin = (ann.author_id === currentUserId && ["admin", "staff"].includes(currentUserRole)) || currentUserRole === "admin";
 
                 return (
                   <div 
                     key={ann.id} 
-                    className="group/pin bg-white p-4 rounded-2xl border border-[#E5E7EB] shadow-sm hover:border-[#9CA3AF] transition-colors cursor-pointer relative" 
+                    className="group/pin bg-white p-4 rounded-2xl border border-[#E5E7EB] shadow-sm hover:border-[#9CA3AF] transition-colors cursor-pointer relative"
                     onClick={() => toggleExpanded(ann.id)}
                   >
                     <div className="flex items-center justify-between mb-2">
@@ -329,11 +309,10 @@ export function AnnouncementsView({
                           <span className="text-[13px] font-semibold text-[#2D333A] truncate">{ann.author_name}</span>
                         </div>
                         
-                        {/* Unpin Action (Only visible on hover if user has permission) */}
                         {canManagePin && (
                           <button 
                             onClick={(e) => {
-                              e.stopPropagation(); // Prevents the card from expanding when you click unpin
+                              e.stopPropagation(); 
                               handleTogglePin(ann.id);
                             }}
                             className="p-1.5 text-[#9CA3AF] hover:text-amber-500 hover:bg-amber-50 rounded-md transition-colors opacity-0 group-hover/pin:opacity-100 shrink-0"
@@ -350,7 +329,6 @@ export function AnnouncementsView({
             )}
           </div>
         </aside>
-
       </div>
 
       {/* Compose Modal */}
@@ -365,7 +343,7 @@ export function AnnouncementsView({
   );
 }
 
-// ─── Compact Announcement Card ──────────────────────────────────
+// Compact Announcement Card
 function AnnouncementCard({
   announcement: ann,
   isPinned,

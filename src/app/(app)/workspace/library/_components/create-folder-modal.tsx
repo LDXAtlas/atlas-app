@@ -34,11 +34,10 @@ const SUGGESTED_ICONS = [
   "Lightbulb",
 ];
 
-// Folder color palette — matches department colors so themes feel
+// Folder color palette – matches department colors so themes feel
 // consistent across the app.
 const FOLDER_COLORS = [
   "#6B7280",
-  "#5CE1A5",
   "#3B82F6",
   "#8B5CF6",
   "#F59E0B",
@@ -77,6 +76,7 @@ export function CreateFolderModal({
     "organization",
   );
   const [departmentId, setDepartmentId] = useState<string | null>(null);
+
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -109,6 +109,7 @@ export function CreateFolderModal({
       setError("Pick a department for a department-scoped folder.");
       return;
     }
+
     startTransition(async () => {
       const res = editing
         ? await updateLibraryFolder(editing.id, {
@@ -128,6 +129,7 @@ export function CreateFolderModal({
             departmentId,
             parentFolderId: parentFolderId ?? null,
           });
+
       if (!res.success) {
         setError(res.error);
         return;
@@ -199,7 +201,7 @@ export function CreateFolderModal({
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="e.g. Sermon series"
-                  className="w-full h-10 px-3 rounded-xl border border-[#E5E7EB] text-[14px] outline-none focus:border-[#5CE1A5]"
+                  className="w-full h-10 px-3 rounded-xl border border-[#E5E7EB] text-[14px] outline-none focus:border-[#3B82F6]"
                   style={{ fontFamily: "var(--font-source-sans)" }}
                 />
               </Field>
@@ -210,7 +212,7 @@ export function CreateFolderModal({
                   onChange={(e) => setDescription(e.target.value)}
                   rows={2}
                   placeholder="What goes in this folder?"
-                  className="w-full px-3 py-2 rounded-xl border border-[#E5E7EB] text-[13px] outline-none focus:border-[#5CE1A5] resize-none"
+                  className="w-full px-3 py-2 rounded-xl border border-[#E5E7EB] text-[13px] outline-none focus:border-[#3B82F6] resize-none"
                   style={{ fontFamily: "var(--font-source-sans)" }}
                 />
               </Field>
@@ -227,7 +229,7 @@ export function CreateFolderModal({
                         backgroundColor: c,
                         boxShadow:
                           color === c
-                            ? "0 0 0 2px white, 0 0 0 4px #5CE1A5"
+                            ? "0 0 0 2px white, 0 0 0 4px #3B82F6"
                             : undefined,
                       }}
                       aria-label={`Color ${c}`}
@@ -252,7 +254,7 @@ export function CreateFolderModal({
                         onClick={() => setIcon(n)}
                         className={`size-8 rounded-md flex items-center justify-center transition-colors ${
                           selected
-                            ? "bg-[#5CE1A5]/15"
+                            ? "bg-[#3B82F6]/15"
                             : "hover:bg-[#F4F5F7]"
                         }`}
                         title={n}
@@ -294,7 +296,7 @@ export function CreateFolderModal({
                         key={opt.value}
                         className={`flex items-start gap-2 px-3 py-2 rounded-xl border cursor-pointer transition-colors ${
                           selected
-                            ? "border-[#5CE1A5] bg-[#5CE1A5]/5"
+                            ? "border-[#3B82F6] bg-[#3B82F6]/5"
                             : "border-[#E5E7EB] hover:bg-[#F4F5F7]"
                         }`}
                       >
@@ -303,7 +305,7 @@ export function CreateFolderModal({
                           name="folder-visibility"
                           checked={selected}
                           onChange={() => setVisibility(opt.value)}
-                          className="mt-1 text-[#5CE1A5] focus:ring-[#5CE1A5]"
+                          className="mt-1 text-[#3B82F6] focus:ring-[#3B82F6]"
                         />
                         <div>
                           <p
@@ -335,10 +337,10 @@ export function CreateFolderModal({
                     onChange={(e) =>
                       setDepartmentId(e.target.value || null)
                     }
-                    className="w-full h-10 px-3 rounded-xl border border-[#E5E7EB] text-[13px] outline-none focus:border-[#5CE1A5]"
+                    className="w-full h-10 px-3 rounded-xl border border-[#E5E7EB] text-[13px] outline-none focus:border-[#3B82F6]"
                     style={{ fontFamily: "var(--font-source-sans)" }}
                   >
-                    <option value="">Select a department…</option>
+                    <option value="">Select a department...</option>
                     {departments.map((d) => (
                       <option key={d.id} value={d.id}>
                         {d.name}
@@ -362,11 +364,11 @@ export function CreateFolderModal({
                 type="button"
                 onClick={handleSubmit}
                 disabled={pending || !name.trim()}
-                className="h-9 px-4 rounded-xl bg-[#5CE1A5] text-white text-[13px] font-semibold hover:bg-[#4DD395] disabled:opacity-50 inline-flex items-center gap-2"
+                className="h-9 px-4 rounded-xl bg-[#3B82F6] text-white text-[13px] font-semibold hover:bg-[#2563EB] disabled:opacity-50 inline-flex items-center gap-2"
                 style={{ fontFamily: "var(--font-poppins)" }}
               >
                 <Check className="size-3.5" />
-                {pending ? "Saving…" : editing ? "Save" : "Create"}
+                {pending ? "Saving..." : editing ? "Save" : "Create"}
               </button>
             </footer>
           </motion.div>
@@ -395,4 +397,3 @@ function Field({
     </div>
   );
 }
-
