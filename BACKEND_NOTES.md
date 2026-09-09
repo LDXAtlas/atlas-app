@@ -8,23 +8,23 @@ Ben adds entries here when he ships UI that needs a backend hook. Lucas moves th
 
 in project boards make sure that the row of avatars in a baord in the top right gets its info from the server so it displays the users correct profile picture
 
-1. Drag-and-Drop API Endpoint
-
-What's needed: A server action or API route to update an event's date in Supabase.
-
-Where to plug it in: In calendar-view.tsx, look for the handleEventDrop(eventId: string, newDate: Date) function. They need to trigger an UPDATE to the database inside this function to permanently save the new starts_at (and adjust the ends_at accordingly) when a user drops an event on a new day.
-
-2. National Holidays Feed
+1. National Holidays Feed
 
 What's needed: Real holiday data.
 
 Where to plug it in: Currently, we are generating mock data using a frontend function called getUSCHolidays(year). The backend team should replace this by either sending down event_type: "holiday" items directly in the main events payload, or by providing a separate endpoint (like /api/holidays?year=2026) that the frontend can fetch from.
 
-3. Performance Note on "Expanded Events"
+2. Performance Note on "Expanded Events"
 
 What's needed: Keep an eye on recurring events.
 
 Where to plug it in: Right now, the frontend calculates all recurring event dates locally using getAllEventDates. This is standard for modern apps, but if an organization has thousands of recurring events stretching years into the future, the backend might eventually need to handle the recurrence expansion via an Edge Function before sending the data to the client to save memory.
+
+3. Multi-day events don't render as a continuous span in month view (display bug)
+
+What's wrong: An event spanning several days shows a pill only on its START day in calendar month view, instead of stretching across the full date range. Data is correct — starts_at/ends_at are stored properly and the event modal shows the right span — so this is purely a month-grid rendering issue, not a data/backend issue.
+
+Where to plug it in: calendar-view.tsx month grid. The month view currently buckets each event into a single day cell (by starts_at). It needs to map each event across every day cell it overlaps between starts_at and ends_at, with proper start/middle/end pill styling for the continuous bar. Pre-existing — NOT introduced by the drag-drop persistence fix (2026-09-09). Found during manual testing.
 
 
 Lucas you can delete the library-sidebar.tsx file if you dont need it for anything. my libray UI is not using that file at all. 05/14 ben
@@ -101,6 +101,14 @@ Atlas does NOT build native video calling. Position is "the brain, not the pipes
 ---
 
 ## DONE
+
+### Calendar drag-drop reschedule persistence — Completed 2026-09-09
+- Was PENDING #1 ("Drag-and-Drop API Endpoint"). `handleEventDrop` in `calendar-view.tsx` was optimistic-only — it mutated local React state so the pill snapped to the new day, but never wrote to the DB, so the move silently reverted on refresh.
+- Now wires `handleEventDrop` to the existing `updateEvent` server action (`src/app/actions/events.ts`). No new endpoint needed — `updateEvent` already persists `starts_at`/`ends_at`, is org-scoped (`.eq id .eq organization_id`), and enforces `can.editAnyEvent(role)` server-side.
+- **Duration preserved:** shifts `ends_at` by the same delta as `starts_at` rather than only moving the start (the old in-memory version didn't adjust `ends_at` at all). Keeps the original time-of-day; works for both timed and all-day/multi-day spans.
+- **Optimistic + rollback:** applies the move immediately, then reverts local state and shows an error toast if the server write fails.
+- **Guards against series corruption:** drag is now gated off for holidays (synthetic, not persisted), huddles (read-only on the calendar), and recurring events — expanded occurrences all share the base row's `id`, so persisting one occurrence would shift the whole series. Non-draggable in the grid + a defensive guard in the handler.
+- Scope note: month view is the only drag surface (week/day/agenda are click-only; no resize interaction exists), so no other drag/resize persistence gap remains.
 
 ### AI Control Center v1 — guidelines, model preference, master switch — Completed 2026-05-13
 - New `organization_ai_settings` table (mirror migration at `supabase/migrations/20260618_organization_ai_settings.sql`): 5 guidelines text fields (`voice_tone`, `terminology`, `about_church`, `things_to_avoid`, `additional_guidelines`), `model_preference` ('speed'|'balanced'|'quality' default 'balanced'), `ai_enabled` (default true), audit fields. RLS lets org members SELECT; writes go through admin-gated server action.
