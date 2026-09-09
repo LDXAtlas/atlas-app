@@ -25,7 +25,7 @@ import {
   type CustomEventType,
   type EventModalData,
 } from "../events/event-modal";
-import { deleteEvent } from "@/app/actions/events";
+import { deleteEvent, updateEvent } from "@/app/actions/events";
 import { useRouter } from "next/navigation";
 import { AttachmentsSection } from "@/components/attachments-section";
 
@@ -971,7 +971,9 @@ function MonthGrid({
                         exit={{ opacity: 0, scale: 0.9 }}
                         transition={{ duration: 0.2 }}
                         key={`${evt.id}-${evt.starts_at}`}
-                        draggable={!isHoliday}
+                        draggable={
+                          !isHoliday && !evt.is_huddle && !evt.recurrence_rule
+                        }
                         onDragStart={(e: any) => {
                           e.dataTransfer.setData("eventId", evt.id);
                           e.dataTransfer.effectAllowed = "move";
@@ -1569,6 +1571,7 @@ export function CalendarView({
   const [initialTime, setInitialTime] = useState<string>("");
 
   const [localEvents, setLocalEvents] = useState<CalendarEvent[]>(events);
+  const [dragError, setDragError] = useState<string | null>(null);
   const [showHolidays, setShowHolidays] = useState(true);
 
   const [activeFilters, setActiveFilters] = useState<Set<string>>(
@@ -1773,18 +1776,76 @@ export function CalendarView({
     setDetailEvent(event);
   }
 
-  function handleEventDrop(eventId: string, newDate: Date) {
-    setLocalEvents((prev) =>
-      prev.map((evt) => {
-        if (evt.id === eventId) {
-          const oldStart = new Date(evt.starts_at);
-          const newStart = new Date(newDate);
-          newStart.setHours(oldStart.getHours(), oldStart.getMinutes());
-          return { ...evt, starts_at: newStart.toISOString() };
-        }
-        return evt;
-      })
+  async function handleEventDrop(eventId: string, newDate: Date) {
+    const target = localEvents.find((e) => e.id === eventId);
+    if (!target) return;
+
+    // Only simple, editable one-off events can be rescheduled by drag.
+    // Holidays are synthetic (never persisted), huddles are read-only on the
+    // calendar, and recurring events can't be single-occurrence-moved here:
+    // every expanded occurrence shares the base row's id, so writing starts_at
+    // would silently shift the whole series. These are already non-draggable in
+    // the grid; this guard is a defensive backstop.
+    if (
+      target.event_type === "holiday" ||
+      target.is_huddle ||
+      target.recurrence_rule
+    ) {
+      return;
+    }
+
+    const oldStart = new Date(target.starts_at);
+    const newStart = new Date(newDate);
+    // Preserve the original time-of-day. All-day events sit at midnight, so this
+    // is a no-op for them; timed events keep their exact hour/minute/second.
+    newStart.setHours(
+      oldStart.getHours(),
+      oldStart.getMinutes(),
+      oldStart.getSeconds(),
+      oldStart.getMilliseconds(),
     );
+    const startDelta = newStart.getTime() - oldStart.getTime();
+    if (startDelta === 0) return; // dropped on its current day — nothing to do
+
+    // Preserve duration: shift ends_at by the same delta as starts_at so the
+    // event keeps its length (handles both timed and multi-day all-day spans).
+    const newStartsAt = newStart.toISOString();
+    const newEndsAt = target.ends_at
+      ? new Date(new Date(target.ends_at).getTime() + startDelta).toISOString()
+      : null;
+
+    // Snapshot for rollback if the server write fails.
+    const prevStartsAt = target.starts_at;
+    const prevEndsAt = target.ends_at;
+
+    // Optimistic update — snap the pill immediately.
+    setLocalEvents((prev) =>
+      prev.map((evt) =>
+        evt.id === eventId
+          ? { ...evt, starts_at: newStartsAt, ends_at: newEndsAt }
+          : evt,
+      ),
+    );
+
+    const result = await updateEvent(eventId, {
+      starts_at: newStartsAt,
+      ...(newEndsAt ? { ends_at: newEndsAt } : {}),
+    });
+
+    if (!result.success) {
+      // Revert the optimistic move and surface the error to the user.
+      setLocalEvents((prev) =>
+        prev.map((evt) =>
+          evt.id === eventId
+            ? { ...evt, starts_at: prevStartsAt, ends_at: prevEndsAt }
+            : evt,
+        ),
+      );
+      setDragError(
+        result.error ?? "Couldn't reschedule that event. Please try again.",
+      );
+      setTimeout(() => setDragError(null), 4000);
+    }
   }
 
   function handleEditFromDetail() {
@@ -1828,6 +1889,28 @@ export function CalendarView({
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
+      {/* Reschedule-failure toast (drag-drop persistence) */}
+      <AnimatePresence>
+        {dragError && (
+          <motion.div
+            initial={{ opacity: 0, y: 20, x: "-50%" }}
+            animate={{ opacity: 1, y: 0, x: "-50%" }}
+            exit={{ opacity: 0, y: 20, x: "-50%" }}
+            className="fixed bottom-6 left-1/2 z-[100] flex items-center gap-2 px-4 py-3 bg-[#FEF2F2] text-[#EF4444] rounded-xl border border-[#FEE2E2]"
+            style={{ boxShadow: "0 8px 24px -6px rgba(239,68,68,0.25)" }}
+            role="alert"
+          >
+            <AlertCircle className="size-4 shrink-0" />
+            <span
+              className="text-[13px]"
+              style={{ fontFamily: "var(--font-poppins)", fontWeight: 600 }}
+            >
+              {dragError}
+            </span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6 lg:pt-8 pb-4 shrink-0">
         <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-5">
           <div>
