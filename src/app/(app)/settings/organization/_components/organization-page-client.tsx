@@ -22,6 +22,7 @@ import { ROLE_COLORS } from "@/lib/roles";
 import type { Role } from "@/lib/permissions";
 import { OrgLogo } from "@/components/org-logo";
 import { OrgLogoCard } from "./org-logo-card";
+import { DataExportCard } from "./data-export-card";
 
 // ─── Types ───────────────────────────────────────────────
 interface TeamMember {
@@ -433,6 +434,11 @@ export function OrganizationPageClient({
         initialLogoUrl={orgLogoUrl}
         isAdmin={isAdmin}
       />
+
+      {/* Data export — download everything the org has in Atlas. */}
+      <div className="mt-6">
+        <DataExportCard isAdmin={isAdmin} />
+      </div>
 
       {/* Action feedback toast */}
       <AnimatePresence>
