@@ -19,9 +19,12 @@ Before you start a coding session:
 
 ---
 
-## Lucas (last updated: 2026-09-09)
+## Lucas (last updated: 2026-09-10)
 
-### Just landed (2026-09-09 — re-entry session)
+### Just landed (2026-09-10)
+- **Organization data export** — admin can download everything the org has in the Workspace module as a single JSON file, from **Settings → Organization** (new Data Export card). Registry-driven (`src/lib/export/export-registry.ts`, mirrors the AI feature-registry pattern) so adding Serve/Care later = adding entries, not rewriting export logic. Admin-gated server-side, strictly scoped to the caller's org, declared redactions/exclusions (Stripe id, storage keys, secret tokens, Atlas internal config), and a soft completeness check that warns if a future org-scoped table isn't registered. Congregation `members` (incl. pastoral `notes`) are included. Full detail in BACKEND_NOTES → DONE. **No huddles UI touched** (data-only export).
+
+### Landed 2026-09-09 (re-entry session)
 - **Dependency refresh:** bumped 8 same-major deps to latest (react/react-dom 19.2.8, @supabase/supabase-js 2.109, stripe 22.6, openai 6.49, resend 6.26, tailwindcss 4.3.3, lucide-react 1.43) and aligned `@tailwindcss/postcss` to 4.3.3. Held back majors/near-breaking: next, typescript, eslint, @anthropic-ai/sdk, @supabase/ssr, motion, @types/node, sharp. Build verified green.
 - **Calendar drag-drop persistence:** month-view event reschedule now actually saves. `handleEventDrop` was optimistic-only (local state, reverted on refresh); it now calls the existing `updateEvent` server action, preserves event duration (shifts `ends_at` by the same delta as `starts_at`), and rolls back + shows an error toast if the write fails. Holiday, huddle, and recurring events are non-draggable (recurring occurrences share the base row id, so a single-occurrence move would shift the whole series). See BACKEND_NOTES → DONE.
 
