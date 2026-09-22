@@ -2,7 +2,23 @@
 // and storage display. Pure functions only — safe to import from both
 // server and client code.
 
-export const MAX_FILE_BYTES = 26_214_400; // 25 MB — matches the DB CHECK.
+// Upload cap for every server-action upload (Library files, avatars, org
+// logos). Temporarily 4 MB: server actions carry the file in the request
+// body, and Vercel caps function request bodies at 4.5 MB, so
+// next.config.ts sets serverActions.bodySizeLimit just above this.
+// Restore the 25 MB Library limit (the DB CHECK) once uploads move to
+// signed upload URLs — see BACKEND_NOTES → PENDING.
+export const MAX_FILE_BYTES = 4 * 1024 * 1024; // 4 MB
+
+// "This file is 6.2 MB. The limit is 4 MB for now." — shown when a file
+// is chosen, before anything is sent.
+export function fileTooLargeMessage(sizeBytes: number): string {
+  return `This file is ${formatBytes(sizeBytes)}. The limit is ${formatBytes(MAX_FILE_BYTES)} for now.`;
+}
+
+// Shown when the upload request itself fails (e.g. the server rejects
+// an oversized body) instead of leaving the UI stuck on "uploading".
+export const UPLOAD_REQUEST_FAILED_MESSAGE = `Upload failed. Check your connection and try again — files must be ${formatBytes(MAX_FILE_BYTES)} or smaller for now.`;
 
 export const TIER_STORAGE_LIMITS = {
   workspace: 2_147_483_648, // 2 GB

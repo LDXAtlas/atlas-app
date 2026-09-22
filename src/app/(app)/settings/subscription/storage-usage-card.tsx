@@ -8,6 +8,7 @@ import {
   type StorageUsage,
   type StorageBreakdownItem,
 } from "@/app/actions/attachments";
+import { MAX_FILE_BYTES, formatBytes } from "@/lib/file-utils";
 
 export function StorageUsageCard() {
   const [usage, setUsage] = useState<StorageUsage | null>(null);
@@ -179,7 +180,7 @@ export function StorageUsageCard() {
           {/* Notes / Phase-2 teaser */}
           <div className="mt-5 pt-4 border-t border-[#F1F5F9] flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-[12px] text-[#6B7280]">
             <p style={{ fontFamily: "var(--font-source-sans)" }}>
-              Max single file: <span className="tabular-nums">25 MB</span>
+              Max single file: <span className="tabular-nums">{formatBytes(MAX_FILE_BYTES)}</span>
             </p>
             <p
               className="sm:ml-auto text-[#9CA3AF]"

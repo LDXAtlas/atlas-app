@@ -13,6 +13,8 @@ import {
 import {
   ALLOWED_MIME_TYPES,
   MAX_FILE_BYTES,
+  UPLOAD_REQUEST_FAILED_MESSAGE,
+  fileTooLargeMessage,
   formatBytes,
 } from "@/lib/file-utils";
 
@@ -76,8 +78,7 @@ export function FileUploader({
 
   function clientSideError(file: File): string | null {
     if (file.size <= 0) return "File is empty.";
-    if (file.size > MAX_FILE_BYTES)
-      return `Too large (${formatBytes(file.size)}). Max is 25 MB.`;
+    if (file.size > MAX_FILE_BYTES) return fileTooLargeMessage(file.size);
     if (!ALLOWED_MIME_TYPES.has(file.type))
       return `Unsupported type${file.type ? ` (${file.type})` : ""}.`;
     if (usage && usage.used_bytes + file.size > usage.limit_bytes) {
@@ -126,7 +127,11 @@ export function FileUploader({
     formData.append("entity_type", entityType);
     formData.append("entity_id", entityId);
 
-    const res = await uploadAttachment(formData);
+    // The action call itself can throw (e.g. the server rejects an
+    // oversized body) — surface it instead of leaving the row stuck.
+    const res = await uploadAttachment(formData).catch(
+      () => ({ success: false as const, error: UPLOAD_REQUEST_FAILED_MESSAGE }),
+    );
     if (!res.success) {
       setQueue((prev) =>
         prev.map((row) =>

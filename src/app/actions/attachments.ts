@@ -11,6 +11,7 @@ import {
   ALLOWED_MIME_TYPES,
   MAX_FILE_BYTES,
   categorizeFile,
+  fileTooLargeMessage,
   formatBytes,
   getFileExtension,
   sanitizeFilename,
@@ -309,7 +310,7 @@ export async function uploadAttachment(
   if (file.size > MAX_FILE_BYTES) {
     return {
       success: false,
-      error: `File is too large (${formatBytes(file.size)}). Max is 25 MB.`,
+      error: fileTooLargeMessage(file.size),
       code: "FILE_TOO_LARGE",
     };
   }
@@ -2125,7 +2126,7 @@ export async function uploadToLibrary(
   if (file.size > MAX_FILE_BYTES)
     return {
       success: false,
-      error: `File is too large (${formatBytes(file.size)}). Max is 25 MB.`,
+      error: fileTooLargeMessage(file.size),
       code: "FILE_TOO_LARGE",
     };
   if (!ALLOWED_MIME_TYPES.has(file.type))

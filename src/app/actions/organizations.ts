@@ -4,6 +4,7 @@ import sharp from "sharp";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { MAX_FILE_BYTES, fileTooLargeMessage } from "@/lib/file-utils";
 import { can, getRoleFromProfile } from "@/lib/permissions";
 
 // ─── Types ────────────────────────────────────────────────
@@ -61,7 +62,6 @@ const LOGO_MIME_ALLOWLIST = new Set([
   "image/webp",
   "image/svg+xml",
 ]);
-const LOGO_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
 const LOGO_PIXEL_SIZE = 256;
 
 export async function uploadOrgLogo(
@@ -79,10 +79,10 @@ export async function uploadOrgLogo(
   if (file.size <= 0) {
     return { success: false, error: "File is empty.", code: "BAD_INPUT" };
   }
-  if (file.size > LOGO_MAX_BYTES) {
+  if (file.size > MAX_FILE_BYTES) {
     return {
       success: false,
-      error: "Image is too large (max 5 MB).",
+      error: fileTooLargeMessage(file.size),
       code: "FILE_TOO_LARGE",
     };
   }

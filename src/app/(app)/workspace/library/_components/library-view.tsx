@@ -41,7 +41,8 @@ import {
 import {
   ALLOWED_MIME_TYPES,
   MAX_FILE_BYTES,
-  formatBytes,
+  UPLOAD_REQUEST_FAILED_MESSAGE,
+  fileTooLargeMessage,
   type FileCategory,
 } from "@/lib/file-utils";
 import { LibraryTopbar } from "./library-topbar";
@@ -295,7 +296,7 @@ export function LibraryView({
             id: jobId,
             name: file.name,
             status: "error",
-            error: `Too large (max ${formatBytes(MAX_FILE_BYTES)})`,
+            error: fileTooLargeMessage(file.size),
           },
         ]);
         continue;
@@ -319,7 +320,11 @@ export function LibraryView({
       const fd = new FormData();
       fd.append("file", file);
       if (targetFolderId) fd.append("folder_id", targetFolderId);
-      const res = await uploadToLibrary(fd);
+      // The action call itself can throw (e.g. the server rejects an
+      // oversized body) — surface it instead of leaving the row stuck.
+      const res = await uploadToLibrary(fd).catch(
+        () => ({ success: false as const, error: UPLOAD_REQUEST_FAILED_MESSAGE }),
+      );
       if (res.success) {
         setUploads((u) =>
           u.map((j) =>

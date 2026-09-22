@@ -7,6 +7,12 @@ import {
   removeOrgLogo,
   uploadOrgLogo,
 } from "@/app/actions/organizations";
+import {
+  MAX_FILE_BYTES,
+  UPLOAD_REQUEST_FAILED_MESSAGE,
+  fileTooLargeMessage,
+  formatBytes,
+} from "@/lib/file-utils";
 
 interface OrgLogoCardProps {
   orgName: string;
@@ -35,10 +41,20 @@ export function OrgLogoCard({
     const file = e.target.files?.[0];
     if (!file) return;
     setError(null);
+    // Size check before anything is sent (one limit: MAX_FILE_BYTES).
+    if (file.size > MAX_FILE_BYTES) {
+      setError(fileTooLargeMessage(file.size));
+      e.target.value = "";
+      return;
+    }
     const fd = new FormData();
     fd.append("file", file);
     startTransition(async () => {
-      const res = await uploadOrgLogo(fd);
+      // The action call itself can throw (e.g. the server rejects an
+      // oversized body) — show it rather than hang or crash the page.
+      const res = await uploadOrgLogo(fd).catch(
+        () => ({ success: false as const, error: UPLOAD_REQUEST_FAILED_MESSAGE }),
+      );
       if (!res.success) {
         setError(res.error);
         return;
@@ -75,7 +91,7 @@ export function OrgLogoCard({
           style={{ fontFamily: "var(--font-source-sans)" }}
         >
           {isAdmin
-            ? "PNG, JPG, WebP, or SVG. Max 5 MB. We resize to fit 256×256."
+            ? `PNG, JPG, WebP, or SVG. Max ${formatBytes(MAX_FILE_BYTES)}. We resize to fit 256×256.`
             : "Only an admin can change the church logo."}
         </p>
         {error && (
