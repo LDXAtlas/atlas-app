@@ -30,5 +30,16 @@ export async function POST(
   }
 
   const result = await transcribeHuddleRecording(recordingId);
-  return NextResponse.json(result, { status: result.success ? 200 : 400 });
+  return NextResponse.json(result, { status: statusForResult(result) });
+}
+
+// The action answers with a code; turn it into the matching HTTP status so
+// a direct POST reads correctly (an attendee poking this endpoint gets a
+// plain 403, and an unknown/invisible recording a 404 that doesn't
+// confirm the id exists).
+function statusForResult(result: { success: boolean; code?: string }): number {
+  if (result.success) return 200;
+  if (result.code === "FORBIDDEN") return 403;
+  if (result.code === "NOT_FOUND") return 404;
+  return 400;
 }

@@ -2305,9 +2305,12 @@ async function loadRecordingForManage(
     .eq("id", recordingId)
     .maybeSingle();
   if (!row || row.organization_id !== ctx.organizationId)
-    return { ok: false, error: "Recording not found." };
+    return { ok: false, error: "Recording not found.", code: "NOT_FOUND" };
   const access = await loadHuddleForViewer(ctx, row.huddle_id);
-  if (!access.ok) return { ok: false, error: access.error };
+  // Can't see the parent huddle — same answer as "no such recording", so
+  // the id isn't confirmed to exist.
+  if (!access.ok)
+    return { ok: false, error: access.error, code: "NOT_FOUND" };
   if (!access.canManage)
     return {
       ok: false,
