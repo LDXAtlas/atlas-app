@@ -83,7 +83,7 @@ Atlas does NOT build native video calling. Position is "the brain, not the pipes
 - `filterVisibleHuddles` (private helper in `src/app/actions/huddles.ts`, extracted 2026-09-22) is now used by `getHuddles`, `getMyHuddleActionItems` and `getRecentDecisions`. Two older copies of the same predicate remain: `getHuddlesForCalendar` and `loadHuddleForViewer` (single-row). Move them onto the helper so the visibility rule lives in one place.
 
 ### Huddles Phase 2 — Dismissing an AI-extracted action item must set `status='rejected'`, not delete
-- Today the Outcomes tab's dismiss calls `deleteActionItem`, which hard-deletes the row, and nothing ever writes `'rejected'`. When Phase 2 lands, dismissing an `ai_extracted` item must set `status='rejected'` and keep the row. Otherwise the AI acceptance-rate insight (AI_CONTROL_CENTER.md) has no rejections to count. Manual items can keep deleting.
+- Today the Outcomes tab's dismiss calls `deleteActionItem`, which hard-deletes the row, and nothing ever writes `'rejected'`. When Phase 2 lands, dismissing an `ai_extracted` item must set `status='rejected'` and keep the row. Otherwise the AI acceptance-rate insight (`docs/AI_CONTROL_CENTER.md`) has no rejections to count. Manual items can keep deleting.
 - `getMyHuddleActionItems` already filters on `status = 'pending'`, so rejected rows drop out of the rail automatically.
 
 ### Security audit (November) — Huddle reads bypass RLS
