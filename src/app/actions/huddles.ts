@@ -645,6 +645,20 @@ export async function updateHuddleSettings(
     console.error("[updateHuddleSettings] Update error:", error.message);
     return { success: false, error: error.message };
   }
+  // Existing segments keep a stored retention_until, so changing the
+  // setting has to rewrite them (PostgREST can't do the per-row
+  // arithmetic — hence the RPC).
+  if ("recordingRetentionDays" in data) {
+    const { error: retentionError } = await supabaseAdmin.rpc(
+      "recompute_huddle_recording_retention",
+      { p_huddle_id: huddleId },
+    );
+    if (retentionError)
+      console.error(
+        "[updateHuddleSettings] Retention recompute error:",
+        retentionError.message,
+      );
+  }
   revalidatePath(`/workspace/huddles/${huddleId}`);
   revalidatePath("/workspace/huddles");
   revalidatePath("/workspace/calendar");
@@ -663,6 +677,15 @@ export async function deleteHuddle(huddleId: string): Promise<ActionResult> {
       code: "FORBIDDEN",
     };
 
+  // Deleting the huddle cascades the recording rows away, which would
+  // otherwise strand their audio in the bucket forever. Objects go first.
+  const purged = await purgeHuddleRecordingObjects(huddleId);
+  if (!purged.ok)
+    return {
+      success: false,
+      error: `Couldn't delete this huddle's recordings: ${purged.error}`,
+    };
+
   const { error } = await supabaseAdmin
     .from("huddles")
     .delete()
@@ -670,6 +693,17 @@ export async function deleteHuddle(huddleId: string): Promise<ActionResult> {
   if (error) {
     console.error("[deleteHuddle] Delete error:", error.message);
     return { success: false, error: error.message };
+  }
+  if (purged.freedBytes > 0) {
+    const { error: usageError } = await supabaseAdmin.rpc(
+      "adjust_huddle_storage_used",
+      {
+        p_organization_id: ctx.organizationId,
+        p_delta_bytes: -purged.freedBytes,
+      },
+    );
+    if (usageError)
+      console.error("[deleteHuddle] Storage counter error:", usageError.message);
   }
   revalidatePath("/workspace/huddles");
   revalidatePath("/workspace/calendar");
@@ -2885,5 +2919,142 @@ export async function getHuddleTranscript(
         .filter((t): t is string => !!t && t.trim().length > 0)
         .join("\n\n"),
     },
+  };
+}
+
+// Removes every stored object for a huddle's segments and reports how
+// many bytes were counted against the org. Storage first, rows second:
+// if this fails the rows stay put and the caller can retry, instead of
+// leaving audio nobody can reach.
+async function purgeHuddleRecordingObjects(
+  huddleId: string,
+): Promise<
+  | { ok: true; removed: number; freedBytes: number }
+  | { ok: false; error: string }
+> {
+  const { data: rows, error } = await supabaseAdmin
+    .from("huddle_recordings")
+    .select("id, storage_path, size_bytes, upload_status")
+    .eq("huddle_id", huddleId);
+  if (error) return { ok: false, error: error.message };
+  const segments = rows ?? [];
+  if (segments.length === 0) return { ok: true, removed: 0, freedBytes: 0 };
+
+  const paths = segments
+    .map((r: { storage_path: string | null }) => r.storage_path)
+    .filter((p): p is string => !!p);
+  // Only confirmed uploads were ever added to the counter.
+  const freedBytes = segments
+    .filter((r: { upload_status: string }) => r.upload_status === "uploaded")
+    .reduce(
+      (sum: number, r: { size_bytes: number | null }) =>
+        sum + Number(r.size_bytes ?? 0),
+      0,
+    );
+
+  for (let i = 0; i < paths.length; i += 100) {
+    const chunk = paths.slice(i, i + 100);
+    const { error: removeError } = await supabaseAdmin.storage
+      .from(HUDDLE_RECORDING_BUCKET)
+      .remove(chunk);
+    if (removeError) {
+      console.error(
+        "[purgeHuddleRecordingObjects] Remove error:",
+        removeError.message,
+      );
+      return { ok: false, error: removeError.message };
+    }
+  }
+  return { ok: true, removed: paths.length, freedBytes };
+}
+
+// Delete every recording for a huddle: objects, recording rows and their
+// transcripts, then release the storage. Hard delete — the live
+// deleted_at column stays unused. Summaries are left alone, which is why
+// huddle_summaries.transcript_id is ON DELETE SET NULL.
+export async function deleteHuddleRecording(
+  huddleId: string,
+): Promise<ActionResult<{ deletedSegments: number; freedBytes: number }>> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated." };
+  const access = await loadHuddleForViewer(ctx, huddleId);
+  if (!access.ok) return { success: false, error: access.error };
+  if (!access.canManage)
+    return {
+      success: false,
+      error: "Only the organizer or an admin can delete recordings.",
+      code: "FORBIDDEN",
+    };
+
+  // Deleting mid-recording would race the in-flight segment uploads.
+  const { data: huddle } = await supabaseAdmin
+    .from("huddles")
+    .select("recording_state, recording_heartbeat_at")
+    .eq("id", huddleId)
+    .maybeSingle();
+  if (
+    huddle &&
+    huddle.recording_state !== "idle" &&
+    isHeartbeatFresh(huddle.recording_heartbeat_at)
+  )
+    return {
+      success: false,
+      error: "Stop the recording before deleting it.",
+      code: "STILL_RECORDING",
+    };
+
+  const purged = await purgeHuddleRecordingObjects(huddleId);
+  if (!purged.ok) return { success: false, error: purged.error };
+
+  // Transcripts would cascade with the recording rows; doing it
+  // explicitly keeps the intent obvious and covers any stray row.
+  const { error: transcriptError } = await supabaseAdmin
+    .from("huddle_transcripts")
+    .delete()
+    .eq("huddle_id", huddleId);
+  if (transcriptError) {
+    console.error(
+      "[deleteHuddleRecording] Transcript delete error:",
+      transcriptError.message,
+    );
+    return { success: false, error: transcriptError.message };
+  }
+
+  const { error: recordingError } = await supabaseAdmin
+    .from("huddle_recordings")
+    .delete()
+    .eq("huddle_id", huddleId);
+  if (recordingError) {
+    console.error(
+      "[deleteHuddleRecording] Recording delete error:",
+      recordingError.message,
+    );
+    return { success: false, error: recordingError.message };
+  }
+
+  if (purged.freedBytes > 0) {
+    const { error: usageError } = await supabaseAdmin.rpc(
+      "adjust_huddle_storage_used",
+      {
+        p_organization_id: ctx.organizationId,
+        p_delta_bytes: -purged.freedBytes,
+      },
+    );
+    if (usageError)
+      console.error(
+        "[deleteHuddleRecording] Storage counter error:",
+        usageError.message,
+      );
+  }
+
+  await supabaseAdmin
+    .from("huddles")
+    .update({ recording_deleted_at: new Date().toISOString() })
+    .eq("id", huddleId);
+
+  revalidatePath(`/workspace/huddles/${huddleId}`);
+  return {
+    success: true,
+    data: { deletedSegments: purged.removed, freedBytes: purged.freedBytes },
   };
 }
