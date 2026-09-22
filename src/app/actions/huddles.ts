@@ -1025,10 +1025,10 @@ export async function getRecentDecisions(
   const { data, error } = await supabaseAdmin
     .from("huddle_decisions")
     .select(
-      "id, huddle_id, decision, context, decided_by, source, created_at, huddles!inner(id, title, visibility, created_by, department_id, organization_id)",
+      "id, huddle_id, decision, context, decided_by, source, decided_at, huddles!inner(id, title, visibility, created_by, department_id, organization_id)",
     )
     .eq("huddles.organization_id", ctx.organizationId)
-    .order("created_at", { ascending: false })
+    .order("decided_at", { ascending: false })
     .limit(RECENT_DECISIONS_SCAN_CAP);
   if (error) {
     console.error("[getRecentDecisions] Select error:", error.message);
@@ -1050,7 +1050,7 @@ export async function getRecentDecisions(
     context: string | null;
     decided_by: string | null;
     source: string | null;
-    created_at: string;
+    decided_at: string;
     huddles: HuddleRef;
   }[];
 
@@ -1078,7 +1078,7 @@ export async function getRecentDecisions(
       context: r.context,
       decided_by: r.decided_by,
       source: r.source as "manual" | "ai_extracted",
-      created_at: r.created_at,
+      decided_at: r.decided_at,
       decider: r.decided_by ? profileMap.get(r.decided_by) ?? null : null,
     })),
   };
@@ -1131,10 +1131,10 @@ export async function getHuddle(
     supabaseAdmin
       .from("huddle_decisions")
       .select(
-        "id, huddle_id, decision, context, decided_by, source, created_at",
+        "id, huddle_id, decision, context, decided_by, source, decided_at",
       )
       .eq("huddle_id", huddleId)
-      .order("created_at", { ascending: true }),
+      .order("decided_at", { ascending: true }),
     supabaseAdmin
       .from("huddle_action_items")
       .select(
@@ -1272,7 +1272,9 @@ export async function getHuddle(
       context: d.context,
       decided_by: d.decided_by,
       source: d.source as "manual" | "ai_extracted",
-      created_at: d.created_at,
+      // Live column is decided_at (there is no huddle_decisions.created_at);
+      // the HuddleDecision field name is kept for the existing UI.
+      created_at: d.decided_at,
       decider: d.decided_by ? profileMap.get(d.decided_by) ?? null : null,
     })),
     action_items: actionRows.map((a) => ({
@@ -1841,7 +1843,7 @@ export async function createDecision(
       decided_by: ctx.userId,
       source: "manual",
     })
-    .select("id, huddle_id, decision, context, decided_by, source, created_at")
+    .select("id, huddle_id, decision, context, decided_by, source, decided_at")
     .single();
   if (error || !row) {
     console.error("[createDecision] Insert error:", error?.message);
@@ -1852,8 +1854,14 @@ export async function createDecision(
   return {
     success: true,
     data: {
-      ...row,
+      id: row.id,
+      huddle_id: row.huddle_id,
+      decision: row.decision,
+      context: row.context,
+      decided_by: row.decided_by,
       source: row.source as "manual" | "ai_extracted",
+      // Live column is decided_at; see getHuddle.
+      created_at: row.decided_at,
       decider: row.decided_by ? profileMap.get(row.decided_by) ?? null : null,
     },
   };

@@ -309,7 +309,7 @@ export const EXPORT_REGISTRY: readonly ExportEntity[] = [
     label: "Huddle decisions",
     table: "huddle_decisions",
     scope: { type: "via", parentEntity: "huddles", parentKey: "huddle_id" },
-    fields: ["id", "huddle_id", "decision", "context", "decided_by", "source", "created_at"],
+    fields: ["id", "huddle_id", "decision", "context", "decided_by", "source", "decided_at"],
     idField: null,
   },
   {

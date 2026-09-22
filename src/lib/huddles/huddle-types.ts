@@ -32,7 +32,7 @@ export type RecentHuddleDecision = {
   context: string | null;
   decided_by: string | null;
   source: "manual" | "ai_extracted";
-  created_at: string;
+  decided_at: string;
   decider: ProfileLite | null;
 };
 

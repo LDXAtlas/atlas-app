@@ -24,7 +24,7 @@ Before you start a coding session:
 ### Just landed (2026-09-22) — Huddles rail hooks (for Ben)
 - Three backend read hooks for the redesigned huddles page, all in `@/app/actions/huddles`, with types in `@/lib/huddles/huddle-types`:
   - `getMyHuddleActionItems()`: pending action items suggested to me, newest first. `huddle_title` is `null` and `can_view_huddle` is `false` when I can't see the parent huddle. **Ben: please confirm "pending + suggested to me" is the semantics you want.**
-  - `getRecentDecisions(limit = 8)`: recent decisions across huddles I can see, with huddle title and decider. `limit` is clamped to 1–25.
+  - `getRecentDecisions(limit = 8)`: recent decisions across huddles I can see, newest first, with huddle title and decider. `limit` is clamped to 1–25. Each row is `{ id, huddle_id, huddle_title, decision, context, decided_by, source, decided_at, decider }`. **The timestamp field is `decided_at`** (renamed from `created_at` on 2026-09-22 to match the live column).
   - `getHuddles({ filter: "needs_attention" })`: huddles that have ended but aren't finalized, limited to ones I can finalize.
   - No `getNextHuddle`: use `getHuddle(items[0].id)` on the `upcoming` list.
 - Backend only; **no huddles UI files touched.** Full detail is in BACKEND_NOTES → DONE.
