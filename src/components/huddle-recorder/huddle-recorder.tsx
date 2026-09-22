@@ -11,6 +11,11 @@
 // uploaded straight to storage with a signed URL, then transcribed
 // through the API route. Nothing here streams audio through a server
 // action — their request bodies are far too small for it.
+//
+// The panel always says what it is doing in one status line, and every
+// failure in the start / upload / transcribe path ends up there verbatim.
+// The microphone is requested before any server call, so the browser's
+// permission prompt is the first thing a click produces.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -46,6 +51,8 @@ import {
 
 const MINT = "#5CE1A5";
 const UPLOAD_MAX_ATTEMPTS = 3;
+const DEVICE_STORAGE_KEY = "atlas.huddleRecorder.inputDeviceId";
+const LEVEL_FPS_MS = 60;
 
 export interface HuddleRecorderProps {
   huddleId: string;
@@ -60,8 +67,12 @@ export interface HuddleRecorderProps {
   className?: string;
 }
 
+type StatusTone = "info" | "working" | "error" | "success";
+type Status = { text: string; tone: StatusTone };
+
 type QueuedSegment = {
   key: string;
+  ordinal: number;
   blob: Blob;
   mimeType: string;
   startedAt: string;
@@ -83,11 +94,64 @@ function pickMimeType(): string | null {
   return null;
 }
 
+/** "opus", "aac", "vorbis" — for the status line. */
+function codecLabel(mimeType: string): string {
+  const lower = mimeType.toLowerCase();
+  if (lower.includes("opus")) return "opus";
+  if (lower.includes("mp4")) return "aac";
+  if (lower.includes("vorbis")) return "vorbis";
+  const base = lower.split(";")[0] ?? lower;
+  return base.replace("audio/", "");
+}
+
+/** Says which microphone failure happened, instead of collapsing denied /
+ *  missing / busy / insecure-origin into one sentence. */
+function describeMicError(err: unknown): string {
+  if (typeof navigator === "undefined" || !navigator.mediaDevices) {
+    return "This page can't reach any microphone: navigator.mediaDevices is unavailable, which usually means the page isn't a secure context. Open it on localhost or over https.";
+  }
+  const name = (err as { name?: string })?.name ?? "";
+  const message = (err as { message?: string })?.message ?? String(err);
+  switch (name) {
+    case "NotAllowedError":
+    case "SecurityError":
+      return `Microphone permission was denied (${name}). Allow it for this site in the browser's address-bar icon, then click Record again.`;
+    case "NotFoundError":
+    case "OverconstrainedError":
+      return `No usable microphone was found (${name}). Check the input device below${name === "OverconstrainedError" ? " — the saved device may be unplugged" : ""}.`;
+    case "NotReadableError":
+      return `The microphone is already in use by another app (${name}). Close it and try again.`;
+    case "TypeError":
+      return `The browser refused the microphone request (TypeError: ${message}). If this page isn't on localhost or https, that's the cause.`;
+    default:
+      return name
+        ? `Couldn't open the microphone (${name}: ${message}).`
+        : `Couldn't open the microphone: ${message}`;
+  }
+}
+
 function formatClock(totalSeconds: number): string {
   const s = Math.max(0, Math.floor(totalSeconds));
   const mm = String(Math.floor(s / 60)).padStart(2, "0");
   const ss = String(s % 60).padStart(2, "0");
   return `${mm}:${ss}`;
+}
+
+function readStoredDeviceId(): string | null {
+  try {
+    return window.localStorage.getItem(DEVICE_STORAGE_KEY);
+  } catch {
+    return null; // private mode / blocked storage
+  }
+}
+
+function storeDeviceId(deviceId: string | null) {
+  try {
+    if (deviceId) window.localStorage.setItem(DEVICE_STORAGE_KEY, deviceId);
+    else window.localStorage.removeItem(DEVICE_STORAGE_KEY);
+  } catch {
+    // Not worth surfacing; the picker still works for this session.
+  }
 }
 
 export function HuddleRecorder({
@@ -98,12 +162,19 @@ export function HuddleRecorder({
   className,
 }: HuddleRecorderProps) {
   const [state, setState] = useState<HuddleRecordingLifecycleState>("idle");
-  const [error, setError] = useState<string | null>(null);
+  const [status, setStatusState] = useState<Status>({
+    text: "Ready.",
+    tone: "info",
+  });
   const [busy, setBusy] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [queue, setQueue] = useState<QueuedSegment[]>([]);
   const [segments, setSegments] = useState<HuddleTranscriptSegmentView[]>([]);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
+  const [deviceId, setDeviceId] = useState<string | null>(null);
+  const [armed, setArmed] = useState(false);
+  const [level, setLevel] = useState(0);
 
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -111,6 +182,7 @@ export function HuddleRecorder({
   const bytesRef = useRef(0);
   const segmentStartRef = useRef<number>(0);
   const bankedSecondsRef = useRef(0);
+  const segmentCountRef = useRef(0);
   const rollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // A timed/size roll restarts recording from inside the previous
   // recorder's onstop, so startSegment has to reach itself — via a ref,
@@ -121,6 +193,13 @@ export function HuddleRecorder({
   const queueRef = useRef<QueuedSegment[]>([]);
   const drainingRef = useRef(false);
   const stateRef = useRef<HuddleRecordingLifecycleState>("idle");
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const rafRef = useRef<number | null>(null);
+
+  const setStatus = useCallback((text: string, tone: StatusTone = "info") => {
+    setStatusState({ text, tone });
+  }, []);
 
   const setLifecycle = useCallback(
     (next: HuddleRecordingLifecycleState) => {
@@ -134,9 +213,157 @@ export function HuddleRecorder({
   // Segment list drives the per-segment status rows (and retry). The
   // recorder is organizer-only, so reading the transcript view is fine.
   const refreshSegments = useCallback(async () => {
-    const res = await getHuddleTranscript(huddleId).catch(() => null);
-    if (res?.success && res.data) setSegments(res.data.segments);
-  }, [huddleId]);
+    const res = await getHuddleTranscript(huddleId).catch((e: unknown) => ({
+      success: false as const,
+      error: e instanceof Error ? e.message : String(e),
+    }));
+    if (res.success && res.data) setSegments(res.data.segments);
+    else if (!res.success)
+      setStatus(`Couldn't read the segment list: ${res.error}`, "error");
+  }, [huddleId, setStatus]);
+
+  // ─── Input level meter ─────────────────────────────────────
+  // Runs whenever a stream is open — recording, paused, or just armed —
+  // so you can see the mic picking up before committing to a recording.
+  const stopMeter = useCallback(() => {
+    if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    rafRef.current = null;
+    analyserRef.current = null;
+    void audioContextRef.current?.close().catch(() => undefined);
+    audioContextRef.current = null;
+    setLevel(0);
+  }, []);
+
+  const startMeter = useCallback(
+    (stream: MediaStream) => {
+      stopMeter();
+      try {
+        const AudioCtor =
+          window.AudioContext ??
+          (window as unknown as { webkitAudioContext?: typeof AudioContext })
+            .webkitAudioContext;
+        if (!AudioCtor) return;
+        const context = new AudioCtor();
+        const source = context.createMediaStreamSource(stream);
+        const analyser = context.createAnalyser();
+        analyser.fftSize = 256;
+        source.connect(analyser);
+        audioContextRef.current = context;
+        analyserRef.current = analyser;
+
+        const buffer = new Uint8Array(analyser.frequencyBinCount);
+        let lastPaint = 0;
+        const tick = (now: number) => {
+          const node = analyserRef.current;
+          if (!node) return;
+          rafRef.current = requestAnimationFrame(tick);
+          if (now - lastPaint < LEVEL_FPS_MS) return;
+          lastPaint = now;
+          node.getByteTimeDomainData(buffer);
+          let peak = 0;
+          for (let i = 0; i < buffer.length; i += 1) {
+            peak = Math.max(peak, Math.abs((buffer[i] ?? 128) - 128) / 128);
+          }
+          setLevel(peak);
+        };
+        rafRef.current = requestAnimationFrame(tick);
+      } catch {
+        // A missing AudioContext costs us the meter, nothing else.
+      }
+    },
+    [stopMeter],
+  );
+
+  // ─── Microphone ────────────────────────────────────────────
+  const listDevices = useCallback(async () => {
+    try {
+      const all = await navigator.mediaDevices.enumerateDevices();
+      setDevices(all.filter((d) => d.kind === "audioinput"));
+    } catch {
+      // Labels need permission; the picker just stays empty.
+    }
+  }, []);
+
+  // Throws, so callers can report the specific failure.
+  const acquireStream = useCallback(
+    async (preferredDeviceId: string | null): Promise<MediaStream> => {
+      if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+        throw new TypeError("navigator.mediaDevices.getUserMedia is unavailable");
+      }
+      const audio: MediaTrackConstraints = {
+        channelCount: 1,
+        echoCancellation: true,
+        noiseSuppression: true,
+      };
+      if (preferredDeviceId) audio.deviceId = { exact: preferredDeviceId };
+      return navigator.mediaDevices.getUserMedia({ audio });
+    },
+    [],
+  );
+
+  const releaseStream = useCallback(() => {
+    stopMeter();
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    setArmed(false);
+  }, [stopMeter]);
+
+  // Opens the mic without recording, so the permission prompt, the device
+  // list and the level meter all happen before anything is committed.
+  const armMicrophone = useCallback(
+    async (preferredDeviceId: string | null): Promise<MediaStream | null> => {
+      setStatus("Requesting microphone…", "working");
+      try {
+        const stream = await acquireStream(preferredDeviceId);
+        streamRef.current?.getTracks().forEach((t) => t.stop());
+        streamRef.current = stream;
+        setArmed(true);
+        startMeter(stream);
+        await listDevices();
+        const label =
+          stream.getAudioTracks()[0]?.label || "the system default microphone";
+        setStatus(`Microphone ready — ${label}. Speak to check the level.`, "success");
+        return stream;
+      } catch (err) {
+        releaseStream();
+        setStatus(describeMicError(err), "error");
+        return null;
+      }
+    },
+    [acquireStream, listDevices, releaseStream, setStatus, startMeter],
+  );
+
+  // Kicks the Route Handler and reports exactly what it said.
+  const transcribeSegment = useCallback(
+    async (recordingId: string, ordinal?: number) => {
+      const label = ordinal ? `segment ${ordinal}` : "segment";
+      setStatus(`Transcribing ${label}…`, "working");
+      try {
+        const response = await fetch(
+          `/api/huddles/recordings/${recordingId}/transcribe`,
+          { method: "POST" },
+        );
+        const body = (await response.json().catch(() => null)) as
+          | { success?: boolean; error?: string; code?: string }
+          | null;
+        if (!response.ok || !body?.success) {
+          setStatus(
+            `Transcription failed for ${label} (${response.status}${body?.code ? ` ${body.code}` : ""}): ${body?.error ?? "no detail"}`,
+            "error",
+          );
+        } else {
+          setStatus(`Transcribed ${label}.`, "success");
+        }
+      } catch (e: unknown) {
+        setStatus(
+          `Transcription request failed for ${label}: ${e instanceof Error ? e.message : String(e)}`,
+          "error",
+        );
+      }
+      void refreshSegments();
+    },
+    [refreshSegments, setStatus],
+  );
 
   // ─── Upload queue ──────────────────────────────────────────
   // Sequential, with backoff. A failed segment stays in the queue (and
@@ -147,6 +374,7 @@ export function HuddleRecorder({
     try {
       while (queueRef.current.length > 0) {
         const job = queueRef.current[0]!;
+        setStatus(`Uploading segment ${job.ordinal}…`, "working");
         const ticket = await createRecordingSegmentUpload({
           huddleId,
           startedAt: job.startedAt,
@@ -184,14 +412,7 @@ export function HuddleRecorder({
             if (!confirmed.success) {
               failure = confirmed.error;
             } else {
-              // Fire-and-forget: the segment list shows the outcome, and
-              // a failed transcription can be retried from the panel.
-              void fetch(
-                `/api/huddles/recordings/${ticket.data.recordingId}/transcribe`,
-                { method: "POST" },
-              )
-                .catch(() => undefined)
-                .then(() => refreshSegments());
+              void transcribeSegment(ticket.data.recordingId, job.ordinal);
             }
           }
         }
@@ -200,6 +421,10 @@ export function HuddleRecorder({
           job.attempts += 1;
           job.error = failure;
           setQueue([...queueRef.current]);
+          setStatus(
+            `Segment ${job.ordinal} upload failed (attempt ${job.attempts}/${UPLOAD_MAX_ATTEMPTS}): ${failure}`,
+            "error",
+          );
           if (job.attempts >= UPLOAD_MAX_ATTEMPTS) {
             // Leave it queued and stop draining; the Retry button picks
             // it up again.
@@ -216,7 +441,7 @@ export function HuddleRecorder({
     } finally {
       drainingRef.current = false;
     }
-  }, [huddleId, refreshSegments]);
+  }, [huddleId, refreshSegments, setStatus, transcribeSegment]);
 
   const enqueue = useCallback(
     (job: QueuedSegment) => {
@@ -241,13 +466,39 @@ export function HuddleRecorder({
 
   const startSegment = useCallback(
     (stream: MediaStream, mimeType: string) => {
-      const recorder = new MediaRecorder(stream, {
-        mimeType,
-        audioBitsPerSecond: HUDDLE_RECORDING_AUDIO_BPS,
-      });
+      let recorder: MediaRecorder;
+      try {
+        recorder = new MediaRecorder(stream, {
+          mimeType,
+          audioBitsPerSecond: HUDDLE_RECORDING_AUDIO_BPS,
+        });
+      } catch (e: unknown) {
+        setStatus(
+          `This browser wouldn't start a recorder for ${mimeType}: ${e instanceof Error ? e.message : String(e)}`,
+          "error",
+        );
+        return;
+      }
       chunksRef.current = [];
       bytesRef.current = 0;
       segmentStartRef.current = Date.now();
+      segmentCountRef.current += 1;
+      const ordinal = segmentCountRef.current;
+
+      const bitrate = recorder.audioBitsPerSecond || HUDDLE_RECORDING_AUDIO_BPS;
+      setStatus(
+        `Recording segment ${ordinal} (${codecLabel(recorder.mimeType || mimeType)}, ${Math.round(bitrate / 1000)} kbps).`,
+        "working",
+      );
+
+      recorder.onerror = (event: Event) => {
+        const err = (event as unknown as { error?: { name?: string; message?: string } })
+          .error;
+        setStatus(
+          `Recorder error: ${err?.name ?? "unknown"}${err?.message ? ` — ${err.message}` : ""}`,
+          "error",
+        );
+      };
 
       recorder.ondataavailable = (event: BlobEvent) => {
         if (!event.data || event.data.size === 0) return;
@@ -278,6 +529,7 @@ export function HuddleRecorder({
         if (blob.size > 0) {
           enqueue({
             key: `${startedMs}-${blob.size}`,
+            ordinal,
             blob,
             mimeType: recorder.mimeType || mimeType,
             startedAt: new Date(startedMs).toISOString(),
@@ -286,6 +538,11 @@ export function HuddleRecorder({
             attempts: 0,
             error: null,
           });
+        } else {
+          setStatus(
+            `Segment ${ordinal} captured no audio — check the input device and level.`,
+            "error",
+          );
         }
         // A timed/size roll continues straight into the next segment.
         if (stateRef.current === "recording" && streamRef.current) {
@@ -301,80 +558,125 @@ export function HuddleRecorder({
         }
       }, HUDDLE_SEGMENT_ROLL_MS);
     },
-    [enqueue, finishSegment],
+    [enqueue, finishSegment, setStatus],
   );
 
   useEffect(() => {
     startSegmentRef.current = startSegment;
   }, [startSegment]);
 
-  const releaseStream = useCallback(() => {
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-    streamRef.current = null;
-  }, []);
-
   // ─── Controls ──────────────────────────────────────────────
+  const handleTestMic = useCallback(async () => {
+    setBusy(true);
+    try {
+      await armMicrophone(deviceId);
+    } finally {
+      setBusy(false);
+    }
+  }, [armMicrophone, deviceId]);
+
+  const handleDeviceChange = useCallback(
+    async (nextId: string) => {
+      const value = nextId || null;
+      setDeviceId(value);
+      storeDeviceId(value);
+      if (stateRef.current === "idle") {
+        setBusy(true);
+        try {
+          await armMicrophone(value);
+        } finally {
+          setBusy(false);
+        }
+      }
+    },
+    [armMicrophone],
+  );
+
   const handleStart = useCallback(async () => {
-    setError(null);
     setBusy(true);
     try {
       const mimeType = pickMimeType();
       if (!mimeType) {
-        setError("This browser can't record audio in a supported format.");
-        return;
-      }
-      // Ask for the microphone first: a denied prompt shouldn't leave the
-      // huddle marked as recording.
-      let stream: MediaStream;
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
-        });
-      } catch {
-        setError("Microphone access was blocked. Allow it and try again.");
+        setStatus(
+          "This browser can't record audio in any supported format (tried webm/opus, webm, mp4, ogg).",
+          "error",
+        );
         return;
       }
 
+      // Microphone first, before any server call, so the permission
+      // prompt is the first thing a click produces and a refusal never
+      // leaves the huddle marked as recording.
+      const stream = streamRef.current ?? (await armMicrophone(deviceId));
+      if (!stream) return; // armMicrophone already explained why
+
+      setStatus("Starting recording…", "working");
       const started = await startHuddleRecording(huddleId).catch(
         (e: unknown) => ({
           success: false as const,
           error: e instanceof Error ? e.message : "Couldn't start recording.",
+          code: undefined,
         }),
       );
       if (!started.success) {
-        stream.getTracks().forEach((t) => t.stop());
-        setError(started.error);
+        releaseStream();
+        setStatus(started.error, "error");
         return;
       }
 
-      streamRef.current = stream;
       bankedSecondsRef.current = 0;
+      segmentCountRef.current = 0;
       setElapsed(0);
       setLifecycle("recording");
       startSegment(stream, mimeType);
     } finally {
       setBusy(false);
     }
-  }, [huddleId, setLifecycle, startSegment]);
+  }, [
+    armMicrophone,
+    deviceId,
+    huddleId,
+    releaseStream,
+    setLifecycle,
+    setStatus,
+    startSegment,
+  ]);
 
   const handlePause = useCallback(async () => {
     // Never MediaRecorder.pause(): ending the segment means the audio so
-    // far is uploaded and transcribable straight away.
+    // far is uploaded and transcribable straight away. The stream stays
+    // open, so the level meter keeps running while paused.
     setLifecycle("paused");
     finishSegment();
-    await heartbeatHuddleRecording(huddleId, "paused").catch(() => undefined);
-  }, [finishSegment, huddleId, setLifecycle]);
+    setStatus("Paused — microphone still open.", "info");
+    const res = await heartbeatHuddleRecording(huddleId, "paused").catch(
+      (e: unknown) => ({
+        success: false as const,
+        error: e instanceof Error ? e.message : String(e),
+      }),
+    );
+    if (!res.success)
+      setStatus(`Paused, but the server wasn't told: ${res.error}`, "error");
+  }, [finishSegment, huddleId, setLifecycle, setStatus]);
 
   const handleResume = useCallback(async () => {
     const mimeType = pickMimeType();
-    if (!streamRef.current || !mimeType) {
-      setError("Recording stopped. Start again to continue.");
+    const stream = streamRef.current ?? (await armMicrophone(deviceId));
+    if (!stream || !mimeType) {
+      if (mimeType) setStatus("Microphone is closed. Start again.", "error");
       return;
     }
     setLifecycle("recording");
-    startSegment(streamRef.current, mimeType);
-    await heartbeatHuddleRecording(huddleId, "recording").catch(() => undefined);
-  }, [huddleId, setLifecycle, startSegment]);
+    startSegment(stream, mimeType);
+    const res = await heartbeatHuddleRecording(huddleId, "recording").catch(
+      (e: unknown) => ({
+        success: false as const,
+        error: e instanceof Error ? e.message : String(e),
+      }),
+    );
+    if (!res.success)
+      setStatus(`Recording, but the server wasn't told: ${res.error}`, "error");
+  }, [armMicrophone, deviceId, huddleId, setLifecycle, setStatus, startSegment]);
 
   const handleStop = useCallback(async () => {
     setBusy(true);
@@ -382,40 +684,55 @@ export function HuddleRecorder({
       setLifecycle("idle");
       finishSegment();
       releaseStream();
-      await stopHuddleRecording(huddleId).catch(() => undefined);
+      setStatus("Stopped. Finishing uploads…", "working");
+      const res = await stopHuddleRecording(huddleId).catch((e: unknown) => ({
+        success: false as const,
+        error: e instanceof Error ? e.message : String(e),
+      }));
+      if (!res.success)
+        setStatus(`Stopped, but the server wasn't told: ${res.error}`, "error");
       void refreshSegments();
     } finally {
       setBusy(false);
     }
-  }, [finishSegment, huddleId, refreshSegments, releaseStream, setLifecycle]);
+  }, [
+    finishSegment,
+    huddleId,
+    refreshSegments,
+    releaseStream,
+    setLifecycle,
+    setStatus,
+  ]);
 
   const handleDelete = useCallback(async () => {
     setBusy(true);
-    setError(null);
+    setStatus("Deleting recording…", "working");
     try {
       const res = await deleteHuddleRecording(huddleId).catch((e: unknown) => ({
         success: false as const,
         error: e instanceof Error ? e.message : "Delete failed.",
       }));
-      if (!res.success) setError(res.error);
+      if (!res.success) setStatus(res.error, "error");
+      else setStatus("Recording deleted.", "success");
       setConfirmDelete(false);
       void refreshSegments();
     } finally {
       setBusy(false);
     }
-  }, [huddleId, refreshSegments]);
-
-  const retryTranscription = useCallback(
-    async (recordingId: string) => {
-      await fetch(`/api/huddles/recordings/${recordingId}/transcribe`, {
-        method: "POST",
-      }).catch(() => undefined);
-      void refreshSegments();
-    },
-    [refreshSegments],
-  );
+  }, [huddleId, refreshSegments, setStatus]);
 
   // ─── Effects ───────────────────────────────────────────────
+  // Remembered input device. Read after mount (localStorage doesn't
+  // exist during SSR) and applied from a timer, so the state update
+  // lands in a callback rather than synchronously inside the effect.
+  useEffect(() => {
+    const id = setTimeout(() => {
+      const stored = readStoredDeviceId();
+      if (stored) setDeviceId(stored);
+    }, 0);
+    return () => clearTimeout(id);
+  }, []);
+
   // Elapsed timer.
   useEffect(() => {
     if (state !== "recording") return;
@@ -462,6 +779,14 @@ export function HuddleRecorder({
   const notStarted = huddleStatus !== undefined && huddleStatus !== "in_progress";
   const pendingUploads = queue.length;
   const stuckUpload = queue.find((q) => q.attempts >= UPLOAD_MAX_ATTEMPTS);
+  const statusColor =
+    status.tone === "error"
+      ? "#EF4444"
+      : status.tone === "success"
+        ? "#047857"
+        : "#6B7280";
+  const meterBars = 12;
+  const litBars = Math.min(meterBars, Math.round(level * meterBars * 1.6));
 
   return (
     <section
@@ -486,6 +811,16 @@ export function HuddleRecorder({
           </span>
         )}
         <div className="ml-auto flex items-center gap-2">
+          {state === "idle" && !armed && (
+            <button
+              type="button"
+              onClick={handleTestMic}
+              disabled={busy}
+              className="inline-flex items-center gap-1.5 rounded-full border border-[#E5E7EB] px-3.5 py-1.5 text-[13px] text-[#0F172A] disabled:opacity-50"
+            >
+              <Mic className="size-3.5" /> Test mic
+            </button>
+          )}
           {state === "idle" && (
             <button
               type="button"
@@ -533,21 +868,70 @@ export function HuddleRecorder({
         </div>
       </div>
 
-      {notStarted && (
-        <p
-          className="mt-3 text-[12.5px] text-[#6B7280]"
+      {/* Always-on status line: what it's doing, or exactly what failed. */}
+      <p
+        className="mt-3 flex items-start gap-1.5 text-[12.5px]"
+        style={{ color: statusColor, fontFamily: "var(--font-source-sans)" }}
+        aria-live="polite"
+      >
+        {status.tone === "error" ? (
+          <AlertCircle className="size-3.5 mt-0.5 shrink-0" />
+        ) : status.tone === "working" ? (
+          <Loader2 className="size-3.5 mt-0.5 shrink-0 animate-spin" />
+        ) : null}
+        <span>
+          {notStarted ? "Start the huddle to record. " : ""}
+          {status.text}
+        </span>
+      </p>
+
+      {/* Input device + live level. */}
+      <div className="mt-3 flex items-center gap-3 flex-wrap">
+        <label
+          className="text-[12.5px] text-[#6B7280] flex items-center gap-2"
           style={{ fontFamily: "var(--font-source-sans)" }}
         >
-          Start the huddle to record.
-        </p>
-      )}
-
-      {error && (
-        <p className="mt-3 flex items-start gap-1.5 text-[12.5px] text-[#EF4444]">
-          <AlertCircle className="size-3.5 mt-0.5 shrink-0" />
-          {error}
-        </p>
-      )}
+          Input
+          <select
+            value={deviceId ?? ""}
+            onChange={(e) => void handleDeviceChange(e.target.value)}
+            disabled={state !== "idle"}
+            className="rounded-lg border border-[#E5E7EB] px-2 py-1 text-[12.5px] text-[#0F172A] disabled:opacity-50 max-w-[16rem]"
+          >
+            <option value="">System default</option>
+            {devices.map((device, i) => (
+              <option key={device.deviceId} value={device.deviceId}>
+                {device.label || `Microphone ${i + 1}`}
+              </option>
+            ))}
+          </select>
+        </label>
+        <span className="flex items-center gap-[3px]" title="Input level">
+          {Array.from({ length: meterBars }).map((_, i) => (
+            <span
+              key={i}
+              className="w-[3px] rounded-full transition-[height,background-color] duration-75"
+              style={{
+                height: `${6 + i}px`,
+                background:
+                  armed && i < litBars
+                    ? i > meterBars - 3
+                      ? "#EF4444"
+                      : MINT
+                    : "#E5E7EB",
+              }}
+            />
+          ))}
+        </span>
+        {armed && level < 0.02 && (
+          <span className="text-[12px] text-[#F59E0B]">No input detected</span>
+        )}
+        {devices.length === 0 && (
+          <span className="text-[12px] text-[#9CA3AF]">
+            Device names appear after you allow the microphone.
+          </span>
+        )}
+      </div>
 
       {pendingUploads > 0 && (
         <p className="mt-3 flex items-center gap-1.5 text-[12.5px] text-[#6B7280]">
@@ -609,7 +993,7 @@ export function HuddleRecorder({
                     </span>
                     <button
                       type="button"
-                      onClick={() => void retryTranscription(segment.id)}
+                      onClick={() => void transcribeSegment(segment.id)}
                       className="inline-flex items-center gap-1 underline"
                     >
                       <RefreshCw className="size-3" /> Retry
