@@ -5,8 +5,21 @@ import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getRoleFromProfile } from "@/lib/permissions";
 import type { Role } from "@/lib/permissions";
+import { getOrgAIContext } from "@/lib/ai/org-context";
+import { getRemainingCredits } from "@/lib/ai/credit-accounting";
+import {
+  HUDDLE_RECORDING_ALLOWED_BASE_MIME,
+  HUDDLE_RECORDING_BUCKET,
+  HUDDLE_RECORDING_MIN_CREDITS,
+  HUDDLE_RECORDING_STALE_MS,
+  HUDDLE_SEGMENT_MAX_BYTES,
+  huddleRecordingExtension,
+} from "@/lib/huddles/huddle-types";
 import type {
   HuddleListFilter,
+  HuddleRecordingLifecycleState,
+  HuddleSegmentUploadInput,
+  HuddleSegmentUploadTicket,
   MyHuddleActionItem,
   RecentHuddleDecision,
 } from "@/lib/huddles/huddle-types";
@@ -2188,4 +2201,396 @@ export async function promoteActionItemToTask(
   revalidatePath("/workspace/tasks");
   revalidatePath("/dashboard");
   return { success: true, data: { taskId: task.id } };
+}
+
+// ─── Recording — Phase 2 part 1 ───────────────────────────
+//
+// Segment model: pause/resume and the 15-minute / ~20 MB rolls each end
+// a segment, so every huddle_recordings row is one self-contained audio
+// file that can be uploaded and transcribed on its own. Column names
+// follow the live schema (supabase/LIVE_SCHEMA_2026-09-22.md):
+// file_type holds the MIME type, not mime_type; deleted_at is unused
+// because delete means delete.
+
+type RecordingRow = {
+  id: string;
+  huddle_id: string;
+  organization_id: string;
+  segment_index: number;
+  storage_path: string | null;
+  file_type: string | null;
+  size_bytes: number | null;
+  duration_seconds: number | null;
+  upload_status: string;
+  transcription_status: string;
+  transcription_attempts: number;
+  transcription_started_at: string | null;
+};
+
+const RECORDING_COLUMNS =
+  "id, huddle_id, organization_id, segment_index, storage_path, file_type, size_bytes, duration_seconds, upload_status, transcription_status, transcription_attempts, transcription_started_at";
+
+function baseMimeType(value: string): string {
+  return (value.split(";")[0] ?? "").trim().toLowerCase();
+}
+
+// A recorder that crashed or had its tab closed stops heartbeating; after
+// that the huddle no longer counts as live.
+function isHeartbeatFresh(heartbeatAt: string | null): boolean {
+  if (!heartbeatAt) return false;
+  const ts = Date.parse(heartbeatAt);
+  return Number.isFinite(ts) && Date.now() - ts < HUDDLE_RECORDING_STALE_MS;
+}
+
+// Recording rows are only ever read or written by the organizer or an
+// org admin — the same canManage gate finalizeHuddle uses.
+async function loadRecordingForManage(
+  ctx: { userId: string; organizationId: string; role: Role },
+  recordingId: string,
+): Promise<
+  | { ok: true; row: RecordingRow }
+  | { ok: false; error: string; code?: string }
+> {
+  const { data: row } = await supabaseAdmin
+    .from("huddle_recordings")
+    .select(RECORDING_COLUMNS)
+    .eq("id", recordingId)
+    .maybeSingle();
+  if (!row || row.organization_id !== ctx.organizationId)
+    return { ok: false, error: "Recording not found." };
+  const access = await loadHuddleForViewer(ctx, row.huddle_id);
+  if (!access.ok) return { ok: false, error: access.error };
+  if (!access.canManage)
+    return {
+      ok: false,
+      error: "Only the organizer or an admin can manage recordings.",
+      code: "FORBIDDEN",
+    };
+  return { ok: true, row: row as RecordingRow };
+}
+
+// Start recording. Refuses up front for the reasons the recorder should
+// explain rather than discover halfway through a meeting.
+export async function startHuddleRecording(
+  huddleId: string,
+): Promise<ActionResult<{ startedAt: string }>> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated." };
+  const access = await loadHuddleForViewer(ctx, huddleId);
+  if (!access.ok) return { success: false, error: access.error };
+  if (!access.canManage)
+    return {
+      success: false,
+      error: "Only the organizer or an admin can record this huddle.",
+      code: "FORBIDDEN",
+    };
+  if (access.huddle.status !== "in_progress")
+    return {
+      success: false,
+      error: "Start the huddle before recording.",
+      code: "NOT_IN_PROGRESS",
+    };
+
+  const orgContext = await getOrgAIContext(ctx.organizationId);
+  if (!orgContext.aiEnabled)
+    return {
+      success: false,
+      error:
+        "AI is turned off for this organization. An admin can re-enable it in Settings > AI Control Center.",
+      code: "AI_DISABLED",
+    };
+
+  // consume_ai_credits cannot refuse (it adds unconditionally and returns
+  // GREATEST(0, limit - used)), so this pre-call check is the only guard
+  // against overspending. Recording is never interrupted mid-meeting for
+  // credits — segments park as awaiting_credits instead.
+  const remaining = await getRemainingCredits(ctx.organizationId);
+  if (remaining < HUDDLE_RECORDING_MIN_CREDITS)
+    return {
+      success: false,
+      error: `Not enough AI credits to start recording — ${remaining} left, and we hold back ${HUDDLE_RECORDING_MIN_CREDITS} (about ${HUDDLE_RECORDING_MIN_CREDITS} minutes of transcription).`,
+      code: "INSUFFICIENT_CREDITS",
+    };
+
+  const { data: current } = await supabaseAdmin
+    .from("huddles")
+    .select("recording_state, recording_state_by, recording_heartbeat_at")
+    .eq("id", huddleId)
+    .maybeSingle();
+  if (
+    current &&
+    current.recording_state !== "idle" &&
+    current.recording_state_by &&
+    current.recording_state_by !== ctx.userId &&
+    isHeartbeatFresh(current.recording_heartbeat_at)
+  )
+    return {
+      success: false,
+      error: "This huddle is already being recorded on another device.",
+      code: "ALREADY_RECORDING",
+    };
+
+  const now = new Date().toISOString();
+  const { error } = await supabaseAdmin
+    .from("huddles")
+    .update({
+      recording_state: "recording",
+      recording_state_by: ctx.userId,
+      recording_heartbeat_at: now,
+      updated_at: now,
+    })
+    .eq("id", huddleId);
+  if (error) {
+    console.error("[startHuddleRecording] Update error:", error.message);
+    return { success: false, error: error.message };
+  }
+  revalidatePath(`/workspace/huddles/${huddleId}`);
+  return { success: true, data: { startedAt: now } };
+}
+
+// Called every ~30s while recording or paused. Also how pause/resume is
+// persisted, so the consent indicator reflects the real state.
+export async function heartbeatHuddleRecording(
+  huddleId: string,
+  state: HuddleRecordingLifecycleState,
+): Promise<ActionResult> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated." };
+  if (state !== "recording" && state !== "paused" && state !== "idle")
+    return { success: false, error: "Unknown recording state.", code: "BAD_INPUT" };
+  const access = await loadHuddleForViewer(ctx, huddleId);
+  if (!access.ok) return { success: false, error: access.error };
+  if (!access.canManage)
+    return {
+      success: false,
+      error: "Only the organizer or an admin can record this huddle.",
+      code: "FORBIDDEN",
+    };
+
+  const { error } = await supabaseAdmin
+    .from("huddles")
+    .update({
+      recording_state: state,
+      recording_state_by: ctx.userId,
+      recording_heartbeat_at: new Date().toISOString(),
+    })
+    .eq("id", huddleId);
+  if (error) {
+    console.error("[heartbeatHuddleRecording] Update error:", error.message);
+    return { success: false, error: error.message };
+  }
+  return { success: true };
+}
+
+export async function stopHuddleRecording(
+  huddleId: string,
+): Promise<ActionResult> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated." };
+  const access = await loadHuddleForViewer(ctx, huddleId);
+  if (!access.ok) return { success: false, error: access.error };
+  if (!access.canManage)
+    return {
+      success: false,
+      error: "Only the organizer or an admin can record this huddle.",
+      code: "FORBIDDEN",
+    };
+
+  const { error } = await supabaseAdmin
+    .from("huddles")
+    .update({
+      recording_state: "idle",
+      recording_heartbeat_at: new Date().toISOString(),
+    })
+    .eq("id", huddleId);
+  if (error) {
+    console.error("[stopHuddleRecording] Update error:", error.message);
+    return { success: false, error: error.message };
+  }
+  revalidatePath(`/workspace/huddles/${huddleId}`);
+  return { success: true };
+}
+
+// Registers a finished segment and returns a signed upload URL so the
+// browser can PUT the audio straight to storage. Server actions can't
+// carry the bytes: their request body is capped (1 MB by default, 4.25 MB
+// here) and Vercel caps function bodies at 4.5 MB, while a segment runs
+// to ~20 MB.
+export async function createRecordingSegmentUpload(
+  input: HuddleSegmentUploadInput,
+): Promise<ActionResult<HuddleSegmentUploadTicket>> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated." };
+  const access = await loadHuddleForViewer(ctx, input.huddleId);
+  if (!access.ok) return { success: false, error: access.error };
+  if (!access.canManage)
+    return {
+      success: false,
+      error: "Only the organizer or an admin can record this huddle.",
+      code: "FORBIDDEN",
+    };
+
+  // Client input — validate every field.
+  const mimeType = (input.mimeType ?? "").trim();
+  const base = baseMimeType(mimeType);
+  if (!(HUDDLE_RECORDING_ALLOWED_BASE_MIME as readonly string[]).includes(base))
+    return {
+      success: false,
+      error: `Unsupported audio format (${mimeType || "unknown"}).`,
+      code: "BAD_INPUT",
+    };
+  const sizeBytes = Math.floor(Number(input.sizeBytes));
+  if (!Number.isFinite(sizeBytes) || sizeBytes <= 0)
+    return { success: false, error: "Empty audio segment.", code: "BAD_INPUT" };
+  if (sizeBytes > HUDDLE_SEGMENT_MAX_BYTES)
+    return {
+      success: false,
+      error: "That segment is too large to transcribe (25 MB max).",
+      code: "SEGMENT_TOO_LARGE",
+    };
+  const startedMs = Date.parse(input.startedAt);
+  const endedMs = Date.parse(input.endedAt);
+  if (!Number.isFinite(startedMs) || !Number.isFinite(endedMs) || endedMs < startedMs)
+    return { success: false, error: "Invalid segment times.", code: "BAD_INPUT" };
+  const durationSeconds = Math.max(
+    0,
+    Math.round(
+      Number.isFinite(Number(input.durationSeconds))
+        ? Number(input.durationSeconds)
+        : (endedMs - startedMs) / 1000,
+    ),
+  );
+  const bitrate = Math.floor(Number(input.audioBitsPerSecond));
+
+  // segment_index is assigned here, never by the client: it keeps
+  // counting across pause/resume and across separate sessions.
+  const { data: last } = await supabaseAdmin
+    .from("huddle_recordings")
+    .select("segment_index")
+    .eq("huddle_id", input.huddleId)
+    .order("segment_index", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const segmentIndex = (last?.segment_index ?? -1) + 1;
+
+  const recordingId = crypto.randomUUID();
+  const storagePath = `${ctx.organizationId}/${input.huddleId}/${recordingId}.${huddleRecordingExtension(base)}`;
+
+  const { error: insertError } = await supabaseAdmin
+    .from("huddle_recordings")
+    .insert({
+      id: recordingId,
+      huddle_id: input.huddleId,
+      organization_id: ctx.organizationId,
+      segment_index: segmentIndex,
+      started_at: new Date(startedMs).toISOString(),
+      ended_at: new Date(endedMs).toISOString(),
+      duration_seconds: durationSeconds,
+      // Claimed size; replaced with the real object size on confirm.
+      size_bytes: sizeBytes,
+      file_type: mimeType,
+      audio_bits_per_second: Number.isFinite(bitrate) && bitrate > 0 ? bitrate : null,
+      source_type: "browser_recording",
+      storage_path: storagePath,
+      uploaded_by: ctx.userId,
+      upload_status: "pending_upload",
+      transcription_status: "pending",
+    });
+  if (insertError) {
+    console.error("[createRecordingSegmentUpload] Insert error:", insertError.message);
+    return { success: false, error: insertError.message };
+  }
+
+  const { data: signed, error: signError } = await supabaseAdmin.storage
+    .from(HUDDLE_RECORDING_BUCKET)
+    .createSignedUploadUrl(storagePath);
+  if (signError || !signed) {
+    // No upload URL means the row can never be filled — drop it.
+    await supabaseAdmin.from("huddle_recordings").delete().eq("id", recordingId);
+    console.error(
+      "[createRecordingSegmentUpload] Signed URL error:",
+      signError?.message,
+    );
+    return {
+      success: false,
+      error: signError?.message ?? "Couldn't prepare the upload.",
+    };
+  }
+
+  return {
+    success: true,
+    data: {
+      recordingId,
+      bucket: HUDDLE_RECORDING_BUCKET,
+      path: signed.path,
+      token: signed.token,
+    },
+  };
+}
+
+// Confirms the object landed. The size is read from storage rather than
+// trusted from the browser, then added to the org's usage counter.
+export async function completeRecordingSegmentUpload(
+  recordingId: string,
+): Promise<ActionResult<{ sizeBytes: number }>> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated." };
+  const access = await loadRecordingForManage(ctx, recordingId);
+  if (!access.ok)
+    return { success: false, error: access.error, code: access.code };
+  const row = access.row;
+  if (!row.storage_path)
+    return { success: false, error: "Recording has no storage path." };
+  // Already confirmed — don't count the bytes twice.
+  if (row.upload_status === "uploaded")
+    return { success: true, data: { sizeBytes: Number(row.size_bytes ?? 0) } };
+
+  const { data: info, error: infoError } = await supabaseAdmin.storage
+    .from(HUDDLE_RECORDING_BUCKET)
+    .info(row.storage_path);
+  if (infoError || !info) {
+    await supabaseAdmin
+      .from("huddle_recordings")
+      .update({ upload_status: "upload_failed" })
+      .eq("id", recordingId);
+    console.error(
+      "[completeRecordingSegmentUpload] Object missing:",
+      infoError?.message,
+    );
+    return {
+      success: false,
+      error: "The audio didn't finish uploading. Try again.",
+      code: "UPLOAD_MISSING",
+    };
+  }
+
+  const actualSize = Math.max(0, Math.floor(Number(info.size ?? 0)));
+  const { error: updateError } = await supabaseAdmin
+    .from("huddle_recordings")
+    .update({
+      upload_status: "uploaded",
+      size_bytes: actualSize,
+      uploaded_at: new Date().toISOString(),
+    })
+    .eq("id", recordingId);
+  if (updateError) {
+    console.error(
+      "[completeRecordingSegmentUpload] Update error:",
+      updateError.message,
+    );
+    return { success: false, error: updateError.message };
+  }
+
+  // Atomic +bytes; the RPC clamps at 0 and is service-role only.
+  const { error: usageError } = await supabaseAdmin.rpc(
+    "adjust_huddle_storage_used",
+    { p_organization_id: ctx.organizationId, p_delta_bytes: actualSize },
+  );
+  if (usageError)
+    console.error(
+      "[completeRecordingSegmentUpload] Storage counter error:",
+      usageError.message,
+    );
+
+  return { success: true, data: { sizeBytes: actualSize } };
 }

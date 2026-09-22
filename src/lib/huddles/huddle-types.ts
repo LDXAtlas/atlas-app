@@ -41,3 +41,70 @@ export type RecentHuddleDecision = {
 // (organizer = created_by, or an org admin) so nobody is nudged about a
 // huddle they can't resolve.
 export type HuddleListFilter = "upcoming" | "past" | "all" | "needs_attention";
+
+// ─── Recording (Phase 2 part 1) ─────────────────────────────
+// Shared by the server actions and the recorder component.
+
+export const HUDDLE_RECORDING_BUCKET = "huddle-recordings";
+
+/** Probe order for MediaRecorder.isTypeSupported; first hit wins.
+ *  webm/opus everywhere, mp4 on Safari, ogg on Firefox. */
+export const HUDDLE_RECORDING_MIME_CANDIDATES = [
+  "audio/webm;codecs=opus",
+  "audio/webm",
+  "audio/mp4",
+  "audio/ogg;codecs=opus",
+  "audio/ogg",
+] as const;
+
+/** Base MIME types the bucket accepts (no ;codecs= parameter). */
+export const HUDDLE_RECORDING_ALLOWED_BASE_MIME = [
+  "audio/webm",
+  "audio/mp4",
+  "audio/ogg",
+] as const;
+
+/** Bucket file_size_limit, and Whisper's per-file limit. */
+export const HUDDLE_SEGMENT_MAX_BYTES = 26_214_400; // 25 MB
+/** Roll a new segment at ~20 MB so a segment always fits the limit. */
+export const HUDDLE_SEGMENT_ROLL_BYTES = 20 * 1024 * 1024;
+/** ...and at 15 minutes, whichever comes first. */
+export const HUDDLE_SEGMENT_ROLL_MS = 15 * 60 * 1000;
+/** Requested bitrate; browsers may ignore it, so we store what was used. */
+export const HUDDLE_RECORDING_AUDIO_BPS = 24_000;
+/** Heartbeat cadence, and how long before a heartbeat is stale. */
+export const HUDDLE_RECORDING_HEARTBEAT_MS = 30_000;
+export const HUDDLE_RECORDING_STALE_MS = 90_000;
+/** Refuse to start with less than ~10 minutes of transcription credit. */
+export const HUDDLE_RECORDING_MIN_CREDITS = 10;
+
+/** File extension for a recorded segment, from its MIME type. All three
+ *  are formats Whisper accepts, and it sniffs by extension. */
+export function huddleRecordingExtension(mimeType: string): "webm" | "mp4" | "ogg" {
+  const base = mimeType.split(";")[0]?.trim().toLowerCase();
+  if (base === "audio/mp4") return "mp4";
+  if (base === "audio/ogg") return "ogg";
+  return "webm";
+}
+
+export type HuddleRecordingLifecycleState = "idle" | "recording" | "paused";
+
+/** Everything the browser needs to PUT one segment straight to storage. */
+export type HuddleSegmentUploadTicket = {
+  recordingId: string;
+  bucket: string;
+  path: string;
+  token: string;
+};
+
+export type HuddleSegmentUploadInput = {
+  huddleId: string;
+  /** Wall-clock bounds of the segment, ISO strings. */
+  startedAt: string;
+  endedAt: string;
+  durationSeconds: number;
+  /** The full MIME type MediaRecorder reported, e.g. audio/webm;codecs=opus. */
+  mimeType: string;
+  sizeBytes: number;
+  audioBitsPerSecond?: number | null;
+};
