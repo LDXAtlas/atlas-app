@@ -5,7 +5,10 @@ import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getRoleFromProfile } from "@/lib/permissions";
 import type { Role } from "@/lib/permissions";
-import type { MyHuddleActionItem } from "@/lib/huddles/huddle-types";
+import type {
+  MyHuddleActionItem,
+  RecentHuddleDecision,
+} from "@/lib/huddles/huddle-types";
 
 // ─── Types ────────────────────────────────────────────────
 
@@ -979,6 +982,90 @@ export async function getMyHuddleActionItems(): Promise<
         created_at: r.created_at,
       };
     }),
+  };
+}
+
+// Most recent decisions across every huddle the caller may see, newest
+// first. Visibility can only be applied after the query, so we over-fetch
+// the org's newest RECENT_DECISIONS_SCAN_CAP decisions, drop those from
+// huddles the caller can't see, then slice to `limit`. If the caller can
+// see fewer than `limit` of those 200, they get fewer rows even though
+// older visible decisions exist — acceptable for a "recent" rail.
+const RECENT_DECISIONS_SCAN_CAP = 200;
+const RECENT_DECISIONS_MAX = 25;
+
+export async function getRecentDecisions(
+  limit = 8,
+): Promise<ActionResult<RecentHuddleDecision[]>> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated." };
+
+  // Server actions accept arbitrary args from the client — clamp to 1–25.
+  const n = Math.floor(Number(limit));
+  const take = Number.isFinite(n)
+    ? Math.min(RECENT_DECISIONS_MAX, Math.max(1, n))
+    : 8;
+
+  // huddle_decisions has no organization_id; scope via the parent huddle.
+  const { data, error } = await supabaseAdmin
+    .from("huddle_decisions")
+    .select(
+      "id, huddle_id, decision, context, decided_by, source, created_at, huddles!inner(id, title, visibility, created_by, department_id, organization_id)",
+    )
+    .eq("huddles.organization_id", ctx.organizationId)
+    .order("created_at", { ascending: false })
+    .limit(RECENT_DECISIONS_SCAN_CAP);
+  if (error) {
+    console.error("[getRecentDecisions] Select error:", error.message);
+    return { success: false, error: error.message };
+  }
+
+  type HuddleRef = {
+    id: string;
+    title: string;
+    visibility: string;
+    created_by: string;
+    department_id: string | null;
+    organization_id: string;
+  };
+  const rows = (data ?? []) as unknown as {
+    id: string;
+    huddle_id: string;
+    decision: string;
+    context: string | null;
+    decided_by: string | null;
+    source: string | null;
+    created_at: string;
+    huddles: HuddleRef;
+  }[];
+
+  const huddleById = new Map<string, HuddleRef>();
+  rows.forEach((r) => {
+    if (r.huddles && r.huddles.organization_id === ctx.organizationId)
+      huddleById.set(r.huddles.id, r.huddles);
+  });
+  const visibleIds = new Set(
+    (await filterVisibleHuddles(ctx, Array.from(huddleById.values()))).map(
+      (h) => h.id,
+    ),
+  );
+
+  const picked = rows.filter((r) => visibleIds.has(r.huddle_id)).slice(0, take);
+  const profileMap = await hydrateProfiles(picked.map((r) => r.decided_by));
+
+  return {
+    success: true,
+    data: picked.map((r) => ({
+      id: r.id,
+      huddle_id: r.huddle_id,
+      huddle_title: huddleById.get(r.huddle_id)!.title,
+      decision: r.decision,
+      context: r.context,
+      decided_by: r.decided_by,
+      source: r.source as "manual" | "ai_extracted",
+      created_at: r.created_at,
+      decider: r.decided_by ? profileMap.get(r.decided_by) ?? null : null,
+    })),
   };
 }
 
