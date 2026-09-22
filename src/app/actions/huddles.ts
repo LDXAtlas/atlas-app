@@ -6,6 +6,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getRoleFromProfile } from "@/lib/permissions";
 import type { Role } from "@/lib/permissions";
 import type {
+  HuddleListFilter,
   MyHuddleActionItem,
   RecentHuddleDecision,
 } from "@/lib/huddles/huddle-types";
@@ -661,7 +662,7 @@ export async function deleteHuddle(huddleId: string): Promise<ActionResult> {
 // ─── List ─────────────────────────────────────────────────
 
 export async function getHuddles(
-  options: { filter?: "upcoming" | "past" | "all" } = {},
+  options: { filter?: HuddleListFilter } = {},
 ): Promise<ActionResult<HuddleListItem[]>> {
   const ctx = await getAuthContext();
   if (!ctx) return { success: false, error: "Not authenticated." };
@@ -681,6 +682,12 @@ export async function getHuddles(
     query = query
       .in("status", ["completed", "archived"])
       .order("scheduled_start", { ascending: false });
+  } else if (options.filter === "needs_attention") {
+    // Ended but not finalized. The finalize permission gate is applied
+    // after the visibility filter below.
+    query = query
+      .eq("status", "completed")
+      .order("scheduled_start", { ascending: false });
   } else {
     query = query.order("scheduled_start", { ascending: false });
   }
@@ -692,7 +699,15 @@ export async function getHuddles(
   }
   // Apply visibility filter client-side since RLS is bypassed by the
   // service-role client. Mirrors the SELECT policy in JS.
-  const visible = await filterVisibleHuddles(ctx, rows ?? []);
+  let visible = await filterVisibleHuddles(ctx, rows ?? []);
+  // needs_attention only nudges people who can act on it: finalizeHuddle
+  // goes through lifecycleUpdate, which requires canManage (organizer =
+  // created_by, or an org admin).
+  if (options.filter === "needs_attention") {
+    visible = visible.filter(
+      (h) => h.created_by === ctx.userId || ctx.role === "admin",
+    );
+  }
   const accessibleIds = visible.map((h) => h.id);
 
   // Aggregate counts in three batched queries.

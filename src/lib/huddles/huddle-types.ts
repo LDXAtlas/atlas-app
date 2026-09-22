@@ -35,3 +35,9 @@ export type RecentHuddleDecision = {
   created_at: string;
   decider: ProfileLite | null;
 };
+
+// getHuddles filter. "needs_attention" = ended (status 'completed') but
+// not yet finalized, limited to huddles the caller can finalize
+// (organizer = created_by, or an org admin) so nobody is nudged about a
+// huddle they can't resolve.
+export type HuddleListFilter = "upcoming" | "past" | "all" | "needs_attention";
