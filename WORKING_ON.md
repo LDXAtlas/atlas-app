@@ -21,6 +21,14 @@ Before you start a coding session:
 
 ## Lucas (last updated: 2026-09-22)
 
+### Just landed (2026-09-22) — Huddles Phase 2 part 1: recording + transcription (for Ben)
+- Huddles can now be recorded in the browser, uploaded to a private bucket and transcribed with Whisper. **Backend only — no huddles UI file touched.** Two components are ready for you to mount, both from `@/components/huddle-recorder`:
+  - `<HuddleRecorder huddleId={huddle.id} canManage={huddle.viewer_can_manage} huddleStatus={huddle.status} />` — the whole recorder panel (Record / Pause / Resume / Stop / Delete, timer, upload queue, per-segment transcription status). Renders nothing unless `canManage`, and says "Start the huddle to record" until the huddle is in progress. Suggested home: the Overview tab, near the lifecycle buttons.
+  - `<HuddleRecordingIndicator huddleId={huddle.id} />` — the "recording" dot for **everyone** in the huddle, so attendees can see it. Renders nothing when nothing is live; safe to leave mounted. Suggested home: next to the status pill in the header.
+- Reads if you want to build your own UI: `getHuddleRecordingState(huddleId)` (any viewer; counts and timings, no transcript text) and `getHuddleTranscript(huddleId)` (**organizer/admin only** — transcripts are no longer returned to other viewers, including in `getHuddle`).
+- Keep the tab open while recording: a segment that hasn't uploaded yet is still in memory, and the page warns before you close it.
+- Full detail in BACKEND_NOTES → DONE. Needs `supabase/migrations/20260922_huddle_attendee_presenter.sql` applied before the Presenter role in your attendee dropdown will save (unrelated pre-existing bug).
+
 ### Just landed (2026-09-22) — Huddles rail hooks (for Ben)
 - Three backend read hooks for the redesigned huddles page, all in `@/app/actions/huddles`, with types in `@/lib/huddles/huddle-types`:
   - `getMyHuddleActionItems()`: pending action items suggested to me, newest first. `huddle_title` is `null` and `can_view_huddle` is `false` when I can't see the parent huddle. **Ben: please confirm "pending + suggested to me" is the semantics you want.**

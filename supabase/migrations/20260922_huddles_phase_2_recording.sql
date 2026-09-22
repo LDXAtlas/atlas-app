@@ -1,8 +1,9 @@
 -- ============================================================
 -- HUDDLES PHASE 2 (part 1) — Recording, storage, transcription
 --
--- RUN THIS ONCE in the Supabase SQL editor. Not yet applied; once it
--- is, this file is the source-controlled record.
+-- APPLIED to the live database on 2026-09-22. This file is the
+-- source-controlled record of that change; every statement is
+-- re-runnable, but there is no need to run it again.
 --
 -- Written against the LIVE schema (supabase/LIVE_SCHEMA_2026-09-22.md
 -- plus the constraint / index / trigger / policy dump of the same
