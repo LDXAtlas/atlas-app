@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getRoleFromProfile } from "@/lib/permissions";
 import type { Role } from "@/lib/permissions";
+import type { MyHuddleActionItem } from "@/lib/huddles/huddle-types";
 
 // ─── Types ────────────────────────────────────────────────
 
@@ -916,6 +917,69 @@ export async function getMyUpcomingHuddles(): Promise<
   });
 
   return { success: true, data: items };
+}
+
+// Pending action items suggested to the caller — not yet promoted to a
+// task (status 'accepted') and not dismissed (the UI deletes the row).
+// The assignee may not be able to see the parent huddle, so the item is
+// always returned but the huddle title only when the huddle is visible.
+export async function getMyHuddleActionItems(): Promise<
+  ActionResult<MyHuddleActionItem[]>
+> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated." };
+
+  const { data: itemRows, error } = await supabaseAdmin
+    .from("huddle_action_items")
+    .select("id, huddle_id, description, suggested_due_date, source, created_at")
+    .eq("suggested_assignee_id", ctx.userId)
+    .eq("status", "pending")
+    .order("created_at", { ascending: false });
+  if (error) {
+    console.error("[getMyHuddleActionItems] Select error:", error.message);
+    return { success: false, error: error.message };
+  }
+  if (!itemRows || itemRows.length === 0) return { success: true, data: [] };
+
+  const huddleIds = Array.from(new Set(itemRows.map((r) => r.huddle_id)));
+  const { data: huddleRows, error: huddleError } = await supabaseAdmin
+    .from("huddles")
+    .select("id, title, visibility, created_by, department_id")
+    .eq("organization_id", ctx.organizationId)
+    .in("id", huddleIds);
+  if (huddleError) {
+    console.error("[getMyHuddleActionItems] Huddle select error:", huddleError.message);
+    return { success: false, error: huddleError.message };
+  }
+
+  // Child tables carry no organization_id, so org scoping comes from the
+  // parent huddle: items whose huddle isn't in the caller's org drop out
+  // here, before anything else.
+  const huddleById = new Map((huddleRows ?? []).map((h) => [h.id, h]));
+  const scoped = itemRows.filter((r) => huddleById.has(r.huddle_id));
+
+  const visibleIds = new Set(
+    (await filterVisibleHuddles(ctx, Array.from(huddleById.values()))).map(
+      (h) => h.id,
+    ),
+  );
+
+  return {
+    success: true,
+    data: scoped.map((r) => {
+      const canView = visibleIds.has(r.huddle_id);
+      return {
+        id: r.id,
+        huddle_id: r.huddle_id,
+        huddle_title: canView ? huddleById.get(r.huddle_id)!.title : null,
+        can_view_huddle: canView,
+        description: r.description,
+        suggested_due_date: r.suggested_due_date,
+        source: r.source as "manual" | "ai_extracted",
+        created_at: r.created_at,
+      };
+    }),
+  };
 }
 
 // ─── Detail (single huddle) ───────────────────────────────
