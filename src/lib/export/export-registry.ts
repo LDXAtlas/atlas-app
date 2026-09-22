@@ -320,6 +320,19 @@ export const EXPORT_REGISTRY: readonly ExportEntity[] = [
     fields: ["id", "huddle_id", "task_id", "description", "suggested_assignee_id", "suggested_due_date", "source", "status", "created_at"],
     idField: null,
   },
+  {
+    // The church's own words, so the text goes in the export. The audio
+    // it came from does not — see huddle_recordings in
+    // EXCLUDED_ORG_TABLES below.
+    key: "huddle_transcripts",
+    label: "Huddle transcripts",
+    table: "huddle_transcripts",
+    scope: { type: "via", parentEntity: "huddles", parentKey: "huddle_id" },
+    fields: ["id", "huddle_id", "recording_id", "full_text", "segments", "language", "model_used", "created_at"],
+    idField: null,
+    notes:
+      "One row per recorded segment. recording_id points at a huddle_recordings row that is not itself exported.",
+  },
 
   // ── Library (file METADATA only — never the file blobs, per v1 scope) ─────
   {
@@ -387,6 +400,7 @@ export const EXCLUDED_ORG_TABLES: readonly RedactedField[] = [
   { field: "calendar_feed_tokens", reason: "Contains secret per-user ICS calendar-feed access tokens — excluded for security." },
   { field: "notifications", reason: "Transient per-user in-app notifications — not meaningful portable data." },
   { field: "invitations", reason: "Unaccepted staff invites (transient) and contains secret accept tokens — excluded." },
+  { field: "huddle_recordings", reason: "Meeting audio: the rows are storage pointers (storage_path) to a private bucket, and v1 exports metadata only, never file blobs — same rule as attachments. The transcript text IS exported (huddle_transcripts)." },
 ] as const;
 
 /**
