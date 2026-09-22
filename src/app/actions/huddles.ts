@@ -261,6 +261,56 @@ async function loadHuddleForViewer(
   };
 }
 
+// Batch visibility filter for huddle rows already scoped to the caller's
+// org. Reads run on the service-role client, so RLS is bypassed — this
+// mirrors the huddles SELECT policy in JS. Row order is preserved.
+// (getHuddlesForCalendar and loadHuddleForViewer still carry their own
+// copies of the same predicate.)
+async function filterVisibleHuddles<
+  T extends {
+    id: string;
+    visibility: string;
+    created_by: string;
+    department_id: string | null;
+  },
+>(ctx: { userId: string }, rows: T[]): Promise<T[]> {
+  const { data: deptRows } = await supabaseAdmin
+    .from("profile_departments")
+    .select("department_id")
+    .eq("profile_id", ctx.userId);
+  const myDepartments = new Set(
+    (deptRows ?? []).map((r: { department_id: string }) => r.department_id),
+  );
+
+  // Batch fetch the attendee links for all candidate huddles.
+  const candidateIds = rows.map((r) => r.id);
+  const attendeeByHuddle = new Map<string, boolean>();
+  if (candidateIds.length > 0) {
+    const { data: attRows } = await supabaseAdmin
+      .from("huddle_attendees")
+      .select("huddle_id")
+      .in("huddle_id", candidateIds)
+      .eq("profile_id", ctx.userId);
+    (attRows ?? []).forEach((r: { huddle_id: string }) =>
+      attendeeByHuddle.set(r.huddle_id, true),
+    );
+  }
+
+  return rows.filter((h) => {
+    const isAttendee = attendeeByHuddle.get(h.id) === true;
+    if (h.visibility === "organization") return true;
+    if (h.created_by === ctx.userId) return true;
+    if (isAttendee) return true;
+    if (
+      h.visibility === "department" &&
+      h.department_id &&
+      myDepartments.has(h.department_id)
+    )
+      return true;
+    return false;
+  });
+}
+
 // Deterministic avatar tint from a uuid so attendees who haven't set a
 // custom color still get visually distinct circles. Same hashing
 // approach as elsewhere in Atlas — first byte mod palette length.
@@ -636,49 +686,10 @@ export async function getHuddles(
     console.error("[getHuddles] Select error:", error.message);
     return { success: false, error: error.message };
   }
-  const accessibleIds: string[] = [];
   // Apply visibility filter client-side since RLS is bypassed by the
   // service-role client. Mirrors the SELECT policy in JS.
-  const { data: deptRows } = await supabaseAdmin
-    .from("profile_departments")
-    .select("department_id")
-    .eq("profile_id", ctx.userId);
-  const myDepartments = new Set(
-    (deptRows ?? []).map((r: { department_id: string }) => r.department_id),
-  );
-
-  // Batch fetch the attendee links for all candidate huddles.
-  const candidateIds = (rows ?? []).map((r) => r.id);
-  const attendeeByHuddle = new Map<string, boolean>();
-  if (candidateIds.length > 0) {
-    const { data: attRows } = await supabaseAdmin
-      .from("huddle_attendees")
-      .select("huddle_id")
-      .in("huddle_id", candidateIds)
-      .eq("profile_id", ctx.userId);
-    (attRows ?? []).forEach((r: { huddle_id: string }) =>
-      attendeeByHuddle.set(r.huddle_id, true),
-    );
-  }
-
-  const visible: typeof rows = [];
-  (rows ?? []).forEach((h) => {
-    const isAttendee = attendeeByHuddle.get(h.id) === true;
-    let canSee = false;
-    if (h.visibility === "organization") canSee = true;
-    else if (h.created_by === ctx.userId) canSee = true;
-    else if (isAttendee) canSee = true;
-    else if (
-      h.visibility === "department" &&
-      h.department_id &&
-      myDepartments.has(h.department_id)
-    )
-      canSee = true;
-    if (canSee) {
-      visible.push(h);
-      accessibleIds.push(h.id);
-    }
-  });
+  const visible = await filterVisibleHuddles(ctx, rows ?? []);
+  const accessibleIds = visible.map((h) => h.id);
 
   // Aggregate counts in three batched queries.
   const counts = {
