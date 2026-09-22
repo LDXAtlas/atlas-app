@@ -250,6 +250,19 @@ export async function transcribeAudio(
 ): Promise<TranscribeResponse> {
   const { organizationId, userId, ...rest } = params;
 
+  // Master switch, same as callAI. Transcription doesn't use org
+  // guidelines or the model preference (Whisper is infrastructure, not a
+  // choice — see docs/AI_CONTROL_CENTER.md), but an org that has turned
+  // AI off must not have audio sent to a provider.
+  const orgContext = await getOrgAIContext(organizationId);
+  if (!orgContext.aiEnabled) {
+    return {
+      success: false,
+      error:
+        "AI is turned off for this organization. An admin can re-enable it in Settings > AI Control Center.",
+    };
+  }
+
   const result = await openaiTranscribe(rest);
   if (!result.success) {
     return { success: false, error: result.error };
