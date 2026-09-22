@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getRoleFromProfile } from "@/lib/permissions";
 import type { Role } from "@/lib/permissions";
+import { transcribeAudio } from "@/lib/ai";
 import { getOrgAIContext } from "@/lib/ai/org-context";
 import { getRemainingCredits } from "@/lib/ai/credit-accounting";
 import {
@@ -2593,4 +2594,154 @@ export async function completeRecordingSegmentUpload(
     );
 
   return { success: true, data: { sizeBytes: actualSize } };
+}
+
+// Transcribe one uploaded segment. Exported so the Route Handler at
+// /api/huddles/recordings/[recordingId]/transcribe can call it: a server
+// action inherits its timeout from the *page* that invokes it (Next
+// docs, maxDuration → "Server Actions"), and that page is the huddles UI
+// we don't own. The handler sets maxDuration = 300 instead. It re-checks
+// auth here anyway, so calling it directly is safe.
+export async function transcribeHuddleRecording(
+  recordingId: string,
+): Promise<ActionResult<{ status: string }>> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated." };
+  const access = await loadRecordingForManage(ctx, recordingId);
+  if (!access.ok)
+    return { success: false, error: access.error, code: access.code };
+  const row = access.row;
+
+  if (row.upload_status !== "uploaded")
+    return {
+      success: false,
+      error: "That segment hasn't finished uploading yet.",
+      code: "NOT_UPLOADED",
+    };
+  if (row.transcription_status === "done")
+    return { success: true, data: { status: "done" } };
+  if (!row.storage_path)
+    return { success: false, error: "Recording has no storage path." };
+
+  // Claim the segment in one statement so two callers can't both pay
+  // Whisper for it. A 'processing' row whose attempt started over ten
+  // minutes ago is treated as abandoned (killed function, closed tab).
+  const nowIso = new Date().toISOString();
+  const staleCutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+  const { data: claimed } = await supabaseAdmin
+    .from("huddle_recordings")
+    .update({
+      transcription_status: "processing",
+      transcription_started_at: nowIso,
+      transcription_attempts: row.transcription_attempts + 1,
+      transcription_error: null,
+    })
+    .eq("id", recordingId)
+    .or(
+      `transcription_status.in.(pending,failed,awaiting_credits),and(transcription_status.eq.processing,transcription_started_at.lt.${staleCutoff})`,
+    )
+    .select("id")
+    .maybeSingle();
+  if (!claimed)
+    // Another call holds it; the UI polls the segment list for the result.
+    return { success: true, data: { status: "processing" } };
+
+  // 1 credit per minute, rounded up. consume_ai_credits can't refuse, so
+  // this pre-check is the only thing standing between an out-of-credit
+  // org and an overspend. Parked segments stay retryable.
+  const needed = Math.max(1, Math.ceil((row.duration_seconds ?? 0) / 60));
+  const remaining = await getRemainingCredits(ctx.organizationId);
+  if (remaining < needed) {
+    await supabaseAdmin
+      .from("huddle_recordings")
+      .update({
+        transcription_status: "awaiting_credits",
+        transcription_error: `Needs ${needed} credit(s); ${remaining} left.`,
+      })
+      .eq("id", recordingId);
+    return {
+      success: false,
+      error: `Out of AI credits — this segment is saved and will transcribe once credits are topped up (needs ${needed}, ${remaining} left).`,
+      code: "AWAITING_CREDITS",
+    };
+  }
+
+  const { data: audio, error: downloadError } = await supabaseAdmin.storage
+    .from(HUDDLE_RECORDING_BUCKET)
+    .download(row.storage_path);
+  if (downloadError || !audio) {
+    await supabaseAdmin
+      .from("huddle_recordings")
+      .update({
+        transcription_status: "failed",
+        transcription_error: downloadError?.message ?? "Audio not found.",
+      })
+      .eq("id", recordingId);
+    return {
+      success: false,
+      error: downloadError?.message ?? "Couldn't read the audio.",
+    };
+  }
+
+  // Whisper sniffs the format from the filename extension, so pass one
+  // that matches what the browser actually recorded.
+  const fileType = row.file_type ?? "audio/webm";
+  const base = baseMimeType(fileType);
+  const result = await transcribeAudio({
+    organizationId: ctx.organizationId,
+    userId: ctx.userId,
+    audio,
+    filename: `${row.id}.${huddleRecordingExtension(base)}`,
+    contentType: base,
+    language: "en",
+  });
+  if (!result.success) {
+    await supabaseAdmin
+      .from("huddle_recordings")
+      .update({
+        transcription_status: "failed",
+        transcription_error: result.error.slice(0, 500),
+      })
+      .eq("id", recordingId);
+    return { success: false, error: result.error };
+  }
+
+  // One transcript row per segment (recording_id is UNIQUE). full_text is
+  // the live column — there is no `content`.
+  const { error: transcriptError } = await supabaseAdmin
+    .from("huddle_transcripts")
+    .upsert(
+      {
+        huddle_id: row.huddle_id,
+        recording_id: row.id,
+        full_text: result.transcript,
+        segments: result.segments,
+        language: "en",
+        model_used: "whisper-1",
+      },
+      { onConflict: "recording_id" },
+    );
+  if (transcriptError) {
+    // The credits are already spent, so record why the text was lost.
+    await supabaseAdmin
+      .from("huddle_recordings")
+      .update({
+        transcription_status: "failed",
+        transcription_error: transcriptError.message.slice(0, 500),
+      })
+      .eq("id", recordingId);
+    console.error(
+      "[transcribeHuddleRecording] Transcript insert error:",
+      transcriptError.message,
+    );
+    return { success: false, error: transcriptError.message };
+  }
+
+  await supabaseAdmin
+    .from("huddle_recordings")
+    .update({ transcription_status: "done", transcription_error: null })
+    .eq("id", recordingId);
+
+  revalidatePath(`/workspace/huddles/${row.huddle_id}`);
+  return { success: true, data: { status: "done" } };
 }
