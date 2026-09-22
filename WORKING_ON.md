@@ -19,9 +19,18 @@ Before you start a coding session:
 
 ---
 
-## Lucas (last updated: 2026-09-10)
+## Lucas (last updated: 2026-09-22)
 
-### Just landed (2026-09-10)
+### Just landed (2026-09-22) — Huddles rail hooks (for Ben)
+- Three backend read hooks for the redesigned huddles page, all in `@/app/actions/huddles`, with types in `@/lib/huddles/huddle-types`:
+  - `getMyHuddleActionItems()`: pending action items suggested to me, newest first. `huddle_title` is `null` and `can_view_huddle` is `false` when I can't see the parent huddle. **Ben: please confirm "pending + suggested to me" is the semantics you want.**
+  - `getRecentDecisions(limit = 8)`: recent decisions across huddles I can see, with huddle title and decider. `limit` is clamped to 1–25.
+  - `getHuddles({ filter: "needs_attention" })`: huddles that have ended but aren't finalized, limited to ones I can finalize.
+  - No `getNextHuddle`: use `getHuddle(items[0].id)` on the `upcoming` list.
+- Backend only; **no huddles UI files touched.** Full detail is in BACKEND_NOTES → DONE.
+
+### Landed 2026-09-10
+
 - **Organization data export** — admin can download everything the org has in the Workspace module as a single JSON file, from **Settings → Organization** (new Data Export card). Registry-driven (`src/lib/export/export-registry.ts`, mirrors the AI feature-registry pattern) so adding Serve/Care later = adding entries, not rewriting export logic. Admin-gated server-side, strictly scoped to the caller's org, declared redactions/exclusions (Stripe id, storage keys, secret tokens, Atlas internal config), and a soft completeness check that warns if a future org-scoped table isn't registered. Congregation `members` (incl. pastoral `notes`) are included. Full detail in BACKEND_NOTES → DONE. **No huddles UI touched** (data-only export).
 
 ### Landed 2026-09-09 (re-entry session)

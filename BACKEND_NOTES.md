@@ -75,6 +75,22 @@ Atlas does NOT build native video calling. Position is "the brain, not the pipes
 - `huddle_invited` and `huddle_action_assigned` aren't in the `notifications.type` CHECK constraint. Phase 1 reuses `mention` for huddle invites and `task_assigned` for promoted action items so notifications still fire today.
 - To clean up the messaging copy: extend the constraint via `ALTER TABLE notifications ... DROP CONSTRAINT ... ADD CONSTRAINT ... CHECK (type IN (... 'huddle_invited', 'huddle_action_assigned'))`, add the two strings to `src/lib/notifications-config.ts` (union + DEFAULT_NOTIFICATION_PREFERENCES + NOTIFICATION_CATEGORIES), then swap the two call sites in `src/app/actions/huddles.ts` (createHuddle, addHuddleAttendee, promoteActionItemToTask).
 
+### Huddles — Attendee-role "organizer" can't finalize (found 2026-09-22, do not fix in the rail-hooks work)
+- `updateAttendeeRole` lets anyone be promoted to attendee role `organizer`, but the lifecycle gate (`canManage` in `loadHuddleForViewer`) only checks `huddles.created_by === me || role === 'admin'`. A promoted organizer sees the Organizer badge but gets FORBIDDEN on Start / End / Finalize.
+- Knock-on: `getHuddles({ filter: "needs_attention" })` uses the same `canManage` rule, so promoted organizers get no needs-attention nudge. That's correct today because they couldn't resolve it anyway. If `canManage` is widened to include attendee-role organizers, widen the needs_attention gate in `getHuddles` too.
+
+### Huddles — Consolidate visibility checks onto `filterVisibleHuddles`
+- `filterVisibleHuddles` (private helper in `src/app/actions/huddles.ts`, extracted 2026-09-22) is now used by `getHuddles`, `getMyHuddleActionItems` and `getRecentDecisions`. Two older copies of the same predicate remain: `getHuddlesForCalendar` and `loadHuddleForViewer` (single-row). Move them onto the helper so the visibility rule lives in one place.
+
+### Huddles Phase 2 — Dismissing an AI-extracted action item must set `status='rejected'`, not delete
+- Today the Outcomes tab's dismiss calls `deleteActionItem`, which hard-deletes the row, and nothing ever writes `'rejected'`. When Phase 2 lands, dismissing an `ai_extracted` item must set `status='rejected'` and keep the row. Otherwise the AI acceptance-rate insight (AI_CONTROL_CENTER.md) has no rejections to count. Manual items can keep deleting.
+- `getMyHuddleActionItems` already filters on `status = 'pending'`, so rejected rows drop out of the rail automatically.
+
+### Security audit (November) — Huddle reads bypass RLS
+- Every huddle read in `src/app/actions/huddles.ts` uses the service-role client (`supabaseAdmin`) and enforces org scoping + visibility in JS (`filterVisibleHuddles`, `loadHuddleForViewer`, `getHuddlesForCalendar`). The RLS policies in `supabase/migrations/20260615_huddles_phase_1.sql` exist, but the app's own reads never exercise them. Correctness depends entirely on the JS checks.
+- Child tables (`huddle_action_items`, `huddle_decisions`, etc.) have no `organization_id`, so every service-role child read must scope through the parent huddle's org. The rail hooks do: `getMyHuddleActionItems` drops out-of-org items first, and `getRecentDecisions` uses an inner join on `huddles.organization_id`.
+- Audit questions: should reads move to the RLS client? Do the live policies still match the migration files?
+
 ### AI infrastructure — Confirm `gpt-5-nano` availability
 - `src/lib/ai/openai-client.ts` defaults the OpenAI fallback to `gpt-5-nano` with a runtime swap to `gpt-4o-mini` if the API returns model-not-found. First production call will log which one is in effect — verify and decide whether to hard-code the working id.
 
@@ -101,6 +117,14 @@ Atlas does NOT build native video calling. Position is "the brain, not the pipes
 ---
 
 ## DONE
+
+### Huddles rail hooks (redesigned huddles page) — Completed 2026-09-22
+- Three backend read hooks for Ben's redesigned huddles page, all in `src/app/actions/huddles.ts`. New types are in `src/lib/huddles/huddle-types.ts`, because `huddles.ts` is a `"use server"` file. **Backend only; no huddles UI touched.**
+- **`getMyHuddleActionItems()`** → `MyHuddleActionItem[]`: `huddle_action_items` with `status = 'pending'` and `suggested_assignee_id = me`, newest first. Items whose parent huddle is outside the caller's org are dropped first. The item is always returned. `huddle_title` is set only if the caller can see the huddle (otherwise `null`), and `can_view_huddle` tells the UI whether to link. ⚠️ **The semantics ("pending + suggested to me") are awaiting Ben's confirmation.** Promoted items (`'accepted'`) and dismissed items (currently hard-deleted) don't appear.
+- **`getRecentDecisions(limit = 8)`** → `RecentHuddleDecision[]`: newest decisions across huddles the caller can see, each with `huddle_title` and a hydrated `decider`. It uses the same visibility rule as `getHuddles`, now extracted into the private helper `filterVisibleHuddles` with no behavior change to `getHuddles`. It fetches the org's newest 200 decisions (a hard cap), filters them by visibility, then slices to `limit`. If fewer than `limit` of those 200 are visible, it returns fewer rows. `limit` is clamped to 1–25, and non-numeric values fall back to 8.
+- **`getHuddles({ filter: "needs_attention" })`**: `status = 'completed'` (ended, not yet finalized), limited to huddles the caller can finalize (created_by or org admin, the same `canManage` gate `finalizeHuddle` uses). The filter union is now the named `HuddleListFilter` type.
+- Not built: `getNextHuddle`. The UI calls the existing `getHuddle(items[0].id)` on the `upcoming` list.
+- No migration. Follow-ups are in PENDING: organizer-role gap, consolidating the visibility copies, Phase 2 `'rejected'` on dismiss, and the RLS-bypass note for the security audit.
 
 ### Organization data export — Completed 2026-09-10
 - Ships the "what happens to our data if Atlas goes away" answer before founding-church onboarding. Admin can download everything the org has in the Workspace module as a single JSON file. UI: a **Data Export** card under **Settings → Organization** that lists in plain language what's in the file (incl. that member records carry free-text pastoral notes) before download.
