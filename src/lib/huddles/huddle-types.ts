@@ -108,3 +108,56 @@ export type HuddleSegmentUploadInput = {
   sizeBytes: number;
   audioBitsPerSecond?: number | null;
 };
+
+/** One recorded segment, without any transcript text. */
+export type HuddleRecordingSegmentView = {
+  id: string;
+  segment_index: number;
+  started_at: string;
+  ended_at: string;
+  duration_seconds: number | null;
+  size_bytes: number | null;
+  file_type: string | null;
+  upload_status: "pending_upload" | "uploaded" | "upload_failed";
+  transcription_status:
+    | "pending"
+    | "processing"
+    | "done"
+    | "failed"
+    | "awaiting_credits";
+  transcription_error: string | null;
+  retention_until: string | null;
+};
+
+/** Consent-indicator state. Safe for every huddle viewer: counts and
+ *  timings only, never transcript text. */
+export type HuddleRecordingState = {
+  huddle_id: string;
+  state: HuddleRecordingLifecycleState;
+  /** state !== 'idle' AND the heartbeat is younger than 90s. */
+  is_live: boolean;
+  started_by: string | null;
+  heartbeat_at: string | null;
+  /** Whether the viewer may operate the recorder at all. */
+  can_manage: boolean;
+  segment_count: number;
+  total_duration_seconds: number;
+  total_size_bytes: number;
+  /** Segments still to transcribe, or parked/failed and retryable. */
+  pending_transcription_count: number;
+  failed_transcription_count: number;
+  awaiting_credits_count: number;
+};
+
+export type HuddleTranscriptSegmentView = HuddleRecordingSegmentView & {
+  /** null until that segment's transcription succeeds. */
+  text: string | null;
+};
+
+/** Organizer / org admin only. */
+export type HuddleTranscriptView = {
+  huddle_id: string;
+  segments: HuddleTranscriptSegmentView[];
+  /** Every finished segment's text, in order. */
+  full_text: string;
+};

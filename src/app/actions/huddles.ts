@@ -19,6 +19,9 @@ import {
 import type {
   HuddleListFilter,
   HuddleRecordingLifecycleState,
+  HuddleRecordingSegmentView,
+  HuddleRecordingState,
+  HuddleTranscriptView,
   HuddleSegmentUploadInput,
   HuddleSegmentUploadTicket,
   MyHuddleActionItem,
@@ -1162,11 +1165,11 @@ export async function getHuddle(
       .eq("huddle_id", huddleId),
     supabaseAdmin
       .from("huddle_transcripts")
-      .select("id, content, language")
+      .select("id, full_text, language")
       .eq("huddle_id", huddleId),
     supabaseAdmin
       .from("huddle_summaries")
-      .select("id, summary, model")
+      .select("id, executive_summary, model_used")
       .eq("huddle_id", huddleId),
   ]);
 
@@ -1306,20 +1309,30 @@ export async function getHuddle(
         : null,
       task_status: a.task_id ? taskStatusById.get(a.task_id) ?? null : null,
     })),
-    recordings: (recRes.data ?? []).map((r) => ({
-      id: r.id,
-      storage_path: r.storage_path,
-      duration_seconds: r.duration_seconds,
-    })),
-    transcripts: (transRes.data ?? []).map((t) => ({
-      id: t.id,
-      content: t.content,
-      language: t.language,
-    })),
+    // Recordings + transcripts are organizer/admin only. Everyone else
+    // gets empty arrays here and uses getHuddleRecordingState for the
+    // consent indicator, which carries no transcript text. RLS on both
+    // tables was narrowed to match (Phase 2 migration, section 7).
+    recordings: access.canManage
+      ? (recRes.data ?? []).map((r) => ({
+          id: r.id,
+          storage_path: r.storage_path,
+          duration_seconds: r.duration_seconds,
+        }))
+      : [],
+    transcripts: access.canManage
+      ? (transRes.data ?? []).map((t) => ({
+          id: t.id,
+          // Live column is full_text; the HuddleDetail field name stays.
+          content: t.full_text,
+          language: t.language,
+        }))
+      : [],
     summaries: (sumRes.data ?? []).map((s) => ({
       id: s.id,
-      summary: s.summary,
-      model: s.model,
+      // Live columns are executive_summary / model_used.
+      summary: s.executive_summary,
+      model: s.model_used,
     })),
     viewer_can_edit: access.canEdit,
     viewer_can_manage: access.canManage,
@@ -2744,4 +2757,133 @@ export async function transcribeHuddleRecording(
 
   revalidatePath(`/workspace/huddles/${row.huddle_id}`);
   return { success: true, data: { status: "done" } };
+}
+
+// Recording state for the consent indicator. Any huddle viewer may call
+// this — attendees need to know they're being recorded — so it returns
+// counts and timings only, never transcript text.
+export async function getHuddleRecordingState(
+  huddleId: string,
+): Promise<ActionResult<HuddleRecordingState>> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated." };
+  const access = await loadHuddleForViewer(ctx, huddleId);
+  if (!access.ok) return { success: false, error: access.error };
+
+  const { data: huddle } = await supabaseAdmin
+    .from("huddles")
+    .select("recording_state, recording_state_by, recording_heartbeat_at")
+    .eq("id", huddleId)
+    .maybeSingle();
+  const { data: rows } = await supabaseAdmin
+    .from("huddle_recordings")
+    .select("duration_seconds, size_bytes, upload_status, transcription_status")
+    .eq("huddle_id", huddleId);
+
+  const segments = rows ?? [];
+  const state = (huddle?.recording_state ??
+    "idle") as HuddleRecordingLifecycleState;
+  const heartbeatAt = huddle?.recording_heartbeat_at ?? null;
+
+  return {
+    success: true,
+    data: {
+      huddle_id: huddleId,
+      state,
+      is_live: state !== "idle" && isHeartbeatFresh(heartbeatAt),
+      started_by: huddle?.recording_state_by ?? null,
+      heartbeat_at: heartbeatAt,
+      can_manage: access.canManage,
+      segment_count: segments.length,
+      total_duration_seconds: segments.reduce(
+        (sum, r: { duration_seconds: number | null }) =>
+          sum + Number(r.duration_seconds ?? 0),
+        0,
+      ),
+      total_size_bytes: segments.reduce(
+        (sum, r: { size_bytes: number | null }) => sum + Number(r.size_bytes ?? 0),
+        0,
+      ),
+      pending_transcription_count: segments.filter(
+        (r: { upload_status: string; transcription_status: string }) =>
+          r.upload_status === "uploaded" &&
+          (r.transcription_status === "pending" ||
+            r.transcription_status === "processing"),
+      ).length,
+      failed_transcription_count: segments.filter(
+        (r: { transcription_status: string }) =>
+          r.transcription_status === "failed",
+      ).length,
+      awaiting_credits_count: segments.filter(
+        (r: { transcription_status: string }) =>
+          r.transcription_status === "awaiting_credits",
+      ).length,
+    },
+  };
+}
+
+// The transcript itself: organizer / org admin only, matching the RLS
+// narrowed in the Phase 2 migration. Segments come back in recording
+// order with their per-segment status so the UI can show "segment 3
+// failed — retry" rather than a silent gap.
+export async function getHuddleTranscript(
+  huddleId: string,
+): Promise<ActionResult<HuddleTranscriptView>> {
+  const ctx = await getAuthContext();
+  if (!ctx) return { success: false, error: "Not authenticated." };
+  const access = await loadHuddleForViewer(ctx, huddleId);
+  if (!access.ok) return { success: false, error: access.error };
+  if (!access.canManage)
+    return {
+      success: false,
+      error: "Only the organizer or an admin can read the transcript.",
+      code: "FORBIDDEN",
+    };
+
+  const { data: recordings, error } = await supabaseAdmin
+    .from("huddle_recordings")
+    .select(
+      "id, segment_index, started_at, ended_at, duration_seconds, size_bytes, file_type, upload_status, transcription_status, transcription_error, retention_until",
+    )
+    .eq("huddle_id", huddleId)
+    .order("segment_index", { ascending: true });
+  if (error) {
+    console.error("[getHuddleTranscript] Select error:", error.message);
+    return { success: false, error: error.message };
+  }
+  const rows = (recordings ?? []) as HuddleRecordingSegmentView[];
+  if (rows.length === 0)
+    return {
+      success: true,
+      data: { huddle_id: huddleId, segments: [], full_text: "" },
+    };
+
+  const { data: transcripts } = await supabaseAdmin
+    .from("huddle_transcripts")
+    .select("recording_id, full_text")
+    .in(
+      "recording_id",
+      rows.map((r) => r.id),
+    );
+  const textByRecording = new Map<string, string>();
+  (transcripts ?? []).forEach((t: { recording_id: string; full_text: string }) =>
+    textByRecording.set(t.recording_id, t.full_text),
+  );
+
+  const segments = rows.map((r) => ({
+    ...r,
+    text: textByRecording.get(r.id) ?? null,
+  }));
+
+  return {
+    success: true,
+    data: {
+      huddle_id: huddleId,
+      segments,
+      full_text: segments
+        .map((s) => s.text)
+        .filter((t): t is string => !!t && t.trim().length > 0)
+        .join("\n\n"),
+    },
+  };
 }
