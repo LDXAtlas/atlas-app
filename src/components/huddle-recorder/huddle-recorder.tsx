@@ -53,6 +53,14 @@ const MINT = "#5CE1A5";
 const UPLOAD_MAX_ATTEMPTS = 3;
 const DEVICE_STORAGE_KEY = "atlas.huddleRecorder.inputDeviceId";
 const LEVEL_FPS_MS = 60;
+// Below this the input counts as silence. Deliberately low: a room mic
+// picking up someone across a table sits well under a headset's level.
+const SILENCE_LEVEL = 0.008;
+// Only call it silence after this long, so the meter doesn't flicker
+// between syllables.
+const SILENCE_GRACE_MS = 2000;
+// Meter decay per frame, so bars fall smoothly instead of strobing.
+const LEVEL_DECAY = 0.85;
 
 export interface HuddleRecorderProps {
   huddleId: string;
@@ -175,6 +183,7 @@ export function HuddleRecorder({
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const [armed, setArmed] = useState(false);
   const [level, setLevel] = useState(0);
+  const [silent, setSilent] = useState(false);
 
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -193,6 +202,8 @@ export function HuddleRecorder({
   const queueRef = useRef<QueuedSegment[]>([]);
   const drainingRef = useRef(false);
   const stateRef = useRef<HuddleRecordingLifecycleState>("idle");
+  const levelRef = useRef(0);
+  const lastSoundAtRef = useRef(0);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -231,7 +242,9 @@ export function HuddleRecorder({
     analyserRef.current = null;
     void audioContextRef.current?.close().catch(() => undefined);
     audioContextRef.current = null;
+    levelRef.current = 0;
     setLevel(0);
+    setSilent(false);
   }, []);
 
   const startMeter = useCallback(
@@ -253,6 +266,7 @@ export function HuddleRecorder({
 
         const buffer = new Uint8Array(analyser.frequencyBinCount);
         let lastPaint = 0;
+        lastSoundAtRef.current = performance.now();
         const tick = (now: number) => {
           const node = analyserRef.current;
           if (!node) return;
@@ -264,7 +278,11 @@ export function HuddleRecorder({
           for (let i = 0; i < buffer.length; i += 1) {
             peak = Math.max(peak, Math.abs((buffer[i] ?? 128) - 128) / 128);
           }
-          setLevel(peak);
+          if (peak > SILENCE_LEVEL) lastSoundAtRef.current = now;
+          // Rise instantly, fall gently.
+          levelRef.current = Math.max(peak, levelRef.current * LEVEL_DECAY);
+          setLevel(levelRef.current);
+          setSilent(now - lastSoundAtRef.current > SILENCE_GRACE_MS);
         };
         rafRef.current = requestAnimationFrame(tick);
       } catch {
@@ -290,10 +308,16 @@ export function HuddleRecorder({
       if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
         throw new TypeError("navigator.mediaDevices.getUserMedia is unavailable");
       }
+      // Room-mic profile, not a voice-call one. Noise suppression and
+      // echo cancellation gate hard and duck anything they treat as
+      // background, which makes someone across the table sound like
+      // silence; auto gain brings a distant talker up instead. These are
+      // requests, not guarantees — browsers may ignore them.
       const audio: MediaTrackConstraints = {
         channelCount: 1,
-        echoCancellation: true,
-        noiseSuppression: true,
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: true,
       };
       if (preferredDeviceId) audio.deviceId = { exact: preferredDeviceId };
       return navigator.mediaDevices.getUserMedia({ audio });
@@ -923,7 +947,7 @@ export function HuddleRecorder({
             />
           ))}
         </span>
-        {armed && level < 0.02 && (
+        {armed && silent && (
           <span className="text-[12px] text-[#F59E0B]">No input detected</span>
         )}
         {devices.length === 0 && (
