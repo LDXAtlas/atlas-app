@@ -88,6 +88,7 @@ export type HuddleRecordingContextValue = {
   level: number;
   silent: boolean;
   testMic: () => Promise<void>;
+  stopTest: () => void;
   selectDevice: (deviceId: string) => Promise<void>;
   start: () => Promise<void>;
   pause: () => Promise<void>;
@@ -603,6 +604,11 @@ export function HuddleRecordingProvider({
     }
   }, [armMicrophone, deviceId]);
 
+  const stopTest = useCallback(() => {
+    releaseStream();
+    setStatus("Ready.", "info");
+  }, [releaseStream, setStatus]);
+
   const selectDevice = useCallback(
     async (nextId: string) => {
       const value = nextId || null;
@@ -820,6 +826,7 @@ export function HuddleRecordingProvider({
       level,
       silent,
       testMic,
+      stopTest,
       selectDevice,
       start,
       pause,
@@ -851,6 +858,7 @@ export function HuddleRecordingProvider({
       state,
       status,
       stop,
+      stopTest,
       testMic,
       transcribeSegment,
     ],

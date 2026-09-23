@@ -146,6 +146,16 @@ export function HuddleRecorder({
               <Mic className="size-3.5" /> Test mic
             </button>
           )}
+          {rec.state === "idle" && rec.armed && (
+            <button
+              type="button"
+              onClick={() => void rec.stopTest()}
+              disabled={rec.busy}
+              className="inline-flex items-center gap-1.5 rounded-full border border-[#E5E7EB] px-3.5 py-1.5 text-[13px] text-[#0F172A] disabled:opacity-50"
+            >
+              <Square className="size-3.5" /> Stop test
+            </button>
+          )}
           {rec.state === "idle" && (
             <button
               type="button"
