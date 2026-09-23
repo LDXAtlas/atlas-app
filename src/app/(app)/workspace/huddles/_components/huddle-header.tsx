@@ -21,6 +21,7 @@ import {
   type HuddleStatus,
 } from "@/app/actions/huddles";
 import { MeetingSourceBadge } from "./meeting-source-badge";
+import { HuddleRecordingIndicator } from "@/components/huddle-recorder";
 
 const STATUS_LABEL: Record<HuddleDetail["status"], string> = {
   scheduled: "Scheduled",
@@ -165,6 +166,7 @@ export function HuddleHeader({
           >
             {STATUS_LABEL[huddle.status]}
           </span>
+          <HuddleRecordingIndicator huddleId={huddle.id} />
         </div>
 
         <div className="flex items-start justify-between gap-3 flex-wrap">

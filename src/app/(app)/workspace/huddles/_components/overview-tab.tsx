@@ -13,6 +13,7 @@ import {
 import type { HuddleDetail } from "@/app/actions/huddles";
 import { AttendeeList } from "./attendee-list";
 import { MeetingSourceBadge } from "./meeting-source-badge";
+import { HuddleRecorder } from "@/components/huddle-recorder";
 
 interface OverviewTabProps {
   huddle: HuddleDetail;
@@ -32,6 +33,7 @@ export function OverviewTab({ huddle, onAttendeesChange }: OverviewTabProps) {
         canManage={huddle.viewer_can_manage}
         onChange={onAttendeesChange}
       />
+      <HuddleRecorder huddleId={huddle.id} canManage={huddle.viewer_can_manage} huddleStatus={huddle.status} />
       <QuickStats huddle={huddle} />
     </div>
   );
