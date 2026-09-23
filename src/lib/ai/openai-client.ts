@@ -147,7 +147,12 @@ export async function transcribeAudio(
       duration: raw.duration ?? 0,
     };
   } catch (err) {
-    console.error("[transcribeAudio] Whisper error:", err);
+    // Redacted summary, never the raw error object: OpenAI echoes a
+    // masked key in some messages and this ends up in server logs.
+    console.error(
+      "[transcribeAudio] Whisper error:",
+      friendlyMessage(err) ?? "unknown error",
+    );
     return {
       success: false,
       error: friendlyMessage(err) ?? "Couldn't transcribe the audio.",
@@ -219,14 +224,20 @@ export async function callGPTNanoFallback(
       try {
         return await tryModel(_effectiveFallbackModel);
       } catch (err2) {
-        console.error("[callGPTNanoFallback] Retry failed:", err2);
+        console.error(
+          "[callGPTNanoFallback] Retry failed:",
+          friendlyMessage(err2) ?? "unknown error",
+        );
         return {
           success: false,
           error: friendlyMessage(err2) ?? "AI fallback unavailable.",
         };
       }
     }
-    console.error("[callGPTNanoFallback] Error:", err);
+    console.error(
+      "[callGPTNanoFallback] Error:",
+      friendlyMessage(err) ?? "unknown error",
+    );
     return {
       success: false,
       error: friendlyMessage(err) ?? "AI fallback unavailable.",
@@ -246,18 +257,55 @@ function isModelNotFound(err: unknown): boolean {
   return false;
 }
 
+// Belt and braces: OpenAI's own 401 text quotes the key back in masked
+// form ("Incorrect API key provided: sk-proj-abc***xyz"), and we never
+// want key-shaped text reaching a UI or a log.
+function redactKeys(text: string): string {
+  return text.replace(/\bsk-[A-Za-z0-9._-]{4,}/g, "sk-[redacted]");
+}
+
+// The provider's own sentence, when it has one. The OpenAI SDK puts the
+// response body's message on .error.message and usually mirrors it on
+// .message; .code / .type name the condition (e.g. insufficient scopes
+// on a restricted key, which is invisible from the generic text alone).
+function providerDetail(err: unknown): string | null {
+  if (!err || typeof err !== "object") return null;
+  const e = err as {
+    message?: string;
+    code?: string;
+    type?: string;
+    error?: { message?: string; code?: string; type?: string };
+  };
+  const message = e.error?.message ?? e.message;
+  const code = e.error?.code ?? e.code ?? e.error?.type ?? e.type;
+  const parts: string[] = [];
+  if (typeof message === "string" && message.trim()) parts.push(message.trim());
+  if (typeof code === "string" && code.trim() && !parts[0]?.includes(code))
+    parts.push(`[${code.trim()}]`);
+  if (parts.length === 0) return null;
+  return redactKeys(parts.join(" "));
+}
+
 function friendlyMessage(err: unknown): string | null {
   if (!err) return null;
+  const detail = providerDetail(err);
+  // Generic sentence + what OpenAI actually said, so a restricted key
+  // missing /v1/audio/transcriptions or an exhausted quota is
+  // identifiable from the UI instead of reading as a flat auth failure.
+  const withDetail = (generic: string) =>
+    detail ? `${generic} ${detail}` : generic;
   if (typeof err === "object" && "status" in err) {
     const status = (err as { status?: number }).status;
-    if (status === 401) return "OpenAI authentication failed.";
-    if (status === 403) return "OpenAI refused the request.";
+    if (status === 401) return withDetail("OpenAI authentication failed.");
+    if (status === 403) return withDetail("OpenAI refused the request.");
     if (status === 429)
-      return "OpenAI is rate-limiting requests. Try again shortly.";
-    if (status === 400) return "OpenAI rejected the request (bad input).";
+      return withDetail("OpenAI is rate-limiting requests. Try again shortly.");
+    if (status === 400)
+      return withDetail("OpenAI rejected the request (bad input).");
     if (typeof status === "number" && status >= 500)
-      return "OpenAI is unavailable. Try again shortly.";
+      return withDetail("OpenAI is unavailable. Try again shortly.");
   }
-  if (err instanceof Error && err.message) return err.message;
+  if (detail) return detail;
+  if (err instanceof Error && err.message) return redactKeys(err.message);
   return null;
 }
