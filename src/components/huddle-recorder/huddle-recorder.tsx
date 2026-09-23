@@ -15,6 +15,8 @@
 import { useEffect, useState } from "react";
 import {
   AlertCircle,
+  ChevronDown,
+  ChevronRight,
   Loader2,
   Mic,
   Pause,
@@ -62,6 +64,17 @@ export function HuddleRecorder({
 }: HuddleRecorderProps) {
   const rec = useHuddleRecording();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // Segment ids whose transcript is expanded. Collapsed by default so a
+  // long meeting doesn't bury the controls.
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  const toggleExpanded = (id: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   const state = rec?.state;
   useEffect(() => {
@@ -271,50 +284,78 @@ export function HuddleRecorder({
 
       {rec.segments.length > 0 && (
         <ul className="mt-4 space-y-1.5">
-          {rec.segments.map((segment) => (
-            <li
-              key={segment.id}
-              className="flex items-center gap-2 text-[12.5px] text-[#6B7280]"
-              style={{ fontFamily: "var(--font-source-sans)" }}
-            >
-              <span className="text-[#0F172A]">
-                Segment {segment.segment_index + 1}
-              </span>
-              <span className="tabular-nums">
-                {formatClock(segment.duration_seconds ?? 0)}
-              </span>
-              <span className="ml-auto flex items-center gap-1.5">
-                {segment.transcription_status === "done" && "Transcribed"}
-                {segment.transcription_status === "processing" && (
-                  <>
-                    <Loader2 className="size-3 animate-spin" /> Transcribing…
-                  </>
-                )}
-                {segment.transcription_status === "pending" && "Queued"}
-                {segment.transcription_status === "awaiting_credits" && (
-                  <span className="text-[#F59E0B]">
-                    Waiting for AI credits — audio saved
+          {rec.segments.map((segment) => {
+            const text = segment.text?.trim();
+            const isOpen = expanded.has(segment.id);
+            return (
+              <li
+                key={segment.id}
+                className="text-[12.5px] text-[#6B7280]"
+                style={{ fontFamily: "var(--font-source-sans)" }}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-[#0F172A]">
+                    Segment {segment.segment_index + 1}
                   </span>
+                  <span className="tabular-nums">
+                    {formatClock(segment.duration_seconds ?? 0)}
+                  </span>
+                  <span className="ml-auto flex items-center gap-1.5">
+                    {segment.transcription_status === "done" && "Transcribed"}
+                    {segment.transcription_status === "processing" && (
+                      <>
+                        <Loader2 className="size-3 animate-spin" /> Transcribing…
+                      </>
+                    )}
+                    {segment.transcription_status === "pending" && "Queued"}
+                    {segment.transcription_status === "awaiting_credits" && (
+                      <span className="text-[#F59E0B]">
+                        Waiting for AI credits — audio saved
+                      </span>
+                    )}
+                    {segment.transcription_status === "failed" && (
+                      <>
+                        <span className="text-[#EF4444]">
+                          {segment.transcription_error
+                            ? `Failed: ${segment.transcription_error}`
+                            : "Failed"}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => void rec.transcribeSegment(segment.id)}
+                          className="inline-flex items-center gap-1 underline"
+                        >
+                          <RefreshCw className="size-3" /> Retry
+                        </button>
+                      </>
+                    )}
+                    {text && (
+                      <button
+                        type="button"
+                        onClick={() => toggleExpanded(segment.id)}
+                        aria-expanded={isOpen}
+                        className="inline-flex items-center gap-1 underline hover:text-[#0F172A]"
+                      >
+                        {isOpen ? (
+                          <ChevronDown className="size-3" />
+                        ) : (
+                          <ChevronRight className="size-3" />
+                        )}
+                        {isOpen ? "Hide" : "View"}
+                      </button>
+                    )}
+                  </span>
+                </div>
+                {text && isOpen && (
+                  // Read-only, selectable, scrolls rather than pushing the
+                  // rest of the card off screen.
+                  <p className="mt-1.5 mb-1 max-h-60 overflow-auto whitespace-pre-wrap rounded-lg bg-[#F4F5F7] px-3 py-2 text-[12.5px] leading-relaxed text-[#0F172A]">
+                    {text}
+                  </p>
                 )}
-                {segment.transcription_status === "failed" && (
-                  <>
-                    <span className="text-[#EF4444]">
-                      {segment.transcription_error
-                        ? `Failed: ${segment.transcription_error}`
-                        : "Failed"}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => void rec.transcribeSegment(segment.id)}
-                      className="inline-flex items-center gap-1 underline"
-                    >
-                      <RefreshCw className="size-3" /> Retry
-                    </button>
-                  </>
-                )}
-              </span>
-            </li>
-          ))}
+              </li>
+            );
+          })}
         </ul>
       )}
 
