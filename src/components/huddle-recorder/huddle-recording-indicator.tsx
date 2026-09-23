@@ -12,6 +12,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { getHuddleRecordingState } from "@/app/actions/huddles";
+import { useHuddleRecording } from "./huddle-recording-provider";
 import type { HuddleRecordingState } from "@/lib/huddles/huddle-types";
 
 const DEFAULT_POLL_MS = 15_000;
@@ -29,6 +30,9 @@ export function HuddleRecordingIndicator({
   className,
 }: HuddleRecordingIndicatorProps) {
   const [state, setState] = useState<HuddleRecordingState | null>(null);
+  // When this viewer is the one recording, the provider knows before the
+  // server poll does — no up-to-15s lag on your own indicator.
+  const rec = useHuddleRecording();
 
   const refresh = useCallback(async () => {
     const res = await getHuddleRecordingState(huddleId).catch(() => null);
@@ -49,9 +53,12 @@ export function HuddleRecordingIndicator({
   // is_live already accounts for a stale heartbeat, so a crashed
   // recorder tab clears this within ~90s instead of showing "recording"
   // forever.
-  if (!state?.is_live) return null;
+  const localLive = rec && rec.state !== "idle";
+  if (!localLive && !state?.is_live) return null;
 
-  const recording = state.state === "recording";
+  const recording = localLive
+    ? rec.state === "recording"
+    : state?.state === "recording";
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded-full border border-[#E5E7EB] px-2.5 py-1 text-[12px] text-[#0F172A] ${className ?? ""}`}

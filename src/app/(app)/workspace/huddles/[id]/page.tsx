@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getHuddle } from "@/app/actions/huddles";
 import { HuddleDetailView } from "../_components/huddle-detail";
+import { HuddleRecordingProvider } from "@/components/huddle-recorder";
 
 export default async function HuddleDetailPage({
   params,
@@ -44,5 +45,13 @@ export default async function HuddleDetailPage({
     }
   }
 
-  return <HuddleDetailView initial={res.data} departments={departments} />;
+  // The provider owns the recording session (stream, MediaRecorder,
+  // upload queue, heartbeat). It sits above the tabs so switching tabs —
+  // which unmounts the Overview subtree, and with it the recorder card —
+  // no longer kills a recording in progress.
+  return (
+    <HuddleRecordingProvider huddleId={id}>
+      <HuddleDetailView initial={res.data} departments={departments} />
+    </HuddleRecordingProvider>
+  );
 }
