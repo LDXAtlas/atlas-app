@@ -102,6 +102,10 @@ Atlas does NOT build native video calling. Position is "the brain, not the pipes
 - `filterVisibleHuddles` (private helper in `src/app/actions/huddles.ts`, extracted 2026-09-22) is now used by `getHuddles`, `getMyHuddleActionItems` and `getRecentDecisions`. Two older copies of the same predicate remain: `getHuddlesForCalendar` and `loadHuddleForViewer` (single-row). Move them onto the helper so the visibility rule lives in one place.
 - In the same pass, move `ProfileLite` from `src/app/actions/huddles.ts` into `src/lib/huddles/huddle-types.ts`, so the types file stops importing from a `"use server"` module. The import is type-only today, so it's not urgent; do it with the consolidation.
 
+### Huddles Phase 2 part 2 — the summary prompt must say "wants / would like" is not a decision (found 2026-09-24)
+- In Foundation v1.0 verification (`docs/AI_FOUNDATION_TEST_RESULTS_2026-09-24.md`), Sonnet listed "Dana *wants* sign-ups open by Oct 5" as a **decision** in 4 of 4 summary runs. Rule 5 says not to promote a discussion to a decision, but the base rule alone doesn't catch statements of intent.
+- The part 2 summary task prompt must say it explicitly: a wish, preference, goal or proposal ("wants", "would like", "hopes to", "suggested", "should we") is **discussed**, not decided, unless the notes say it was agreed, approved or decided. Test it with the same sample notes.
+
 ### Huddles Phase 2 — Dismissing an AI-extracted action item must set `status='rejected'`, not delete
 - Today the Outcomes tab's dismiss calls `deleteActionItem`, which hard-deletes the row, and nothing ever writes `'rejected'`. When Phase 2 lands, dismissing an `ai_extracted` item must set `status='rejected'` and keep the row. Otherwise the AI acceptance-rate insight (`docs/AI_CONTROL_CENTER.md`) has no rejections to count. Manual items can keep deleting.
 - `getMyHuddleActionItems` already filters on `status = 'pending'`, so rejected rows drop out of the rail automatically.
