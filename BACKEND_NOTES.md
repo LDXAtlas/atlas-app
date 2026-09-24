@@ -122,6 +122,11 @@ Atlas does NOT build native video calling. Position is "the brain, not the pipes
 - Diagnosing a 401 without printing the key: `curl -s -o /dev/null -w "%{http_code}\n" https://api.openai.com/v1/models -H "Authorization: Bearer $OPENAI_API_KEY"` — 200 means the key is valid (a permissions problem will still 401/403 on the audio endpoint specifically), 401 means the key itself is dead.
 - Since 2026-09-23 the UI shows OpenAI's own error text alongside the generic sentence (key-shaped text redacted first), so a permissions failure is distinguishable from a bad key without reading server logs.
 
+### AI pricing — Workspace-tier (Haiku 4.5) calls never hit the prompt cache (found 2026-09-24)
+- The cached prefix (Foundation Rules v1.0 + org guidelines) is about 1,250 tokens. Sonnet 4.6 caches it: a repeat call on Atlas Test ORG read 1,205 tokens from cache. **Haiku 4.5 doesn't cache anything under 4,096 tokens.** Two identical direct Haiku calls on 2026-09-24 both returned `cache_creation_input_tokens: 0` and `cache_read_input_tokens: 0`, with all 1,249 prefix tokens billed at full input price.
+- Workspace is always routed to Haiku (`model-selector.ts`), so the cheapest tier pays full price for the prefix on every call. Each extra section of org guidelines adds to that.
+- **Decide:** accept it (Haiku input costs $1/MTok, so ~1.25k tokens is about $0.00125 per call), pad the prefix past 4,096 tokens (padding may cost more than it saves at low call volume), or allow for it when setting Workspace credit prices and allocations. Check again if the prefix grows or the Workspace model changes.
+
 ### AI infrastructure — Confirm `gpt-5-nano` availability
 - `src/lib/ai/openai-client.ts` defaults the OpenAI fallback to `gpt-5-nano` with a runtime swap to `gpt-4o-mini` if the API returns model-not-found. First production call will log which one is in effect — verify and decide whether to hard-code the working id.
 
