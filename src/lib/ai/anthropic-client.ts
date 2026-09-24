@@ -36,7 +36,7 @@ export interface CallClaudeParams {
    *  AI_CONTROL_CENTER.md layering model — base + org guidelines
    *  cache; the feature's task prompt does not. */
   system: string;
-  /** Optional stable system prompt (Atlas base rules + org
+  /** Optional stable system prompt (Foundation Rules + org
    *  guidelines) that's safe to cache across calls. Composed by
    *  callAI() via buildCachedSystemPrefix() in org-context.ts. When
    *  omitted, behaviour is unchanged from before the Control Center
@@ -134,7 +134,7 @@ export async function callClaude(
   // uncached so it doesn't bloat the cache key.
   //
   // Per AI_CONTROL_CENTER.md:
-  //   cached:   Atlas base rules + org guidelines (stable per org)
+  //   cached:   Foundation Rules + org guidelines (stable per org)
   //   uncached: feature task prompt (varies per call)
   const systemPayload = (() => {
     if (cachedPrefix && cachedPrefix.length > 0) {

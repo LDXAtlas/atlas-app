@@ -111,7 +111,7 @@ export async function callAI(params: CallAIParams): Promise<CallAIResponse> {
     modelPreference: orgContext.modelPreference,
   });
 
-  // Compose the cached system prompt prefix: Atlas base rules + org
+  // Compose the cached system prompt prefix: Foundation Rules + org
   // guidelines (when the feature opts in via the registry). Cached
   // content stays stable per org -> ~90% cheaper input on Anthropic.
   // The task-specific `system` passed in by the feature is sent as a
