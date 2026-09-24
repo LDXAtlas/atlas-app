@@ -18,7 +18,7 @@ const actions = [
     icon: Target,
     color: "#3B82F6",
     // Added ?action=new to trigger the popup on the target page
-    href: "/workspace/tasks?action=new", 
+    href: "/workspace/tasks?action=new",
   },
   {
     id: "new-event",
@@ -33,7 +33,7 @@ const actions = [
     label: "Message",
     icon: MessageSquare,
     color: "#8B5CF6",
-    href: "/workspace/announcements",
+    href: "/messages",
   },
   {
     id: "follow-ups",
@@ -47,7 +47,7 @@ const actions = [
     label: "Huddle",
     icon: Video,
     color: "#F59E0B",
-    href: "/workspace/team-huddles",
+    href: "/workspace/huddles",
   },
   {
     id: "directory",
@@ -71,8 +71,8 @@ const containerVariants = {
 
 const itemVariants = {
   hidden: { opacity: 0, scale: 0.8 },
-  show: { 
-    opacity: 1, 
+  show: {
+    opacity: 1,
     scale: 1,
     transition: {
       type: "spring" as const,
@@ -85,7 +85,7 @@ const itemVariants = {
 export function QuickActions() {
   return (
     <div className="h-full flex flex-col w-full py-1">
-      <motion.div 
+      <motion.div
         variants={containerVariants}
         initial="hidden"
         animate="show"
@@ -106,14 +106,14 @@ export function QuickActions() {
                 className="flex flex-col items-center justify-center gap-2 p-3 rounded-2xl transition-all group h-full no-underline relative overflow-hidden"
               >
                 {/* Background active state */}
-                <div 
+                <div
                   className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"
                   style={{ backgroundColor: `${action.color}0C` }}
                 />
 
-                <div 
+                <div
                   className="size-[46px] rounded-xl flex items-center justify-center relative z-10 transition-all duration-300 group-hover:shadow-md"
-                  style={{ 
+                  style={{
                     backgroundColor: `${action.color}15`,
                     border: `1px solid ${action.color}25`
                   }}

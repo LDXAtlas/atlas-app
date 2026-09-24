@@ -176,11 +176,11 @@ export function AnnouncementsView({
   }, [announcements, handleMarkAsRead]);
 
   return (
-    <div className="bg-white text-[#2D333A] font-source-sans lg:h-[calc(100vh-5rem)]">
-      <div className="max-w-[1300px] mx-auto px-4 sm:px-6 py-6 flex flex-col lg:flex-row gap-8 items-start h-full">
+    <div className="text-[#2D333A] font-source-sans">
+      <div className="max-w-[1300px] mx-auto flex flex-col lg:flex-row gap-8 items-start">
         
         {/* Left Column: Navigation Sidebar */}
-        <aside className="w-full lg:w-[240px] shrink-0 flex flex-col gap-6 lg:h-full lg:overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] pb-8">
+        <aside className="w-full lg:w-[240px] shrink-0 flex flex-col gap-6 lg:sticky lg:top-0">
           <div>
             <h1 className="text-[24px] font-bold text-[#2D333A] font-poppins leading-tight">
               Announcements
@@ -220,8 +220,8 @@ export function AnnouncementsView({
           </nav>
         </aside>
 
-        {/* Center Column: The Feed (Independent Scrolling Layer) */}
-        <main className="flex-1 max-w-[700px] w-full flex flex-col gap-6 lg:h-full lg:overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] pb-24">
+        {/* Center Column: The Feed */}
+        <section className="flex-1 max-w-[700px] w-full flex flex-col gap-6 pb-12">
           
           {/* Mobile-Only Pinned Section (Hidden on Desktop) */}
           {pinned.length > 0 && (
@@ -281,10 +281,10 @@ export function AnnouncementsView({
               ))
             )}
           </div>
-        </main>
+        </section>
 
         {/* Right Column: Pinned Sidebar (Desktop Only) */}
-        <aside className="hidden xl:flex w-[280px] shrink-0 flex-col gap-4 lg:h-full lg:overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] pb-8">
+        <aside className="hidden xl:flex w-[280px] shrink-0 flex-col gap-4 xl:sticky xl:top-0">
           <div className="flex items-center gap-2 pb-2 border-b border-[#E5E7EB]">
             <Pin className="size-4 text-amber-500" />
             <h2 className="text-[13px] font-bold uppercase tracking-widest text-[#2D333A]">Important</h2>

@@ -28,9 +28,9 @@ export function HuddleCard({ huddle }: { huddle: HuddleListItem }) {
   return (
     <Link
       href={`/workspace/huddles/${huddle.id}`}
-      className="block bg-transparent rounded-2xl px-4 py-3.5 hover:bg-black/[0.02] transition-all duration-300 group relative overflow-hidden"
+      className="block bg-white rounded-2xl border border-[#E5E7EB] p-5 shadow-sm hover:shadow-md hover:border-[#3B82F6]/50 transition-all duration-200 group relative overflow-hidden"
     >
-      <div className="absolute left-0 top-0 bottom-0 w-1 bg-[#3B82F6] opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+      <div className="absolute left-0 top-0 bottom-0 w-1 bg-[#3B82F6] opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
 
       <div className="flex items-start gap-3">
         <div className="flex-1 min-w-0">

@@ -145,19 +145,13 @@ export default async function TasksPage({
           basePath="/workspace/tasks"
         />
       )}
-      {/* TasksView's root is `h-full overflow-y-auto bg-white`, which
-          creates its own scroll context. Rendering the huddles rail as
-          a plain sibling above it gets clipped by the app shell's
-          fixed-height container. We wrap both in a controlled flex
-          column so the rail sits above and TasksView gets the
-          remaining space via flex-1 + min-h-0. */}
-      <div className="h-full flex flex-col bg-white">
+      <div className="flex flex-col">
         {myHuddles.length > 0 && (
-          <div className="shrink-0 border-b border-[#E5E7EB] px-4 sm:px-6 pt-4">
+          <div className="shrink-0 mb-6">
             <YourHuddlesSection huddles={myHuddles} />
           </div>
         )}
-        <div className="flex-1 min-h-0">
+        <div>
           <TasksView
             tasks={tasks}
             teamMembers={profiles}

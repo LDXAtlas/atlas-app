@@ -623,7 +623,7 @@ function TaskGroup({
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, ease: [0.23, 1, 0.32, 1] }}
-      className="mb-2 rounded-xl"
+      className="mb-4 rounded-2xl bg-white border border-[#E5E7EB] shadow-sm overflow-hidden p-2"
     >
       <button
         onClick={() => setCollapsed(!collapsed)}
@@ -1098,7 +1098,7 @@ function InsightsPanel({
   const deptBreakdown = Array.from(deptMap.entries());
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 bg-white border border-[#E5E7EB] rounded-2xl p-5 shadow-sm">
       {/* Active Filters Clear Button */}
       {(activePriorityFilter || activeDepartmentFilter) && (
         <div className="flex items-center justify-between mb-2">
@@ -1378,9 +1378,9 @@ export function TasksView({
   const totalCount = initialTasks.length;
 
   return (
-    <div className="h-full flex flex-col overflow-y-auto bg-white">
+    <div>
       {/* Header */}
-      <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-6 mb-8 px-4 sm:px-6 pt-4 sm:pt-6">
+      <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-6 mb-8">
         <div className="flex flex-col md:flex-row md:items-center gap-6">
           <div>
             <h1
@@ -1436,7 +1436,7 @@ export function TasksView({
       </div>
 
       {/* Filter bar + View Toggle */}
-      <div className="flex items-center gap-3 mb-6 px-4 sm:px-6 flex-wrap">
+      <div className="flex items-center gap-3 mb-6 flex-wrap">
         <div className="bg-[#F4F5F7] p-1 rounded-2xl flex items-center gap-1">
           {FILTER_TABS.map((tab) => {
             const isActive = viewFilter === tab.id;
@@ -1475,7 +1475,7 @@ export function TasksView({
             placeholder="Search tasks..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-[#F4F5F7] border border-transparent rounded-xl text-[14px] text-[#2D333A] placeholder:text-[#9CA3AF] focus:border-[#5CE1A5] focus:ring-2 focus:ring-[#5CE1A5]/10 focus:outline-none transition-all"
+            className="w-full pl-10 pr-4 py-2.5 bg-white border border-[#E5E7EB] rounded-xl text-[14px] text-[#2D333A] placeholder:text-[#9CA3AF] focus:border-[#5CE1A5] focus:ring-2 focus:ring-[#5CE1A5]/10 focus:outline-none transition-all shadow-sm"
             style={{ fontFamily: "var(--font-source-sans)" }}
           />
         </div>
@@ -1530,7 +1530,7 @@ export function TasksView({
       </div>
 
       {/* Main content + Insights sidebar */}
-      <div className="flex gap-8 px-4 sm:px-6 flex-1 pb-8">
+      <div className="flex gap-8 flex-1 pb-8">
         {/* Left: Task content */}
         <div className="flex-1 min-w-0">
           {totalCount === 0 ? (
