@@ -126,6 +126,11 @@ Atlas does NOT build native video calling. Position is "the brain, not the pipes
 - Diagnosing a 401 without printing the key: `curl -s -o /dev/null -w "%{http_code}\n" https://api.openai.com/v1/models -H "Authorization: Bearer $OPENAI_API_KEY"` — 200 means the key is valid (a permissions problem will still 401/403 on the audio endpoint specifically), 401 means the key itself is dead.
 - Since 2026-09-23 the UI shows OpenAI's own error text alongside the generic sentence (key-shaped text redacted first), so a permissions failure is distinguishable from a bad key without reading server logs.
 
+### AI features — Review whether `sermon_prep` should exist before anyone builds it (opened 2026-09-24)
+- `sermon_prep` is registered in `src/lib/ai/feature-registry.ts` ("Sermon outline + research support", suite tier and up). Nothing calls it yet.
+- Foundation rule 1 says Atlas AI "assists with the OPERATIONS of ministry, not the PRACTICE of ministry", and rule 4 keeps it strictly neutral on theology. Writing a sermon outline is the practice of ministry, and sermon research can't stay neutral on doctrine.
+- Before building it: decide whether to drop the feature, or scope it to operational support only (for example series scheduling, pulling past sermon titles, or formatting a pastor's own outline). If it stays, set the Foundation reference document's verification tests against it first. Remove the registry entry if it's dropped. The `ai_usage_log.feature` CHECK value can stay.
+
 ### AI pricing — Workspace-tier (Haiku 4.5) calls never hit the prompt cache (found 2026-09-24)
 - The cached prefix (Foundation Rules v1.0 + org guidelines) is about 1,250 tokens. Sonnet 4.6 caches it: a repeat call on Atlas Test ORG read 1,205 tokens from cache. **Haiku 4.5 doesn't cache anything under 4,096 tokens.** Two identical direct Haiku calls on 2026-09-24 both returned `cache_creation_input_tokens: 0` and `cache_read_input_tokens: 0`, with all 1,249 prefix tokens billed at full input price.
 - Workspace is always routed to Haiku (`model-selector.ts`), so the cheapest tier pays full price for the prefix on every call. Each extra section of org guidelines adds to that.
