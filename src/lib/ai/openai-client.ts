@@ -80,10 +80,13 @@ export function getOpenAIClient(): OpenAI {
 //
 // PRIMARY_FALLBACK is what selectModel returns when an org is out of
 // credits. If the API responds with a model-not-found error on first
-// call, we record the swap and use SECONDARY_FALLBACK for the lifetime
-// of the process.
+// call, or rejects a request parameter, we record the swap and use
+// SECONDARY_FALLBACK for the lifetime of the process.
 export const PRIMARY_FALLBACK_MODEL = "gpt-5-nano";
 export const SECONDARY_FALLBACK_MODEL = "gpt-4o-mini";
+// Extra max_completion_tokens for a reasoning fallback's thinking, on
+// top of the caller's maxTokens for the visible answer.
+const REASONING_HEADROOM_TOKENS = 4096;
 let _effectiveFallbackModel: string = PRIMARY_FALLBACK_MODEL;
 let _loggedFallbackSwap = false;
 
@@ -174,14 +177,30 @@ export async function callGPTNanoFallback(
   ];
 
   async function tryModel(modelId: string): Promise<GPTChatResponse> {
+    // gpt-5 models are reasoning models: they reject max_tokens and any
+    // non-default temperature, and their reasoning tokens count against
+    // max_completion_tokens. Low effort plus headroom on top of the
+    // caller's answer budget keeps a summary-sized reply from coming
+    // back empty (seen 2026-09-24 at default effort with 4096 tokens).
+    const params = isReasoningModel(modelId)
+      ? {
+          max_completion_tokens: maxTokens + REASONING_HEADROOM_TOKENS,
+          reasoning_effort: "low" as const,
+        }
+      : { max_tokens: maxTokens, temperature };
     const response = await client.chat.completions.create({
       model: modelId,
       messages: chatMessages,
-      max_tokens: maxTokens,
-      temperature,
+      ...params,
     });
     const choice = response.choices[0];
     const text = choice?.message?.content ?? "";
+    if (!text && choice?.finish_reason === "length") {
+      return {
+        success: false,
+        error: "The AI fallback ran out of room before answering. Try again shortly.",
+      };
+    }
     const usage = response.usage ?? {
       prompt_tokens: 0,
       completion_tokens: 0,
@@ -208,11 +227,13 @@ export async function callGPTNanoFallback(
     return await tryModel(_effectiveFallbackModel);
   } catch (err) {
     // Model-not-found surfaces as 404 with a message like
-    // "The model `gpt-5-nano` does not exist". Swap to the secondary
-    // fallback once per process so we don't pay the round-trip again.
+    // "The model `gpt-5-nano` does not exist"; a parameter the model
+    // won't take surfaces as 400 unsupported_parameter / unsupported_value.
+    // Either way, swap to the secondary fallback once per process so we
+    // don't pay the round-trip again.
     if (
       _effectiveFallbackModel === PRIMARY_FALLBACK_MODEL &&
-      isModelNotFound(err)
+      shouldSwapToSecondary(err)
     ) {
       if (!_loggedFallbackSwap) {
         console.warn(
@@ -247,11 +268,17 @@ export async function callGPTNanoFallback(
 
 // ─── Helpers ───────────────────────────────────────────────
 
-function isModelNotFound(err: unknown): boolean {
+function isReasoningModel(modelId: string): boolean {
+  return /^(gpt-5|o\d)/.test(modelId);
+}
+
+function shouldSwapToSecondary(err: unknown): boolean {
   if (!err || typeof err !== "object") return false;
   const e = err as { status?: number; code?: string; message?: string };
   if (e.status === 404) return true;
   if (e.code === "model_not_found") return true;
+  if (e.code === "unsupported_parameter" || e.code === "unsupported_value")
+    return true;
   if (typeof e.message === "string" && /model.*(does not exist|not found)/i.test(e.message))
     return true;
   return false;
