@@ -11,6 +11,17 @@
 // ai_usage_log, and once the Insights dashboard ships the new feature
 // shows up there for free.
 //
+// Fallback: when an org runs out of credits, callAI can drop to the
+// OpenAI fallback model. Set `allowsFallback: false` on anything that
+// reads people's situations (meeting content, pastoral follow-ups,
+// free-form chat). Verification on 2026-09-24 showed the fallback models
+// don't reliably follow Foundation rule 2 (crisis handling); see
+// docs/AI_FOUNDATION_TEST_RESULTS_2026-09-24.md, test 7. Unknown keys
+// default to NO fallback. An unregistered feature is a bug either way,
+// and it's better for that bug to fail loudly with CREDITS_EXHAUSTED
+// the first time an org runs out of credits than to silently send
+// crisis content to a model that mishandles it.
+//
 // Important: every `key` below MUST also be present in the
 // ai_usage_log.feature CHECK constraint (live in Supabase). Adding a
 // new feature key requires a constraint ALTER and a corresponding
@@ -43,6 +54,10 @@ export interface AIFeatureRegistryEntry {
    *  prompt for this feature. Default true — switch off for purely
    *  mechanical features where voice doesn't matter. */
   usesGuidelines: boolean;
+  /** Whether callAI may drop to the OpenAI fallback when the org is out
+   *  of credits. False for anything that can surface crisis content:
+   *  the fallback models don't reliably follow Foundation rule 2. */
+  allowsFallback: boolean;
 }
 
 export const AI_FEATURE_REGISTRY: Record<AIFeatureKey, AIFeatureRegistryEntry> = {
@@ -57,6 +72,8 @@ export const AI_FEATURE_REGISTRY: Record<AIFeatureKey, AIFeatureRegistryEntry> =
     // apply at this stage — they apply when the transcript is later
     // summarized.
     usesGuidelines: false,
+    // Whisper only; never goes through selectModel or the fallback.
+    allowsFallback: true,
   },
   huddle_summary: {
     key: "huddle_summary",
@@ -66,6 +83,7 @@ export const AI_FEATURE_REGISTRY: Record<AIFeatureKey, AIFeatureRegistryEntry> =
     minTier: null,
     canToggle: false,
     usesGuidelines: true,
+    allowsFallback: false,
   },
   huddle_action_extraction: {
     key: "huddle_action_extraction",
@@ -75,6 +93,7 @@ export const AI_FEATURE_REGISTRY: Record<AIFeatureKey, AIFeatureRegistryEntry> =
     minTier: null,
     canToggle: false,
     usesGuidelines: true,
+    allowsFallback: false,
   },
   atlas_ai_chat: {
     key: "atlas_ai_chat",
@@ -84,6 +103,7 @@ export const AI_FEATURE_REGISTRY: Record<AIFeatureKey, AIFeatureRegistryEntry> =
     minTier: null,
     canToggle: false,
     usesGuidelines: true,
+    allowsFallback: false,
   },
   announcement_generation: {
     key: "announcement_generation",
@@ -93,6 +113,7 @@ export const AI_FEATURE_REGISTRY: Record<AIFeatureKey, AIFeatureRegistryEntry> =
     minTier: null,
     canToggle: false,
     usesGuidelines: true,
+    allowsFallback: true,
   },
   sermon_prep: {
     key: "sermon_prep",
@@ -102,6 +123,7 @@ export const AI_FEATURE_REGISTRY: Record<AIFeatureKey, AIFeatureRegistryEntry> =
     minTier: "suite",
     canToggle: true,
     usesGuidelines: true,
+    allowsFallback: true,
   },
   care_followup: {
     key: "care_followup",
@@ -111,6 +133,7 @@ export const AI_FEATURE_REGISTRY: Record<AIFeatureKey, AIFeatureRegistryEntry> =
     minTier: "suite",
     canToggle: true,
     usesGuidelines: true,
+    allowsFallback: false,
   },
   smart_suggestion: {
     key: "smart_suggestion",
@@ -120,6 +143,7 @@ export const AI_FEATURE_REGISTRY: Record<AIFeatureKey, AIFeatureRegistryEntry> =
     minTier: null,
     canToggle: true,
     usesGuidelines: true,
+    allowsFallback: true,
   },
   other: {
     key: "other",
@@ -134,6 +158,7 @@ export const AI_FEATURE_REGISTRY: Record<AIFeatureKey, AIFeatureRegistryEntry> =
     // /api/ai/test endpoint to silently skip terminology / voice —
     // hiding the bug we spent three rounds debugging.
     usesGuidelines: true,
+    allowsFallback: true,
   },
 };
 
@@ -154,4 +179,13 @@ export function featureUsesGuidelines(key: string): boolean {
   const entry = getFeatureEntry(key);
   if (!entry) return true;
   return entry.usesGuidelines;
+}
+
+/** True if callAI may use the OpenAI fallback for this feature when the
+ *  org is out of credits. Unknown keys default to FALSE (see the header
+ *  comment). */
+export function featureAllowsFallback(key: string): boolean {
+  const entry = getFeatureEntry(key);
+  if (!entry) return false;
+  return entry.allowsFallback;
 }

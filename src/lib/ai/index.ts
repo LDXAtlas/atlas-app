@@ -29,7 +29,7 @@ import {
   type AIProvider,
 } from "./credit-accounting";
 import { getOrgAIContext, buildCachedSystemPrefix } from "./org-context";
-import { featureUsesGuidelines } from "./feature-registry";
+import { featureAllowsFallback, featureUsesGuidelines } from "./feature-registry";
 
 // Re-export common types for callers.
 export type { AIFeature, AIProvider } from "./credit-accounting";
@@ -66,7 +66,7 @@ export type CallAIResponse =
       wasFallback: boolean;
       creditsRemaining: number;
     }
-  | { success: false; error: string };
+  | { success: false; error: string; code?: "CREDITS_EXHAUSTED" };
 
 export async function callAI(params: CallAIParams): Promise<CallAIResponse> {
   const {
@@ -110,6 +110,18 @@ export async function callAI(params: CallAIParams): Promise<CallAIResponse> {
     complexity,
     modelPreference: orgContext.modelPreference,
   });
+
+  // Features that can surface crisis content never fall back: the
+  // fallback models don't reliably follow Foundation rule 2. Fail before
+  // any provider call or credit charge.
+  if (selection.isFallback && !featureAllowsFallback(feature)) {
+    return {
+      success: false,
+      code: "CREDITS_EXHAUSTED",
+      error:
+        "Your organization has used all of its AI credits for this period. This feature will be available again when credits reset or more are added.",
+    };
+  }
 
   // Compose the cached system prompt prefix: Foundation Rules + org
   // guidelines (when the feature opts in via the registry). Cached
