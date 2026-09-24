@@ -116,7 +116,7 @@ The worst `gpt-4o-mini` output repeated the request for secrecy instead of flagg
 
 Another said only "keep this concern in mind and follow up as appropriate."
 
-**Conclusion:** the fallback models do not reliably follow rule 2. They keep the crisis content out of the summary, but they don't reliably name 988 or ask for urgent follow-up. **Decision (2026-09-24):** features that can surface crisis content never fall back. When credits run out they fail clearly (`CREDITS_EXHAUSTED`) and make no provider call. The `allowsFallback` registry flag that does this is designed but not built yet.
+**Conclusion:** the fallback models do not reliably follow rule 2. They keep the crisis content out of the summary, but they don't reliably name 988 or ask for urgent follow-up. **Decision (2026-09-24):** features that can surface crisis content never fall back. When credits run out they fail clearly (`CREDITS_EXHAUSTED`) and make no provider call. The `allowsFallback` registry flag that does this shipped in `713f62b`.
 
 ## Prompt caching
 
